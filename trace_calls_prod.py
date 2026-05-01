@@ -1,45 +1,52 @@
-import sys
+import random
+import time
 import json
 import inspect
 from functools import wraps
 from collections import defaultdict
 
+SAMPLE_RATE = 0.01   # 1% of calls
+FLUSH_INTERVAL = 10  # seconds
+
 COUNTS = defaultdict(int)
-DETAILS = {}
+LAST_FLUSH = time.time()
+
+
+def should_sample():
+    return random.random() < SAMPLE_RATE
+
 
 def trace(func):
     name = f"{func.__module__}.{func.__qualname__}"
+
     @wraps(func)
     def wrapper(*args, **kwargs):
-        try:
+        global LAST_FLUSH
+
+        if should_sample():
             COUNTS[name] += 1
-            if name not in DETAILS:
-                sig = inspect.signature(func)
-                bound = sig.bind_partial(*args, **kwargs)
-                DETAILS[name] = {
-                    "args_count": len(args),
-                    "kwargs": list(kwargs.keys())
-                }
-        except Exception:
-            pass
+
+        # periodic flush (non-blocking-ish)
+        now = time.time()
+        if now - LAST_FLUSH > FLUSH_INTERVAL:
+            try:
+                flush()
+            except Exception:
+                pass
+            LAST_FLUSH = now
 
         return func(*args, **kwargs)
 
     return wrapper
 
 
-def dump(path=".runtime_calls.json"):
-    data = []
-    for name, count in COUNTS.items():
-        entry = {
-            "function": name,
-            "count": count,
-        }
-        entry.update(DETAILS.get(name, {}))
-        data.append(entry)
+def flush(path="/tmp/runtime_calls.json"):
+    data = dict(COUNTS)
 
     with open(path, "w") as f:
-        json.dump(data, f, indent=2)
+        json.dump(data, f)
+
+    COUNTS.clear()
 
 
 def install_tracer(module, prefix=None):

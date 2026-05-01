@@ -105,6 +105,34 @@ This avoids extra commits but couples working tree mutation with commit creation
 
 ---
 
+## Additional Tools
+
+### Runtime Tracing
+- `trace_calls.py` — low-overhead runtime call tracer
+- `trace_calls_prod.py` — production sampler with configurable `SAMPLE_RATE`
+- Aggregates call counts across test/prod runs
+
+### Risk Analysis
+- `risk_model.py` — computes risk as `S × E × C` (severity × exposure × confidence)
+- `risk_gate.py` — combines diff + runtime data into structured JSON report
+- `enforce_gate.py` — CI gate: blocks on HIGH, warns on UNKNOWN
+
+### Reporting & Fixes
+- `generate_report.py` — static HTML report from risk JSON
+- `suggest_fixes.py` — generates fix suggestions with call-site locations
+- `patch_generator.py` — diff-based patch previews using `difflib`
+- `cst_patch.py` — CST-based patches using `libcst` (preserves formatting)
+- `patch_confidence.py` — scores patch confidence per-multiplying target × structural × semantic × complexity
+
+### CI Integration
+- `.github/workflows/ci.yml` — GitHub Actions workflow with:
+  - Signature extraction + comparison
+  - Runtime data aggregation
+  - Risk analysis + HTML report generation
+  - Enforcement gate
+
+---
+
 ## Future Directions
 
 Potential extensions:
@@ -113,3 +141,4 @@ Potential extensions:
 - Detect breaking vs non-breaking API changes
 - Compare signatures across commits
 - Integrate with CI for enforcement
+- **Feedback loop** — learn from patch acceptance/rejection to calibrate confidence
