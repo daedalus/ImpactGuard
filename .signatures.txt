@@ -525,6 +525,30 @@
     "kwarg": false
   },
   {
+    "fqname": "test_impactguard.py:test_call_extraction",
+    "name": "test_call_extraction",
+    "positional": [],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "test_impactguard.py:test_compare_signatures",
+    "name": "test_compare_signatures",
+    "positional": [],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "test_impactguard.py:test_signature_extraction",
+    "name": "test_signature_extraction",
+    "positional": [],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
     "fqname": "trace_calls.py:dump",
     "name": "dump",
     "positional": [
