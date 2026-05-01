@@ -1,0 +1,50 @@
+name: ImpactGuard CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  check-signatures:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: pip install -e .
+
+    - name: Check signatures are up to date
+      run: |
+        python3 extract_signatures.py $(git ls-files '*.py') > /tmp/current.json
+        # Convert to sorted JSON for comparison
+        python3 -c "
+        import json
+        with open('.signatures.txt') as f:
+            old = json.load(f)
+        with open('/tmp/current.json') as f:
+            new = json.load(f)
+        if old != new:
+            print('ERROR: .signatures.txt is out of date')
+            exit(1)
+        "
+
+    - name: Run static analysis
+      run: |
+        python3 extract_signatures.py $(git ls-files '*.py') > .signatures.json
+        python3 extract_calls.py $(git ls-files '*.py') > .calls.json
+        python3 impact_analysis.py .signatures.json .calls.json || true
+
+    - name: Check for breaking changes (on PR)
+      if: github.event_name == 'pull_request'
+      run: |
+        git fetch origin ${{ github.base_ref }}
+        BASE=$(git merge-base HEAD origin/${{ github.base_ref }})
+        git show $BASE:.signatures.txt > /tmp/base_sigs.txt 2>/dev/null || exit 0
+        python3 compare_signatures.py /tmp/base_sigs.txt .signatures.txt
