@@ -264,6 +264,23 @@
     "kwarg": false
   },
   {
+    "fqname": "extract_signatures.py:dummy_func",
+    "name": "dummy_func",
+    "positional": [
+      {
+        "name": "x",
+        "has_default": false
+      },
+      {
+        "name": "y",
+        "has_default": true
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
     "fqname": "extract_signatures.py:extract",
     "name": "extract",
     "positional": [
