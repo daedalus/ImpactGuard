@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "impactguard"
+version = "0.1.0"
+description = "Lightweight API impact analyzer for Python projects"
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+]
+
+[project.scripts]
+impactguard-extract = "extract_signatures:main"
+impactguard-compare = "compare_signatures:main"
+impactguard-calls = "extract_calls:main"
+impactguard-analyze = "impact_analysis:main"
+impactguard-runtime = "runtime_impact:main"
