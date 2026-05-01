@@ -56,5 +56,8 @@ def main():
 
     print(json.dumps(all_funcs, indent=2))
 
+def dummy_func(x: int, y: str = "default") -> bool:
+    return True
+
 if __name__ == "__main__":
     main()
