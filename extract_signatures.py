@@ -3,6 +3,8 @@ import json
 import sys
 from pathlib import Path
 
+# ImpactGuard signature extractor
+
 def serialize_function(node, file):
     def arg_info(arg, default):
         return {
