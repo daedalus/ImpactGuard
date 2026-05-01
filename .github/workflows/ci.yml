@@ -7,10 +7,10 @@ on:
     branches: [ master, main ]
 
 jobs:
-  check-signatures:
+  api-risk:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -18,33 +18,51 @@ jobs:
         python-version: '3.9'
 
     - name: Install dependencies
-      run: pip install -e .
+      run: pip install -r requirements.txt || pip install libcst
 
-    - name: Check signatures are up to date
+    - name: Extract signatures
       run: |
-        python3 extract_signatures.py $(git ls-files '*.py') > /tmp/current.json
-        # Convert to sorted JSON for comparison
-        python3 -c "
-        import json
-        with open('.signatures.txt') as f:
-            old = json.load(f)
-        with open('/tmp/current.json') as f:
-            new = json.load(f)
-        if old != new:
-            print('ERROR: .signatures.txt is out of date')
-            exit(1)
-        "
+        python extract_signatures.py $(git ls-files '*.py') > new_sigs.json
 
-    - name: Run static analysis
+    - name: Get base signatures
       run: |
-        python3 extract_signatures.py $(git ls-files '*.py') > .signatures.json
-        python3 extract_calls.py $(git ls-files '*.py') > .calls.json
-        python3 impact_analysis.py .signatures.json .calls.json || true
+        git fetch origin ${{ github.base_ref }} || true
+        BASE=$(git merge-base HEAD origin/${{ github.base_ref }} 2>/dev/null || echo "")
+        if [ -n "$BASE" ]; then
+          git show $BASE:.signatures.json > base_sigs.json 2>/dev/null || echo "[]" > base_sigs.json
+        else
+          echo "[]" > base_sigs.json
+        fi
 
-    - name: Check for breaking changes (on PR)
-      if: github.event_name == 'pull_request'
+    - name: Compute diff
       run: |
-        git fetch origin ${{ github.base_ref }}
-        BASE=$(git merge-base HEAD origin/${{ github.base_ref }})
-        git show $BASE:.signatures.txt > /tmp/base_sigs.txt 2>/dev/null || exit 0
-        python3 compare_signatures.py /tmp/base_sigs.txt .signatures.txt
+        python compare_signatures.py base_sigs.json new_sigs.json > diff.txt
+        cat diff.txt
+
+    - name: Load runtime data
+      run: |
+        cp runtime_calls_aggregate.json runtime.json 2>/dev/null || echo "[]" > runtime.json
+
+    - name: Risk analysis
+      run: |
+        python risk_gate.py diff.txt runtime.json > report.json
+        cat report.json
+
+    - name: Show report summary
+      run: |
+        echo "## API Risk Report" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Download the full report from artifacts." >> $GITHUB_STEP_SUMMARY
+        jq -r '.[] | select(.risk=="HIGH") | "- 🔴 \(.function)"' report.json >> $GITHUB_STEP_SUMMARY || true
+
+    - name: Generate JSON risk report
+      run: python generate_report.py report.json
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: api-risk-report
+        path: api_report.html
+
+    - name: Enforce gate
+      run: python enforce_gate.py report.json

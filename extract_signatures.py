@@ -26,6 +26,9 @@ def serialize_function(node, file):
     return {
         "fqname": f"{file}:{node.name}",
         "name": node.name,
+        "file": str(file),
+        "lineno": node.lineno,
+        "end_lineno": getattr(node, "end_lineno", node.lineno),
         "positional": pos,
         "kwonly": kwonly,
         "vararg": args.vararg is not None,
