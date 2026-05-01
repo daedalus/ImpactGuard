@@ -25,7 +25,7 @@ calls = load_calls(sys.argv[2])
 issues = []
 
 for call in calls:
-    target = call["fqname"]
+    target = call["name"]
 
     # try exact match
     if target not in funcs:
@@ -38,7 +38,7 @@ for call in calls:
 
     f = funcs[target]
 
-    if call["starargs"] or call["kwargs_any"]:
+    if call["has_starargs"] or call["has_kwargs"]:
         continue
 
     min_args = required_positional(f)
