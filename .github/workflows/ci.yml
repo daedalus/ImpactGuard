@@ -1,68 +1,88 @@
-name: ImpactGuard CI
+name: CI
 
 on:
   push:
-    branches: [ master, main ]
+    branches: [master]
   pull_request:
-    branches: [ master, main ]
+    branches: [master]
 
 jobs:
-  api-risk:
+  test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
 
-    - name: Install dependencies
-      run: pip install -r requirements.txt || pip install libcst
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
 
-    - name: Extract signatures
-      run: |
-        python extract_signatures.py $(git ls-files '*.py') > new_sigs.json
+      - name: Install dependencies
+        run: uv pip install --system -e ".[test]"
 
-    - name: Get base signatures
-      run: |
-        git fetch origin ${{ github.base_ref }} || true
-        BASE=$(git merge-base HEAD origin/${{ github.base_ref }} 2>/dev/null || echo "")
-        if [ -n "$BASE" ]; then
-          git show $BASE:.signatures.json > base_sigs.json 2>/dev/null || echo "[]" > base_sigs.json
-        else
-          echo "[]" > base_sigs.json
-        fi
+      - name: Run tests with coverage
+        run: pytest --cov --cov-report=xml --cov-report=term-missing
 
-    - name: Compute diff
-      run: |
-        python compare_signatures.py base_sigs.json new_sigs.json > diff.txt
-        cat diff.txt
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
 
-    - name: Load runtime data
-      run: |
-        cp runtime_calls_aggregate.json runtime.json 2>/dev/null || echo "[]" > runtime.json
+  lint:
+    runs-on: ubuntu-latest
 
-    - name: Risk analysis
-      run: |
-        python risk_gate.py diff.txt runtime.json > report.json
-        cat report.json
+    steps:
+      - uses: actions/checkout@v4
 
-    - name: Show report summary
-      run: |
-        echo "## API Risk Report" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "Download the full report from artifacts." >> $GITHUB_STEP_SUMMARY
-        jq -r '.[] | select(.risk=="HIGH") | "- 🔴 \(.function)"' report.json >> $GITHUB_STEP_SUMMARY || true
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-    - name: Generate JSON risk report
-      run: python generate_report.py report.json
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: api-risk-report
-        path: api_report.html
+      - name: Install dependencies
+        run: uv pip install --system -e ".[lint]"
 
-    - name: Enforce gate
-      run: python enforce_gate.py report.json
+      - name: Run ruff format
+        run: ruff format --check src/ tests/
+
+      - name: Run ruff
+        run: ruff check src/ tests/
+
+      - name: Run prospector
+        run: prospector src/
+
+      - name: Run semgrep
+        run: semgrep --config=auto --severity=ERROR src/
+
+      - name: Run mypy
+        run: mypy src/
+
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build package
+        run: |
+          pip install build
+          python -m build
+
+      - name: Check package
+        run: pip install twine && python -m twine check dist/*

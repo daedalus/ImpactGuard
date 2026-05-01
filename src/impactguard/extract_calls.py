@@ -3,6 +3,7 @@ import json
 import sys
 from pathlib import Path
 
+
 class CallVisitor(ast.NodeVisitor):
     def __init__(self, file):
         self.file = file
@@ -12,15 +13,17 @@ class CallVisitor(ast.NodeVisitor):
         name = self.get_name(node.func)
 
         if name:
-            self.calls.append({
-                "name": name,
-                "lineno": node.lineno,
-                "args": len(node.args),
-                "kwargs": [kw.arg for kw in node.keywords if kw.arg],
-                "has_starargs": any(isinstance(a, ast.Starred) for a in node.args),
-                "has_kwargs": any(kw.arg is None for kw in node.keywords),
-                "file": self.file
-            })
+            self.calls.append(
+                {
+                    "name": name,
+                    "lineno": node.lineno,
+                    "args": len(node.args),
+                    "kwargs": [kw.arg for kw in node.keywords if kw.arg],
+                    "has_starargs": any(isinstance(a, ast.Starred) for a in node.args),
+                    "has_kwargs": any(kw.arg is None for kw in node.keywords),
+                    "file": self.file,
+                }
+            )
 
         self.generic_visit(node)
 

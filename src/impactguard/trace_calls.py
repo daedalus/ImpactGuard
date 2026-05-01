@@ -1,14 +1,15 @@
-import sys
-import json
 import inspect
-from functools import wraps
+import json
 from collections import defaultdict
+from functools import wraps
 
 COUNTS = defaultdict(int)
 DETAILS = {}
 
+
 def trace(func):
     name = f"{func.__module__}.{func.__qualname__}"
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         try:
@@ -16,10 +17,7 @@ def trace(func):
             if name not in DETAILS:
                 sig = inspect.signature(func)
                 bound = sig.bind_partial(*args, **kwargs)
-                DETAILS[name] = {
-                    "args_count": len(args),
-                    "kwargs": list(kwargs.keys())
-                }
+                DETAILS[name] = {"args_count": len(args), "kwargs": list(kwargs.keys())}
         except Exception:
             pass
 

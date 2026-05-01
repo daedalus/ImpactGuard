@@ -1,5 +1,6 @@
 import difflib
 
+
 def patch_add_default(func, param_name):
     file = func.get("file", "")
     lineno = func.get("lineno", 0)
@@ -15,11 +16,7 @@ def patch_add_default(func, param_name):
         original = lines[lineno - 1]
 
         if param_name in original:
-            modified = original.replace(
-                param_name,
-                f"{param_name}=None",
-                1
-            )
+            modified = original.replace(param_name, f"{param_name}=None", 1)
         else:
             return None
 
@@ -27,7 +24,7 @@ def patch_add_default(func, param_name):
             [original + "\n"],
             [modified + "\n"],
             fromfile=f"a/{file}",
-            tofile=f"b/{file}"
+            tofile=f"b/{file}",
         )
 
         return "".join(diff)
@@ -56,7 +53,7 @@ def patch_callsite(call, func):
             [original + "\n"],
             [modified + "\n"],
             fromfile=f"a/{file}",
-            tofile=f"b/{file}"
+            tofile=f"b/{file}",
         )
 
         return "".join(diff)

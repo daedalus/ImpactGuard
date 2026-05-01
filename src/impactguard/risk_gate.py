@@ -1,6 +1,6 @@
 import json
-import sys
 import math
+import sys
 
 # Severity scores for different types of changes
 SEVERITY_SCORES = {
@@ -16,6 +16,7 @@ SEVERITY_SCORES = {
 
 
 def get_severity(change_type):
+    """Get severity score for a change type."""
     for key, score in SEVERITY_SCORES.items():
         if key in change_type:
             return score
@@ -23,16 +24,19 @@ def get_severity(change_type):
 
 
 def exposure(count, max_count):
+    """Calculate exposure score from call count."""
     if count == 0:
         return 0
     return min(1.0, math.log(1 + count) / math.log(1 + max_count))
 
 
 def confidence(samples, threshold=100):
+    """Calculate confidence from sample count."""
     return min(1.0, samples / threshold)
 
 
 def classify(severity, count, max_count, samples):
+    """Classify risk level based on severity, exposure, and confidence."""
     E = exposure(count, max_count)
     C = confidence(samples)
 
@@ -48,24 +52,26 @@ def classify(severity, count, max_count, samples):
     return "LOW", E, C
 
 
-def main():
-    if len(sys.argv) < 3:
-        print("Usage: python risk_gate.py <diff.txt> <runtime.json> [output.json]")
-        sys.exit(1)
+def run(diff_path, runtime_path, output_path=None):
+    """Run risk analysis pipeline.
 
-    diff_file = sys.argv[1]
-    runtime_file = sys.argv[2]
-    output = sys.argv[3] if len(sys.argv) > 3 else "report.json"
+    Args:
+        diff_path: Path to diff text file.
+        runtime_path: Path to runtime data JSON.
+        output_path: Optional output path for report JSON.
 
+    Returns:
+        List of risk report items.
+    """
     # Parse diff file
     try:
-        diff_text = open(diff_file).read()
+        diff_text = open(diff_path).read()
     except Exception:
         diff_text = ""
 
     # Load runtime data
     try:
-        runtime_data = json.load(open(runtime_file))
+        runtime_data = json.load(open(runtime_path))
         runtime = {item["function"]: item.get("count", 1) for item in runtime_data}
     except Exception:
         runtime = {}
@@ -74,34 +80,55 @@ def main():
 
     # Parse breaking/non-breaking from diff
     report = []
-    current_func = None
-    current_change = ""
 
     for line in diff_text.splitlines():
-        if line.startswith("REMOVED:") or "REQUIRED" in line or "POSITIONAL" in line or "KWONLY" in line:
-            func_name = line.split(": ", 1)[-1] if ": " in line else line.split(":")[-1]
-            current_func = func_name.strip()
+        if (
+            line.startswith("REMOVED:")
+            or "REQUIRED" in line
+            or "POSITIONAL" in line
+            or "KWONLY" in line
+        ):
+            parts = line.split(": ", 1)
+            func_name = parts[-1] if len(parts) > 1 else line.split(":")[-1]
             current_change = line.split(":")[0].strip()
 
-            count = runtime.get(func_name, 0)
+            count = runtime.get(func_name.strip(), 0)
             severity = get_severity(line)
             risk, E, C = classify(severity, count, max_count, count)
 
-            report.append({
-                "function": func_name,
-                "risk": risk,
-                "change": current_change,
-                "exposure": E,
-                "confidence": C,
-                "details": f"called {count} times" if count > 0 else "not observed"
-            })
+            report.append(
+                {
+                    "function": func_name.strip(),
+                    "risk": risk,
+                    "change": current_change,
+                    "exposure": E,
+                    "confidence": C,
+                    "details": f"called {count} times" if count > 0 else "not observed",
+                }
+            )
 
     # Sort by risk level
     risk_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2, "UNKNOWN": 3}
     report.sort(key=lambda x: risk_order.get(x["risk"], 4))
 
-    with open(output, "w") as f:
-        json.dump(report, f, indent=2)
+    if output_path:
+        with open(output_path, "w") as f:
+            json.dump(report, f, indent=2)
+
+    return report
+
+
+def main(diff_path=None, runtime_path=None, output_path=None):
+    """CLI entry point."""
+    if diff_path is None:
+        if len(sys.argv) < 3:
+            print("Usage: python risk_gate.py <diff.txt> <runtime.json> [output.json]")
+            sys.exit(1)
+        diff_path = sys.argv[1]
+        runtime_path = sys.argv[2]
+        output_path = sys.argv[3] if len(sys.argv) > 3 else "report.json"
+
+    report = run(diff_path, runtime_path, output_path)
 
     # Print summary
     for level in ["HIGH", "MEDIUM", "LOW", "UNKNOWN"]:
@@ -111,7 +138,7 @@ def main():
             for item in level_items[:5]:
                 print(f"  {item['function']} - {item['change']}")
 
-    print(f"\nReport written to {output}")
+    print(f"\nReport written to {output_path}")
     return report
 
 

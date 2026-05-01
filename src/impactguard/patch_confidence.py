@@ -7,8 +7,10 @@ def classify(conf):
         return "HIGH"
     elif conf >= 0.4:
         return "MEDIUM"
-    else:
+    elif conf >= 0.2:
         return "LOW"
+    else:
+        return "UNKNOWN"
 
 
 def get_target_certainty(file_match, lineno_match, name_only_match):
@@ -36,7 +38,9 @@ def get_semantic_risk(change_type):
     return 1.0
 
 
-def get_complexity_penalty(is_multiline, has_decorators, has_complex_annotations, is_nested):
+def get_complexity_penalty(
+    is_multiline, has_decorators, has_complex_annotations, is_nested
+):
     penalty = 1.0
     if is_multiline:
         penalty *= 0.7
@@ -57,5 +61,5 @@ def classify_with_factors(T, S, R, C):
         "structure": S,
         "semantic": R,
         "complexity": C,
-        "final": conf
+        "final": conf,
     }

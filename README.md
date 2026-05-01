@@ -1,6 +1,9 @@
-# ImpactGuard
+**ImpactGuard** — Lightweight API impact analyzer for Python projects.
 
-A lightweight API impact analyzer for Python projects. Tracks function signatures, detects breaking changes, and analyzes call-site impact using static and runtime techniques.
+[![PyPI](https://img.shields.io/pypi/v/impactguard.svg)](https://pypi.org/project/impactguard/)
+[![Python](https://img.shields.io/pypi/pyversions/impactguard.svg)](https://pypi.org/project/impactguard/)
+[![Coverage](https://codecov.io/gh/daedalus/ImpactGuard/branch/main/graph/badge.svg)](https://codecov.io/gh/daedalus/ImpactGuard)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 ## Features
 
@@ -10,42 +13,80 @@ A lightweight API impact analyzer for Python projects. Tracks function signature
 - **Import-aware resolution** — resolves `from x import y`, aliases, and basic class context
 - **Type-informed analysis** — uses type annotations and constructor inference
 - **Runtime tracing** — optionally records actual calls during test runs
-- **Post-commit hook** — automatically keeps `.signatures.txt` in sync
+- **Risk assessment** — computes risk as S × E × C (severity × exposure × confidence)
+- **HTML reporting** — generates static HTML reports from risk analysis
+- **Patch suggestions** — provides fix suggestions with confidence scoring
+- **CST-based patches** — preserves source formatting with libcst
 
-## Files
-
-| File | Purpose |
-|------|---------|
-| `extract_signatures.py` | Extract structured function signatures as JSON |
-| `compare_signatures.py` | Semantic diff between two signature snapshots |
-| `extract_calls.py` | Extract call sites from Python source |
-| `analyze_module.py` | Type-aware module analyzer with scope tracking |
-| `impact_analysis.py` | Static call-site impact analysis |
-| `trace_calls.py` | Runtime call tracer for empirical impact analysis |
-| `runtime_impact.py` | Compare runtime calls against new API signatures |
-| `AGENTS.md` | Documentation for agentic coding workflows |
-
-## Quick Start
+## Install
 
 ```bash
-# Extract signatures from all tracked Python files
-python3 extract_signatures.py $(git ls-files '*.py') > .signatures.txt
+pip install impactguard
+```
+
+## Usage
+
+```python
+from impactguard import extract, compare, analyze_impact
+
+# Extract signatures from Python files
+signatures = extract(["src/module.py", "src/other.py"])
 
 # Compare two signature snapshots
-python3 compare_signatures.py old_sigs.json new_sigs.json
+result = compare("old_sigs.json", "new_sigs.json")
+print(f"Breaking changes: {len(result['breaking'])}")
 
-# Extract call sites
-python3 extract_calls.py $(git ls-files '*.py') > .calls.json
-
-# Static impact analysis
-python3 impact_analysis.py .signatures.json .calls.json
-
-# Runtime tracing (in your test suite)
-# Add to conftest.py:
-#   import trace_calls
-#   import mypackage
-#   trace_calls.install_tracer(mypackage)
+# Analyze impact on call sites
+issues = analyze_impact("signatures.json", "calls.json", "runtime.json")
 ```
+
+## CLI
+
+```bash
+# Extract function signatures
+impactguard extract file1.py file2.py
+
+# Compare signature snapshots
+impactguard compare old_sigs.json new_sigs.json -o diff.json
+
+# Analyze impact
+impactguard analyze signatures.json calls.json [runtime.json]
+
+# Run risk analysis
+impactguard risk diff.txt runtime.json output.json
+
+# Generate HTML report
+impactguard report risk.json output.html
+
+# Runtime tracing
+impactguard trace install mypackage
+impactguard trace dump runtime.json
+```
+
+## API
+
+### Signature Extraction
+- `extract(files)` — Extract function signatures from Python files
+- `serialize_function(node, file)` — Convert AST node to signature dict
+
+### Comparison
+- `compare(old_path, new_path)` — Compare two signature snapshots
+- `load(path)` — Load signatures from JSON file
+
+### Impact Analysis
+- `analyze(sigs_path, calls_path, runtime_path)` — Analyze impact on call sites
+- `analyze_calls(signatures_file, calls_file, runtime_file)` — Type-aware impact analysis
+
+### Risk Model
+- `get_severity(change_type)` — Get severity score for change type
+- `exposure(count, max_count)` — Calculate exposure score
+- `confidence(samples, threshold)` — Calculate confidence score
+- `classify(severity, count, max_count, samples)` — Classify risk level
+- `compute_risk(severity, exposure_val, confidence_val)` — Compute risk score
+
+### Reporting
+- `generate_html(risk_json_path, output_path)` — Generate HTML report
+- `enforce(diff_path, runtime_path, output_path)` — CI gate for risk enforcement
 
 ## How It Works
 
@@ -64,6 +105,28 @@ The repo includes a `post-commit` hook that:
 - Updates `.signatures.txt` if Python files changed
 - Creates a follow-up commit only if signatures actually changed
 - Uses `SKIP_SIGNATURE_HOOK=1` to prevent infinite recursion
+
+## Development
+
+```bash
+git clone https://github.com/daedalus/ImpactGuard.git
+cd ImpactGuard
+pip install -e ".[test]"
+
+# run tests
+pytest
+
+# format
+ruff format src/ tests/
+
+# lint
+ruff check src/ tests/
+prospector src/
+semgrep --config=auto --severity=ERROR src/
+
+# type check
+mypy src/
+```
 
 ## Limitations
 

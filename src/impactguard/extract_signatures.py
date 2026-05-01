@@ -5,12 +5,10 @@ from pathlib import Path
 
 # ImpactGuard signature extractor
 
+
 def serialize_function(node, file):
     def arg_info(arg, default):
-        return {
-            "name": arg.arg,
-            "has_default": default is not None
-        }
+        return {"name": arg.arg, "has_default": default is not None}
 
     args = node.args
 
@@ -35,32 +33,38 @@ def serialize_function(node, file):
         "kwarg": args.kwarg is not None,
     }
 
-def extract(path):
-    try:
-        tree = ast.parse(path.read_text())
-    except Exception:
-        return []
 
-    out = []
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            out.append(serialize_function(node, str(path)))
-    return out
+def extract(files):
+    """Extract function signatures from Python files.
 
-def main():
-    files = sys.argv[1:]
+    Args:
+        files: List of file paths (strings or Path objects).
+
+    Returns:
+        List of signature dictionaries.
+    """
     all_funcs = []
-
     for f in files:
-        all_funcs.extend(extract(Path(f)))
+        path = Path(f)
+        try:
+            tree = ast.parse(path.read_text())
+        except Exception:
+            continue
+
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                all_funcs.append(serialize_function(node, str(path)))
 
     # stable ordering
     all_funcs.sort(key=lambda x: x["fqname"])
+    return all_funcs
 
+
+def main():
+    files = sys.argv[1:]
+    all_funcs = extract(files)
     print(json.dumps(all_funcs, indent=2))
 
-def dummy_func(x: int, y: str = "default") -> bool:
-    return True
 
 if __name__ == "__main__":
     main()

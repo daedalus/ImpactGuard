@@ -1,6 +1,7 @@
 import ast
 from pathlib import Path
 
+
 class Scope:
     def __init__(self, parent=None):
         self.parent = parent
@@ -77,15 +78,17 @@ class Analyzer(ast.NodeVisitor):
         name = self.resolve_call(node.func)
 
         if name:
-            self.calls.append({
-                "fqname": name,
-                "file": self.file,
-                "lineno": node.lineno,
-                "args": len(node.args),
-                "kwargs": [kw.arg for kw in node.keywords if kw.arg],
-                "starargs": any(isinstance(a, ast.Starred) for a in node.args),
-                "kwargs_any": any(kw.arg is None for kw in node.keywords),
-            })
+            self.calls.append(
+                {
+                    "fqname": name,
+                    "file": self.file,
+                    "lineno": node.lineno,
+                    "args": len(node.args),
+                    "kwargs": [kw.arg for kw in node.keywords if kw.arg],
+                    "starargs": any(isinstance(a, ast.Starred) for a in node.args),
+                    "kwargs_any": any(kw.arg is None for kw in node.keywords),
+                }
+            )
 
         self.generic_visit(node)
 
