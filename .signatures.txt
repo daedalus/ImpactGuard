@@ -247,6 +247,78 @@
     "kwarg": false
   },
   {
+    "fqname": "extract_calls.py:__init__",
+    "name": "__init__",
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "file",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "extract_calls.py:extract",
+    "name": "extract",
+    "positional": [
+      {
+        "name": "path",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "extract_calls.py:get_name",
+    "name": "get_name",
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "node",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "extract_calls.py:main",
+    "name": "main",
+    "positional": [],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "extract_calls.py:visit_Call",
+    "name": "visit_Call",
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "node",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
     "fqname": "extract_signatures.py:arg_info",
     "name": "arg_info",
     "positional": [
@@ -311,6 +383,71 @@
       },
       {
         "name": "file",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "impact_analysis.py:load_calls",
+    "name": "load_calls",
+    "positional": [
+      {
+        "name": "path",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "impact_analysis.py:load_funcs",
+    "name": "load_funcs",
+    "positional": [
+      {
+        "name": "path",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "impact_analysis.py:normalize",
+    "name": "normalize",
+    "positional": [
+      {
+        "name": "name",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "impact_analysis.py:required_positional",
+    "name": "required_positional",
+    "positional": [
+      {
+        "name": "func",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "impact_analysis.py:total_positional",
+    "name": "total_positional",
+    "positional": [
+      {
+        "name": "func",
         "has_default": false
       }
     ],
