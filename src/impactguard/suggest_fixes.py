@@ -15,14 +15,9 @@ def suggest(func, issues):
         )
 
     if issues:
-        callsites = [
-            f"{i.get('file', '?')}:{i.get('lineno', '?')}"
-            for i in issues[:5]
-        ]
+        callsites = [f"{i.get('file', '?')}:{i.get('lineno', '?')}" for i in issues[:5]]
         if callsites:
-            suggestions.append(
-                "Update call sites:\n  " + "\n  ".join(callsites)
-            )
+            suggestions.append("Update call sites:\n  " + "\n  ".join(callsites))
 
     return suggestions
 
@@ -42,7 +37,9 @@ def enrich_with_fixes(report_item, issues):
 
     patches = report_item.get("patches", [])
     if patches:
-        fixes.append({"type": "make_optional", "patch": patches[0] if patches else None})
+        fixes.append(
+            {"type": "make_optional", "patch": patches[0] if patches else None}
+        )
 
     callsite_patches = report_item.get("callsite_patches", [])
     if callsite_patches:

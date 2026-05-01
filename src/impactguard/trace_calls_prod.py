@@ -1,11 +1,10 @@
+import json
 import random
 import time
-import json
-import inspect
-from functools import wraps
 from collections import defaultdict
+from functools import wraps
 
-SAMPLE_RATE = 0.01   # 1% of calls
+SAMPLE_RATE = 0.01  # 1% of calls
 FLUSH_INTERVAL = 10  # seconds
 
 COUNTS = defaultdict(int)

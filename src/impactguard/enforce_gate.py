@@ -1,5 +1,6 @@
-import sys
 import json
+import sys
+
 
 def enforce(report_path):
     try:

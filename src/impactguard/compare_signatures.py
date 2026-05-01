@@ -1,18 +1,31 @@
 import json
 import sys
 
+
 def load(path):
+    """Load signatures from a JSON file."""
     with open(path) as f:
         data = json.load(f)
     return {f["fqname"]: f for f in data}
 
+
 def is_required(arg):
+    """Check if a function argument has a default value."""
     return not arg["has_default"]
 
 
-if __name__ == "__main__":
-    old = load(sys.argv[1])
-    new = load(sys.argv[2])
+def compare(old_path, new_path):
+    """Compare two signature snapshots.
+
+    Args:
+        old_path: Path to old signatures JSON.
+        new_path: Path to new signatures JSON.
+
+    Returns:
+        Dictionary with 'breaking' and 'nonbreaking' lists.
+    """
+    old = load(old_path)
+    new = load(new_path)
 
     breaking = []
     nonbreaking = []
@@ -51,7 +64,7 @@ if __name__ == "__main__":
 
         # new positional args
         if len(n_pos) > len(o_pos):
-            added = n_pos[len(o_pos):]
+            added = n_pos[len(o_pos) :]
             if any(is_required(a) for a in added):
                 breaking.append(f"REQUIRED POSITIONAL ADDED: {k}")
             else:
@@ -79,11 +92,26 @@ if __name__ == "__main__":
         if o["kwarg"] and not n["kwarg"]:
             breaking.append(f"**kwargs REMOVED: {k}")
 
+    return {"breaking": sorted(set(breaking)), "nonbreaking": sorted(set(nonbreaking))}
+
+
+def main():
+    """CLI entry point for compare command."""
+    if len(sys.argv) < 3:
+        print("Usage: python compare_signatures.py <old.json> <new.json>")
+        sys.exit(1)
+
+    result = compare(sys.argv[1], sys.argv[2])
+
     print("=== BREAKING ===")
-    print("\n".join(sorted(set(breaking))) or "None")
+    print("\n".join(result["breaking"]) or "None")
 
     print("\n=== NON-BREAKING ===")
-    print("\n".join(sorted(set(nonbreaking))) or "None")
+    print("\n".join(result["nonbreaking"]) or "None")
 
-    if breaking:
+    if result["breaking"]:
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

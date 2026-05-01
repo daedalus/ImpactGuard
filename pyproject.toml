@@ -1,23 +1,102 @@
 [build-system]
-requires = ["setuptools>=45", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "impactguard"
-version = "0.1.0"
+version = "0.2.0"
 description = "Lightweight API impact analyzer for Python projects"
 readme = "README.md"
-requires-python = ">=3.9"
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Developers",
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "ImpactGuard Dev", email = "dev@impactguard.local"}
+]
+dependencies = [
+    "libcst>=0.4.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "ruff",
+    "mypy",
+    "hatch",
+    "pip-api",
+]
+test = [
+    "pytest",
+    "pytest-cov",
+    "pytest-mock",
+    "pytest-asyncio",
+    "hypothesis",
+]
+lint = [
+    "ruff",
+    "prospector",
+    "semgrep",
+    "mypy",
+]
+all = ["impactguard[dev,test,lint]"]
+
 [project.scripts]
-impactguard-extract = "extract_signatures:main"
-impactguard-compare = "compare_signatures:main"
-impactguard-calls = "extract_calls:main"
-impactguard-analyze = "impact_analysis:main"
-impactguard-runtime = "runtime_impact:main"
+impactguard = "impactguard.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/daedalus/ImpactGuard"
+Repository = "https://github.com/daedalus/ImpactGuard"
+Issues = "https://github.com/daedalus/ImpactGuard/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/impactguard"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/impactguard"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "ANN", "TCH", "N", "C4", "ARG"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+
+[tool.prospector]
+output-format = "text"
+strictness = "medium"
+test-warnings = false
+
+[tool.prospector.tools]
+pylint = true
+pyflakes = true
+mccabe = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short --cov=src --cov-fail-under=80"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]

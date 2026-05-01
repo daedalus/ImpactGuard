@@ -1,6 +1,7 @@
 try:
     import libcst as cst
     from libcst import matchers as m
+
     LIBCST_AVAILABLE = True
 except ImportError:
     LIBCST_AVAILABLE = False
@@ -19,9 +20,7 @@ class AddDefaultTransformer(cst.CSTTransformer):
 
         for p in updated_node.params.params:
             if p.name.value == self.param_name and p.default is None:
-                new_params.append(
-                    p.with_changes(default=cst.Name("None"))
-                )
+                new_params.append(p.with_changes(default=cst.Name("None")))
             else:
                 new_params.append(p)
 
@@ -44,13 +43,10 @@ class FixCallTransformer(cst.CSTTransformer):
                     return updated_node
 
             new_arg = cst.Arg(
-                keyword=cst.Name(self.param_name),
-                value=cst.Name("FIXME")
+                keyword=cst.Name(self.param_name), value=cst.Name("FIXME")
             )
 
-            return updated_node.with_changes(
-                args=list(updated_node.args) + [new_arg]
-            )
+            return updated_node.with_changes(args=list(updated_node.args) + [new_arg])
 
         return updated_node
 

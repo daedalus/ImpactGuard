@@ -1,12 +1,12 @@
 import json
-import sys
+
 
 def color(level):
     return {
         "HIGH": "#ff4d4f",
         "MEDIUM": "#faad14",
         "LOW": "#52c41a",
-        "UNKNOWN": "#d9d9d9"
+        "UNKNOWN": "#d9d9d9",
     }.get(level, "#d9d9d9")
 
 
@@ -68,19 +68,16 @@ def generate_html(report_data):
     return "\n".join(html)
 
 
-def main():
-    if len(sys.argv) < 2:
-        print("Usage: python generate_report.py <report.json> [output.html]")
-        sys.exit(1)
-
-    report = json.load(open(sys.argv[1]))
+def main(report_path, output_path=None):
+    report = json.load(open(report_path))
     html = generate_html(report)
 
-    output = sys.argv[2] if len(sys.argv) > 2 else "api_report.html"
-    with open(output, "w") as f:
+    if output_path is None:
+        output_path = "api_report.html"
+    with open(output_path, "w") as f:
         f.write(html)
 
-    print(f"Report written to {output}")
+    print(f"Report written to {output_path}")
 
 
 if __name__ == "__main__":
