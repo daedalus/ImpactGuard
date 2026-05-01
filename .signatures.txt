@@ -247,6 +247,36 @@
     "kwarg": false
   },
   {
+    "fqname": "examples/conftest.py:pytest_sessionfinish",
+    "name": "pytest_sessionfinish",
+    "positional": [
+      {
+        "name": "session",
+        "has_default": false
+      },
+      {
+        "name": "exitstatus",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "examples/conftest.py:pytest_sessionstart",
+    "name": "pytest_sessionstart",
+    "positional": [
+      {
+        "name": "session",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
     "fqname": "extract_calls.py:__init__",
     "name": "__init__",
     "positional": [
