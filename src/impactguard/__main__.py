@@ -344,16 +344,6 @@ def main() -> int:
     )
     extract_calls_parser.set_defaults(func=cmd_extract_calls)
 
-    # runtime-impact subcommand
-    runtime_impact_parser = subparsers.add_parser(
-        "runtime-impact", help="Analyze runtime impact of signature changes"
-    )
-    runtime_impact_parser.add_argument(
-        "signatures", help="Signatures JSON file"
-    )
-    runtime_impact_parser.add_argument("calls", help="Call sites JSON file")
-    runtime_impact_parser.set_defaults(func=cmd_runtime_impact)
-
     # trace subcommand
     trace_parser = subparsers.add_parser("trace", help="Runtime tracing")
     trace_sub = trace_parser.add_subparsers(dest="trace_cmd", help="Trace commands")
