@@ -1,5 +1,7 @@
 **ImpactGuard** — Lightweight API impact analyzer for Python projects.
 
+<img src="logo.png" width="300px">
+
 [![PyPI](https://img.shields.io/pypi/v/impactguard.svg)](https://pypi.org/project/impactguard/)
 [![Python](https://img.shields.io/pypi/pyversions/impactguard.svg)](https://pypi.org/project/impactguard/)
 [![Coverage](https://codecov.io/gh/daedalus/ImpactGuard/branch/main/graph/badge.svg)](https://codecov.io/gh/daedalus/ImpactGuard)
