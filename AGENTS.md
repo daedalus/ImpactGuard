@@ -1,16 +1,10 @@
 ## Function Signature Tracking
 
-This repository maintains an automatically generated file:
-
-```
-.signatures.txt
-```
-
-which contains extracted Python function signatures across all tracked `.py` files.
+This repository uses automatic signature tracking across all tracked `.py` files.
 
 ### Purpose
 
-- Provide a lightweight view of the project’s callable surface
+- Provide a lightweight view of the project's callable surface
 - Make API changes visible in diffs
 - Enable future tooling (API drift detection, compatibility checks)
 
@@ -24,7 +18,7 @@ Signature extraction is performed via:
 extract_signatures.py
 ```
 
-This uses Python’s `ast` module rather than regex to correctly handle:
+This uses Python's `ast` module rather than regex to correctly handle:
 
 - `async def`
 - decorators
@@ -36,7 +30,7 @@ This uses Python’s `ast` module rather than regex to correctly handle:
 
 ## Git Hook: post-commit
 
-A `post-commit` hook updates `.signatures.txt` after each commit and creates a follow-up commit **only if the file changed**.
+A `post-commit` hook runs signature extraction after each commit.
 
 ### Hook behavior
 
@@ -47,15 +41,12 @@ A `post-commit` hook updates `.signatures.txt` after each commit and creates a f
 
 2. Extract signatures:
    ```
-   python3 extract_signatures.py ...
+   impactguard extract <files> > /tmp/impactguard_sigs.json
    ```
 
-3. If `.signatures.txt` changed:
-   - Stage the file
-   - Create a new commit:
-     ```
-     Update function signatures
-     ```
+3. Hook runs silently (no auto-commit):
+   - Extraction is for tracking/debugging purposes
+   - No automatic commit of signature files
 
 4. Prevent infinite recursion via:
    ```
@@ -66,31 +57,23 @@ A `post-commit` hook updates `.signatures.txt` after each commit and creates a f
 
 ## Important Tradeoffs
 
-### 1. Extra Commits
-Each API change may produce an additional commit.
-
-- Pros: explicit history of interface changes
-- Cons: noisier commit graph
-
-### 2. Rebases / Merges
+### 1. Rebases / Merges
 Hooks run during history rewriting, which can:
-
-- introduce unexpected commits
+- introduce unexpected behavior
 - require manual cleanup
 
-### 3. CI/CD
+### 2. CI/CD
 Git hooks are not executed in most CI environments.
 
-→ `.signatures.txt` consistency is **not guaranteed** unless explicitly checked.
+→ Signature tracking is **not guaranteed** unless explicitly checked.
 
 ---
 
 ## Alternative (Not Currently Used)
 
 A `pre-commit` hook could:
-
-- update `.signatures.txt`
-- include it in the *same* commit
+- extract signatures
+- include them in the *same* commit
 
 This avoids extra commits but couples working tree mutation with commit creation.
 
@@ -99,7 +82,7 @@ This avoids extra commits but couples working tree mutation with commit creation
 ## Known Limitations
 
 - Nested functions are included
-- Class methods are included (not namespaced by class)
+- Class methods now include class context (`ClassName.method`)
 - Parsing failures silently skip files
 - Requires Python ≥ 3.9 (`ast.unparse`)
 
@@ -130,6 +113,7 @@ This avoids extra commits but couples working tree mutation with commit creation
   - Runtime data aggregation
   - Risk analysis + HTML report generation
   - Enforcement gate
+  - **Changelog generation** from signature diffs
 
 ---
 
@@ -137,7 +121,6 @@ This avoids extra commits but couples working tree mutation with commit creation
 
 Potential extensions:
 
-- Include class context (`ClassName.method`)
 - Detect breaking vs non-breaking API changes
 - Compare signatures across commits
 - Integrate with CI for enforcement

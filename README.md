@@ -113,7 +113,7 @@ ImpactGuard operates as a **pipe-and-filter architecture** where artifacts from 
 The first stage involves deep inspection of Python source files using the `ast` module. The `extract` function walks the Abstract Syntax Tree to identify all function and method definitions. It generates a "fingerprint" for every callable, including its Fully Qualified Name (FQN), parameters, defaults, and decorators.
 
 - **Key Component:** `extract_signatures.py`
-- **Output:** `.signatures.json` and `.signatures.txt`
+- **Output:** `.signatures.json`
 - **Role:** Establishes the baseline of the API surface
 
 ### 2. Signature Comparison
@@ -268,7 +268,7 @@ impactguard install-hooks .
 # Install only pre-commit hook
 impactguard install-hooks . --pre
 
-# Install only post-commit hook (updates .signatures.txt)
+# Install only post-commit hook (updates signature tracking)
 impactguard install-hooks . --post
 ```
 
@@ -331,7 +331,7 @@ ImpactGuard is designed to be deeply integrated into the standard Git developmen
 
 ### Post-Commit Hook
 
-This hook ensures that every commit is accompanied by an updated `.signatures.txt` file. It includes a `SKIP_SIGNATURE_HOOK` environment variable check to prevent infinite recursion when the hook itself creates a new commit.
+This hook ensures that every commit is accompanied by updated signature tracking. It includes a `SKIP_SIGNATURE_HOOK` environment variable check to prevent infinite recursion when the hook itself creates a new commit.
 
 ### Pre-Push Hook
 
@@ -341,13 +341,13 @@ This acts as the final safety gate. It typically runs `compare_signatures.py` to
 
 | Target | Description | Artifacts |
 |--------|-------------|-----------|
-| `signatures` | Runs `extract_signatures.py` on all tracked `.py` files | `.signatures.txt` |
+| `signatures` | Runs `extract_signatures.py` on all tracked `.py` files | `.signatures.json` |
 | `calls` | Runs `extract_calls.py` to map call sites | `.calls.json` |
 | `analyze` | Performs static impact analysis | (Console Output) |
 | `risk` | Runs `risk_gate.py` using diff and runtime data | `report.json` |
 | `report` | Generates a visual HTML report | `api_report.html` |
 | `compare` | Compares two JSON signature files | (Diff Output) |
-| `check` | Verifies if `.signatures.txt` is in sync | Exit Code 0/1 |
+| `check` | Verifies if signature tracking is in sync | Exit Code 0/1 |
 | `clean` | Removes all intermediate artifacts | (Cleanup) |
 
 ---
