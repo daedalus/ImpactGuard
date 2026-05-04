@@ -174,6 +174,7 @@ def quick_check(
 def run_pipeline_git(
     old_ref: str,
     new_ref: str,
+    files: list[str] | None = None,
     runtime_path: str | None = None,
     output_path: str | None = None,
     config: dict[str, Any] | None = None,
@@ -183,6 +184,7 @@ def run_pipeline_git(
     Args:
         old_ref: Git reference (commit, branch, tag) for old version
         new_ref: Git reference for new version
+        files: Optional list of specific files to compare (relative to repo root)
         runtime_path: Path to runtime data JSON
         output_path: Path for HTML report output
         config: Optional configuration dictionary
@@ -196,12 +198,16 @@ def run_pipeline_git(
 
     def extract_commit_files(ref: str, dest: str) -> None:
         """Extract Python files from a git commit to a directory."""
-        # Get list of ALL Python files in the commit
-        result = subprocess.run(
-            ["git", "ls-tree", "-r", "--name-only", ref],
-            capture_output=True, text=True, check=True
-        )
-        py_files = [f for f in result.stdout.splitlines() if f.endswith(".py")]
+        if files:
+            # Extract only specified files
+            py_files = [f for f in files if f.endswith(".py")]
+        else:
+            # Get list of ALL Python files in the commit
+            result = subprocess.run(
+                ["git", "ls-tree", "-r", "--name-only", ref],
+                capture_output=True, text=True, check=True
+            )
+            py_files = [f for f in result.stdout.splitlines() if f.endswith(".py")]
 
         if not py_files:
             print(f"  Warning: No Python files found in {ref}")

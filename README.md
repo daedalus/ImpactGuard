@@ -97,6 +97,9 @@ impactguard old_version/ new_version/ runtime.json -o report.html
 # Compare two git commits directly
 impactguard check-commits HEAD~1 HEAD
 
+# Compare specific files between commits
+impactguard check-commits HEAD~1 HEAD --files src/module.py src/utils.py
+
 # Using 'check' subcommand (equivalent, backwards compatible)
 impactguard check old_version/ new_version/
 ```
