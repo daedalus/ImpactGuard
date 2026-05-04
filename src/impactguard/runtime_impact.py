@@ -1,47 +1,23 @@
-import json
+"""Runtime impact analysis - wrapper around impact_analysis."""
+
 import sys
-from typing import Any
+from .impact_analysis import analyze, load_funcs, required_positional, total_positional
 
-
-def load_funcs(path: str) -> dict[str, dict[str, Any]]:
-    data = json.load(open(path))
-    return {f["fqname"]: f for f in data}
-
-
-def required_positional(f: dict[str, Any]) -> int:
-    return sum(1 for a in f["positional"] if not a["has_default"])
-
-
-def total_positional(f: dict[str, Any]) -> int:
-    return len(f["positional"])
-
+# Re-export for backwards compatibility
+__all__ = ["analyze", "load_funcs", "required_positional", "total_positional"]
 
 if __name__ == "__main__":
-    funcs = load_funcs(sys.argv[1])
-    calls = json.load(open(sys.argv[2]))
+    if len(sys.argv) < 3:
+        print("Usage: python runtime_impact.py <signatures.json> <calls.json>")
+        sys.exit(1)
 
-    issues = []
-
-    for c in calls:
-        name = c["function"]
-
-        if name not in funcs:
-            continue
-
-        f = funcs[name]
-
-        argc = c["args_count"]
-        min_args = required_positional(f)
-        max_args = total_positional(f) if not f["vararg"] else float("inf")
-
-        if argc < min_args:
-            issues.append(f"{name} → missing args at runtime ({argc} < {min_args})")
-
-        elif argc > max_args:
-            issues.append(f"{name} → too many args at runtime ({argc} > {max_args})")
+    issues = analyze(sys.argv[1], sys.argv[2])
 
     print("=== RUNTIME BREAKAGES ===")
-    print("\n".join(issues) or "None")
-
     if issues:
+        for issue in issues:
+            print(f"{issue['function']} → {issue['change']} (count: {issue.get('count', '?')})")
         sys.exit(1)
+    else:
+        print("None")
+        sys.exit(0)

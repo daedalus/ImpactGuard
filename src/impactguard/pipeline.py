@@ -48,7 +48,7 @@ def run_pipeline(
     """
     from .extract_signatures import extract
     from .compare_signatures import compare, load
-    from .extract_calls import extract as extract_calls
+    from .analyze_module import analyze as analyze_module
     from .impact_analysis import analyze
     from .risk_gate import run as run_risk
     from .generate_report import generate_html
@@ -95,9 +95,42 @@ def run_pipeline(
     # Step 3: Extract call sites (if not provided)
     if not calls_path:
         calls_path = str(Path(output_dir) / "calls.json")
-        # In real usage, calls would come from runtime or static analysis
+        all_calls: list[dict[str, Any]] = []
+
+        # Use analyze_module for better call analysis with type information
+        if new_files:
+            for file_path in new_files:
+                try:
+                    result = analyze_module(file_path)
+                    if result and "calls" in result:
+                        all_calls.extend(result["calls"])
+                except Exception:
+                    # Fall back to basic extraction
+                    from .extract_calls import extract
+
+                    all_calls.extend(extract(Path(file_path)))
+
+        # Also include runtime data if available
+        if runtime_path and Path(runtime_path).exists():
+            try:
+                rt_data = json.load(open(runtime_path))
+                for item in rt_data:
+                    all_calls.append(
+                        {
+                            "fqname": item.get("function", ""),
+                            "file": "runtime",
+                            "lineno": 0,
+                            "args": item.get("args_count", 0),
+                            "kwargs": item.get("kwargs", []),
+                            "has_starargs": False,
+                            "has_kwargs": False,
+                        }
+                    )
+            except Exception:
+                pass
+
         with open(calls_path, "w") as f:
-            json.dump([], f)
+            json.dump(all_calls, f, indent=2)
 
     # Step 4: Analyze impact
     impact = analyze(new_sigs_path, calls_path, runtime_path)
