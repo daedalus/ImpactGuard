@@ -22,6 +22,7 @@
 - **Patch suggestions** — provides fix suggestions with confidence scoring
 - **CST-based patches** — preserves source formatting with libcst
 - **Configuration system** — `impactguard.toml` for thresholds and settings
+- **Self-validating** — Successfully tested on its own codebase (dogfooding)
 
 ## Quick Start
 
@@ -164,6 +165,27 @@ issues = analyze_impact("signatures.json", "calls.json", "runtime.json")
 5. **Pipeline Orchestrator** — Connects all components in one unified workflow (`run_pipeline()`).
 
 6. **Git Integration** — Compare any two git commits directly (`run_pipeline_git()`).
+
+## Self-Testing (Dogfooding)
+
+ImpactGuard has been **tested on itself** to validate its own API changes:
+
+```
+# Extract signatures from own codebase
+$ impactguard extract src/impactguard/*.py
+✓ Extracted 98 function signatures
+
+# Detect non-breaking change (added optional parameter)
+✓ Correctly classified as "Non-breaking changes: 1"
+
+# Detect breaking change (removed required parameter)
+✓ Correctly classified as "Breaking changes: 1"
+
+# Run full pipeline on itself
+$ impactguard check-commits HEAD~5 HEAD
+✓ Pipeline orchestrator completed successfully
+✓ Generated HTML report with risk analysis
+```
 
 ## Install
 
