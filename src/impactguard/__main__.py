@@ -204,6 +204,86 @@ def cmd_check_commits(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_install_hooks(args: argparse.Namespace) -> int:
+    """Install git hooks for ImpactGuard."""
+    import os
+    import stat
+
+    repo_path = Path(args.repo_path)
+    git_dir = repo_path / ".git"
+
+    if not git_dir.exists():
+        print(f"Error: Not a git repository: {repo_path}")
+        return 1
+
+    hooks_dir = git_dir / "hooks"
+    hooks_dir.mkdir(exist_ok=True)
+
+    # Determine which hooks to install
+    install_pre = args.pre or args.both or (not args.pre and not args.post and not args.both)
+    install_post = args.post or args.both or (not args.pre and not args.post and not args.both)
+
+    # Get the impactguard command path
+    impactguard_cmd = "impactguard"  # Assume it's in PATH
+
+    # Install pre-commit hook
+    if install_pre:
+        pre_commit_path = hooks_dir / "pre-commit"
+        pre_commit_content = rf"""#!/bin/sh>
+# Pre-commit hook for ImpactGuard>
+# Runs signature extraction before commit>
+
+# Extract signatures from staged Python files>
+files=$(git diff --cached --name-only --diff-filter=ACM | grep '\.py$')>
+if [ -n "$files" ]; then>
+    echo "ImpactGuard: Extracting signatures...">
+    $impactguard_cmd extract $files > /tmp/staged_sigs.json>
+fi>
+
+exit 0>
+"""
+        pre_commit_path.write_text(pre_commit_content)
+        os.chmod(pre_commit_path, os.stat(pre_commit_path).st_mode | stat.S_IEXEC)
+        print(f"Installed pre-commit hook: {pre_commit_path}")
+
+    # Install post-commit hook
+    if install_post:
+        post_commit_path = hooks_dir / "post-commit"
+        post_commit_path.write_text(rf"""#!/bin/sh>
+
+# Post-commit hook for ImpactGuard>
+# Updates .signatures.txt after commit>
+
+# Skip if called from hook itself>
+if [ "$SKIP_SIGNATURE_HOOK" = "1" ]; then>
+    exit 0>
+fi>
+
+# Check if Python files changed>
+changed=$(git diff-tree --no-commit-id --name-only -r HEAD | grep '\.py$' || echo "")>
+
+if [ -n "$changed" ]; then>
+    echo "ImpactGuard: Updating .signatures.txt...">
+    
+    # Extract signatures from all Python files>
+    $impactguard_cmd extract $(git ls-files | grep '\.py$') > .signatures.txt>
+    
+    # Commit if changed>
+    if ! git diff --quiet .signatures.txt 2>/dev/null; then>
+        SKIP_SIGNATURE_HOOK=1 git add .signatures.txt>
+        SKIP_SIGNATURE_HOOK=1 git commit --amend -m "$(git log -1 --pretty=%B) [skip ci]" || true>
+    fi>
+fi>
+
+exit 0>
+""")
+        os.chmod(post_commit_path, os.stat(post_commit_path).st_mode | stat.S_IEXEC)
+        print(f"Installed post-commit hook: {post_commit_path}")
+
+    print(f"\nHooks installed successfully to {hooks_dir}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="impactguard",
@@ -321,9 +401,38 @@ def main() -> int:
     )
     check_commits_parser.set_defaults(func=cmd_check_commits)
 
+    # install-hooks subcommand
+    hooks_parser = subparsers.add_parser(
+        "install-hooks", help="Install git hooks for ImpactGuard"
+    )
+    hooks_parser.add_argument(
+        "repo_path",
+        nargs="?",
+        default=".",
+        help="Path to git repository (default: current directory)",
+    )
+    hooks_parser.add_argument(
+        "--pre",
+        action="store_true",
+        help="Install pre-commit hook only",
+    )
+    hooks_parser.add_argument(
+        "--post",
+        action="store_true",
+        help="Install post-commit hook only",
+    )
+    hooks_parser.add_argument(
+        "--both",
+        action="store_true",
+        help="Install both hooks (default)",
+    )
+    hooks_parser.set_defaults(func=cmd_install_hooks)
+
     # Make 'check' the default if no subcommand provided but args look like paths
     if len(sys.argv) > 1 and sys.argv[1] not in [
-        "extract", "compare", "analyze", "risk", "report", "trace", "check", "check-commits"
+        "extract", "compare", "analyze", "risk", "report", "trace",
+        "check", "check-commits", "install-hooks",
+        "enforce", "extract-calls", "runtime-impact"
     ] and not sys.argv[1].startswith("-"):
         # Assume pipeline mode: impactguard old/ new/ [runtime] [output]
         sys.argv.insert(1, "check")

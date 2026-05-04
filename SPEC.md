@@ -646,7 +646,7 @@ List of call dictionaries (see `analyze` for format)
 
 ---
 
-### CLI Interface (`cli.py`)
+### CLI Interface (`__main__.py`)
 
 The `impactguard` command provides the following subcommands:
 
@@ -670,6 +670,21 @@ Install runtime tracer for a module.
 
 #### `impactguard trace dump [output]`
 Dump collected runtime trace data.
+
+#### `impactguard check <old> <new> [runtime] [output]`
+Run full ImpactGuard pipeline check (default mode).
+
+#### `impactguard check-commits <old_ref> <new_ref> [--files file1.py file2.py] [runtime] [output]`
+Compare two git commits and run pipeline.
+
+#### `impactguard install-hooks [repo_path] [--pre] [--post] [--both]`
+Install git hooks for ImpactGuard.
+- `repo_path`: Path to git repository (default: current directory)
+- `--pre`: Install pre-commit hook only
+- `--post`: Install post-commit hook only  
+- `--both`: Install both hooks (default)
+- Pre-commit hook: Extracts signatures from staged Python files
+- Post-commit hook: Updates `.signatures.txt` after commit
 
 ---
 

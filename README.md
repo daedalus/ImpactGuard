@@ -74,6 +74,22 @@ impactguard risk diff.txt runtime.json output.json
 impactguard report risk.json output.html
 impactguard trace install mypackage
 impactguard trace dump runtime.json
+impactguard install-hooks . --both  # Install git hooks
+```
+
+**Install Git Hooks:**
+```bash
+# Install both pre-commit and post-commit hooks
+impactguard install-hooks .
+
+# Install only pre-commit hook
+impactguard install-hooks . --pre
+
+# Install only post-commit hook (updates .signatures.txt)
+impactguard install-hooks . --post
+
+# Install to a specific repo
+impactguard install-hooks /path/to/repo --both
 ```
 
 ## Python API
