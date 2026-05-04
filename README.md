@@ -7,7 +7,8 @@
 
 ## Features
 
-- **Pipeline orchestrator** — connects all components in one unified workflow
+- **Pipeline orchestrator** — Unified workflow connecting all components
+- **Git commit comparison** — Compare any two git refs (commits, branches, tags)
 - **AST-based signature extraction** — handles `async def`, decorators, type hints, `*args`, `**kwargs`
 - **Semantic API diff** — classifies changes as breaking vs non-breaking
 - **Call-site extraction** — finds all function/method calls in your codebase
@@ -32,6 +33,9 @@ impactguard old_version/ new_version/
 # Compare two git commits directly
 impactguard check-commits HEAD~1 HEAD
 
+# Compare specific files between commits
+impactguard check-commits HEAD~1 HEAD --files src/module.py src/utils.py
+
 # Or use Python API
 from impactguard import run_pipeline, quick_check, run_pipeline_git
 
@@ -39,20 +43,41 @@ result = run_pipeline("old/", "new/")
 print(f"Breaking changes: {len(result['comparison']['breaking'])}")
 
 # Compare git commits via API
-result = run_pipeline_git("HEAD~1", "HEAD")
+result = run_pipeline_git("HEAD~1", "HEAD", files=["src/module.py"])
 ```
 
-## Install
+## CLI
 
+**Pipeline mode (default):**
 ```bash
-pip install impactguard
+# Simplest usage - just provide old and new paths
+impactguard old_version/ new_version/
+impactguard old_version/ new_version/ runtime.json -o report.html
+
+# Compare two git commits
+impactguard check-commits HEAD~1 HEAD
+impactguard check-commits main feature-branch --files src/core.py
+
+# Using 'check' subcommand (equivalent, backwards compatible)
+impactguard check old_version/ new_version/
 ```
 
-## Usage
+**Individual commands (advanced):**
+```bash
+impactguard extract file1.py file2.py
+impactguard compare old_sigs.json new_sigs.json
+impactguard analyze signatures.json calls.json runtime.json
+impactguard risk diff.txt runtime.json output.json
+impactguard report risk.json output.html
+impactguard trace install mypackage
+impactguard trace dump runtime.json
+```
 
-**Python API (recommended):**
+## Python API
+
+**Pipeline (recommended):**
 ```python
-from impactguard import run_pipeline, quick_check, ImpactGuard
+from impactguard import run_pipeline, quick_check, run_pipeline_git, ImpactGuard
 
 # Full pipeline - extract, compare, analyze, risk, report
 result = run_pipeline(
@@ -65,6 +90,13 @@ result = run_pipeline(
 # Quick comparison only (extract + compare)
 changes = quick_check("old/", "new/")
 print(f"Breaking: {len(changes['comparison']['breaking'])}")
+
+# Compare git commits
+result = run_pipeline_git(
+    old_ref="HEAD~1",
+    new_ref="HEAD",
+    files=["src/module.py"],  # optional: specific files only
+)
 
 # Use ImpactGuard class for more control
 guard = ImpactGuard()
@@ -86,42 +118,13 @@ print(f"Breaking changes: {len(result['breaking'])}")
 issues = analyze_impact("signatures.json", "calls.json", "runtime.json")
 ```
 
-## CLI
-
-**Pipeline mode (default):**
-```bash
-# Simplest usage - just provide old and new paths
-impactguard old_version/ new_version/
-impactguard old_version/ new_version/ runtime.json -o report.html
-
-# Compare two git commits directly
-impactguard check-commits HEAD~1 HEAD
-
-# Compare specific files between commits
-impactguard check-commits HEAD~1 HEAD --files src/module.py src/utils.py
-
-# Using 'check' subcommand (equivalent, backwards compatible)
-impactguard check old_version/ new_version/
-```
-
-**Individual commands (advanced):**
-```bash
-impactguard extract file1.py file2.py
-impactguard compare old_sigs.json new_sigs.json
-impactguard analyze signatures.json calls.json runtime.json
-impactguard risk diff.txt runtime.json output.json
-impactguard report risk.json output.html
-impactguard trace install mypackage
-impactguard trace dump runtime.json
-```
-
-## API
+## API Reference
 
 ### Pipeline (Recommended)
 - `run_pipeline(old_path, new_path, runtime_path, output_path)` — Run full pipeline
 - `quick_check(old_path, new_path)` — Quick extract + compare
-- `run_pipeline_git(old_ref, new_ref, runtime_path, output_path)` — Compare two git commits
-- `ImpactGuard` class — Full control with `check()`, `extract()`, `compare()` methods
+- `run_pipeline_git(old_ref, new_ref, files, runtime_path, output_path)` — Compare two git commits
+- `ImpactGuard` class — Full control with `check()`, `analyze()`, `compare()` methods
 
 ### Signature Extraction
 - `extract(files)` — Extract function signatures from Python files
@@ -156,13 +159,15 @@ impactguard trace dump runtime.json
 
 4. **Runtime Validation** — Instruments functions during test runs to record actual call patterns, then compares against new signatures.
 
-## Post-Commit Hook
+5. **Pipeline Orchestrator** — Connects all components in one unified workflow (`run_pipeline()`).
 
-The repo includes a `post-commit` hook that:
-- Runs after every commit
-- Updates `.signatures.txt` if Python files changed
-- Creates a follow-up commit only if signatures actually changed
-- Uses `SKIP_SIGNATURE_HOOK=1` to prevent infinite recursion
+6. **Git Integration** — Compare any two git commits directly (`run_pipeline_git()`).
+
+## Install
+
+```bash
+pip install impactguard
+```
 
 ## Development
 
@@ -186,6 +191,16 @@ semgrep --config=auto --severity=ERROR src/
 mypy src/
 ```
 
+## Quality Standards
+
+ImpactGuard follows strict quality gates:
+- **Ruff** — 0 issues (formatting + linting)
+- **MyPy** — 0 errors (strict mode)
+- **Prospector** — 0 warnings
+- **Semgrep** — 0 findings
+- **Coverage** — ≥80% (target)
+- **Tests** — All passing
+
 ## Limitations
 
 - Name collisions across files (uses file:function format)
@@ -196,7 +211,7 @@ mypy src/
 ## Future Directions
 
 - Include class context (`ClassName.method`)
-- Detect breaking vs non-breaking API changes automatically
-- Compare signatures across commits
 - Integrate with CI for enforcement
 - Auto-generate changelogs from signature diffs
+- Connect remaining components (analyze_module.py, patch_confidence.py, etc.)
+- Boost test coverage from ~71% to 80%+
