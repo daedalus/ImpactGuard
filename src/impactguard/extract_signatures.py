@@ -74,22 +74,9 @@ def extract(files: list[str], base_path: str | None = None) -> list[dict[str, An
         except Exception:
             continue
 
-        # Compute file name for fqname — always use path with directory context
-        if base_path:
-            try:
-                fq_file = str(path.relative_to(base_path))
-            except ValueError:
-                # Use path relative to cwd to preserve directory context
-                try:
-                    fq_file = str(path.relative_to(Path.cwd()))
-                except ValueError:
-                    fq_file = str(path)
-        else:
-            # Use path relative to cwd or absolute path to avoid filename-only collisions
-            try:
-                fq_file = str(path.relative_to(Path.cwd()))
-            except ValueError:
-                fq_file = str(path)
+        # Always use just the filename for fqname to ensure matching
+        # This allows comparing files across different directories
+        fq_file = path.name
 
         # Use a proper visitor to track class context
         class ContextVisitor(ast.NodeVisitor):
