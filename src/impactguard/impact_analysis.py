@@ -155,6 +155,3 @@ def main() -> None:
     if any(i["risk"] == "HIGH" for i in issues):
         sys.exit(1)
 
-
-if __name__ == "__main__":
-    main()
