@@ -101,9 +101,9 @@ def run_pipeline(
         if new_files:
             for file_path in new_files:
                 try:
-                    result = analyze_module(file_path)
-                    if result and "calls" in result:
-                        all_calls.extend(result["calls"])
+                    mod_result = analyze_module(file_path)
+                    if mod_result and "calls" in mod_result:
+                        all_calls.extend(mod_result["calls"])
                 except Exception:
                     # Fall back to basic extraction
                     from .extract_calls import extract
@@ -202,6 +202,135 @@ def quick_check(
         new_files=new_files,
         runtime_path=runtime_path,
     )
+
+
+def generate_changelog(
+    old_ref: str | None = None,
+    new_ref: str | None = None,
+    old_files: list[str] | None = None,
+    new_files: list[str] | None = None,
+    output_path: str | None = None,
+) -> str:
+    """Generate a changelog from signature diffs.
+
+    Args:
+        old_ref: Git reference for old version (optional).
+        new_ref: Git reference for new version (optional).
+        old_files: List of old Python files (alternative to old_ref).
+        new_files: List of new Python files (alternative to new_ref).
+        output_path: Path to write changelog (optional).
+
+    Returns:
+        Changelog markdown string.
+    """
+    from .compare_signatures import compare
+    from .extract_signatures import extract
+
+    # Get signatures
+    if old_ref and new_ref:
+        import subprocess
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            old_dir = Path(tmpdir) / "old"
+            new_dir = Path(tmpdir) / "new"
+            old_dir.mkdir()
+            new_dir.mkdir()
+
+            # Extract files from git
+            for ref, dest in [(old_ref, old_dir), (new_ref, new_dir)]:
+                result = subprocess.run(
+                    ["git", "ls-tree", "-r", "--name-only", ref],
+                    capture_output=True, text=True,
+                )
+                py_files = [f for f in result.stdout.splitlines() if f.endswith(".py")]
+                for py_file in py_files:
+                    dest_path = dest / py_file
+                    dest_path.parent.mkdir(parents=True, exist_ok=True)
+                    r = subprocess.run(
+                        ["git", "show", f"{ref}:{py_file}"],
+                        capture_output=True, text=True,
+                    )
+                    if r.returncode == 0:
+                        dest_path.write_text(r.stdout)
+
+            old_sigs = extract([str(f) for f in old_dir.rglob("*.py")])
+            new_sigs = extract([str(f) for f in new_dir.rglob("*.py")])
+    elif old_files and new_files:
+        old_sigs = extract(old_files)
+        new_sigs = extract(new_files)
+    else:
+        raise ValueError("Must provide either git refs or file lists")
+
+    # Save to temp files and compare
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        old_path = Path(tmpdir) / "old.json"
+        new_path = Path(tmpdir) / "new.json"
+        old_path.write_text(json.dumps(old_sigs))
+        new_path.write_text(json.dumps(new_sigs))
+
+        comparison = compare(str(old_path), str(new_path))
+
+    # Generate changelog
+    lines = ["## [Unreleased]\n"]
+
+    # Group changes by type
+    added = []
+    removed = []
+    changed_breaking = []
+    changed_nonbreaking = []
+
+    for item in comparison.get("nonbreaking", []):
+        if item.startswith("ADDED: "):
+            added.append(item.replace("ADDED: ", ""))
+        elif item.startswith("OPTIONAL POSITIONAL ADDED: "):
+            changed_nonbreaking.append(item.replace("OPTIONAL POSITIONAL ADDED: ", ""))
+        elif item.startswith("OPTIONAL KWONLY ADDED: "):
+            changed_nonbreaking.append(item.replace("OPTIONAL KWONLY ADDED: ", ""))
+
+    for item in comparison.get("breaking", []):
+        if item.startswith("REMOVED: "):
+            removed.append(item.replace("REMOVED: ", ""))
+        elif "POSITIONAL" in item or "KWONLY" in item or "REQUIRED" in item:
+            changed_breaking.append(item)
+
+    if added:
+        lines.append("### Added")
+        for item in added:
+            # Extract function name from fqname
+            func_name = item.split(":")[-1] if ":" in item else item
+            lines.append(f"- `{func_name}` - New function/method added")
+        lines.append("")
+
+    if changed_nonbreaking:
+        lines.append("### Changed")
+        for item in changed_nonbreaking:
+            func_name = item.split(":")[-1] if ":" in item else item
+            lines.append(f"- `{func_name}` - Signature modified (non-breaking)")
+        lines.append("")
+
+    if removed:
+        lines.append("### Removed")
+        for item in removed:
+            func_name = item.split(":")[-1] if ":" in item else item
+            lines.append(f"- `{func_name}` - Function/method removed")
+        lines.append("")
+
+    if changed_breaking:
+        lines.append("### Breaking Changes")
+        for item in changed_breaking:
+            lines.append(f"- {item}")
+        lines.append("")
+
+    changelog = "\n".join(lines)
+
+    if output_path:
+        Path(output_path).write_text(changelog)
+
+    return changelog
 
 
 def run_pipeline_git(
