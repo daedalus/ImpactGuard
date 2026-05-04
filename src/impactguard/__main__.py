@@ -7,6 +7,7 @@ ImpactGuard CLI - Command-line interface for the ImpactGuard library.
 import argparse
 import json
 import sys
+from pathlib import Path
 
 
 def cmd_extract(args: argparse.Namespace) -> int:
