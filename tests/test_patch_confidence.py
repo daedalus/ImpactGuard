@@ -1,12 +1,10 @@
 """Tests for patch_confidence module."""
 
 from impactguard.patch_confidence import (
-    compute_confidence,
     classify as classify_patch,
-    get_target_certainty,
-    get_structural_safety,
-    get_semantic_risk,
-    get_complexity_penalty,
+)
+from impactguard.patch_confidence import (
+    compute_confidence,
 )
 
 

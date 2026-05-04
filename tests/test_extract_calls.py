@@ -1,6 +1,5 @@
 """Tests for extract_calls module."""
 
-import ast
 import tempfile
 from pathlib import Path
 
@@ -9,12 +8,12 @@ from impactguard.extract_calls import extract
 
 def test_extract():
     """Test extract function."""
-    code = '''
+    code = """
 def foo():
     bar()
     baz(1, 2)
-'''
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
         f.write(code)
         fname = f.name
 
@@ -24,4 +23,5 @@ def foo():
     assert any(c["name"] == "baz" for c in result)
 
     import os
+
     os.unlink(fname)

@@ -1,3 +1,5 @@
+from typing import Any
+
 """
 ImpactGuard CLI - Command-line interface for the ImpactGuard library.
 """
@@ -7,7 +9,7 @@ import json
 import sys
 
 
-def cmd_extract(args):
+def cmd_extract(args: argparse.Namespace) -> int:
     """Extract function signatures from Python files."""
     from .extract_signatures import extract
 
@@ -26,7 +28,7 @@ def cmd_extract(args):
     return 0
 
 
-def cmd_compare(args):
+def cmd_compare(args: argparse.Namespace) -> int:
     """Compare two signature snapshots."""
     from .compare_signatures import compare
 
@@ -41,7 +43,7 @@ def cmd_compare(args):
     return 1 if result["breaking"] else 0
 
 
-def cmd_analyze(args):
+def cmd_analyze(args: argparse.Namespace) -> int:
     """Analyze impact of signature changes on call sites."""
     from .impact_analysis import analyze
 
@@ -50,21 +52,22 @@ def cmd_analyze(args):
     return 0
 
 
-def cmd_risk(args):
+def cmd_risk(args: argparse.Namespace) -> list[dict[str, Any]]:
     """Run risk analysis pipeline."""
     from .risk_gate import main as risk_main
 
     return risk_main(args.diff, args.runtime, args.output)
 
 
-def cmd_report(args):
+def cmd_report(args: argparse.Namespace) -> int:
     """Generate HTML report from risk JSON."""
     from .generate_report import main as report_main
 
-    return report_main(args.report, args.output)
+    report_main(args.report, args.output)
+    return 0
 
 
-def cmd_trace(args):
+def cmd_trace(args: argparse.Namespace) -> int:
     """Runtime tracing commands."""
     if args.trace_cmd == "install":
         import importlib
@@ -87,7 +90,45 @@ def cmd_trace(args):
     return 1
 
 
-def main():
+def cmd_check(args: argparse.Namespace) -> int:
+    """Run full ImpactGuard pipeline check."""
+    from .pipeline import quick_check
+
+    print(f"Checking impact: {args.old} → {args.new}")
+
+    try:
+        result = quick_check(args.old, args.new, args.runtime)
+        print(f"\n=== Comparison ===")
+        print(f"Breaking changes: {len(result.get('comparison', {}).get('breaking', []))}")
+        print(f"Non-breaking changes: {len(result.get('comparison', {}).get('nonbreaking', []))}")
+
+        if 'risk' in result:
+            risk_items = result['risk']
+            high = sum(1 for r in risk_items if r.get('risk') == 'HIGH')
+            print(f"\n=== Risk Analysis ===")
+            print(f"HIGH risk: {high}")
+
+        if 'report_html' in result:
+            output = args.output or 'impact_report.html'
+            with open(output, 'w') as f:
+                f.write(result['report_html'])
+            print(f"\nReport written to {output}")
+
+        if 'fixes' in result:
+            fixes = result['fixes']
+            if fixes:
+                print(f"\n=== Suggested Fixes ({len(fixes)}) ===")
+                for fix in fixes[:5]:
+                    print(f"  - {fix}")
+
+        return 0
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+def main() -> int:
     parser = argparse.ArgumentParser(
         prog="impactguard",
         description="ImpactGuard - API impact analyzer for Python",
@@ -149,6 +190,14 @@ def main():
     )
     trace_parser.set_defaults(func=cmd_trace)
 
+    # check subcommand (NEW - integration)
+    check_parser = subparsers.add_parser("check", help="Run full ImpactGuard pipeline check")
+    check_parser.add_argument("old", help="Old Python file/directory")
+    check_parser.add_argument("new", help="New Python file/directory")
+    check_parser.add_argument("runtime", nargs="?", help="Runtime data JSON (optional)")
+    check_parser.add_argument("output", nargs="?", default="impact_report.html", help="Output HTML report")
+    check_parser.set_defaults(func=cmd_check)
+
     args = parser.parse_args()
 
     if not args.command:
@@ -156,7 +205,8 @@ def main():
         return 1
 
     if hasattr(args, "func"):
-        return args.func(args)
+        result: int = args.func(args)
+        return result
     else:
         parser.print_help()
         return 1

@@ -1,20 +1,21 @@
 import json
 import sys
+from typing import Any
 
 
-def load(path):
+def load(path: str) -> dict[str, dict[str, Any]]:
     """Load signatures from a JSON file."""
     with open(path) as f:
         data = json.load(f)
     return {f["fqname"]: f for f in data}
 
 
-def is_required(arg):
+def is_required(arg: dict[str, Any]) -> bool:
     """Check if a function argument has a default value."""
     return not arg["has_default"]
 
 
-def compare(old_path, new_path):
+def compare(old_path: str, new_path: str) -> dict[str, list[str]]:  # noqa: MC0001
     """Compare two signature snapshots.
 
     Args:
@@ -27,8 +28,8 @@ def compare(old_path, new_path):
     old = load(old_path)
     new = load(new_path)
 
-    breaking = []
-    nonbreaking = []
+    breaking: list[str] = []
+    nonbreaking: list[str] = []
 
     # Removed functions
     for k in old:
@@ -95,7 +96,7 @@ def compare(old_path, new_path):
     return {"breaking": sorted(set(breaking)), "nonbreaking": sorted(set(nonbreaking))}
 
 
-def main():
+def main() -> None:
     """CLI entry point for compare command."""
     if len(sys.argv) < 3:
         print("Usage: python compare_signatures.py <old.json> <new.json>")

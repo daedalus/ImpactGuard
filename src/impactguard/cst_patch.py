@@ -8,11 +8,13 @@ except ImportError:
 
 
 class AddDefaultTransformer(cst.CSTTransformer):
-    def __init__(self, func_name, param_name):
+    def __init__(self, func_name: str, param_name: str) -> None:
         self.func_name = func_name
         self.param_name = param_name
 
-    def leave_FunctionDef(self, original_node, updated_node):
+    def leave_FunctionDef(  # noqa: N802
+        self, original_node: cst.FunctionDef, updated_node: cst.FunctionDef
+    ) -> cst.FunctionDef:
         if original_node.name.value != self.func_name:
             return updated_node
 
@@ -30,11 +32,13 @@ class AddDefaultTransformer(cst.CSTTransformer):
 
 
 class FixCallTransformer(cst.CSTTransformer):
-    def __init__(self, func_name, param_name):
+    def __init__(self, func_name: str, param_name: str) -> None:
         self.func_name = func_name
         self.param_name = param_name
 
-    def leave_Call(self, original_node, updated_node):
+    def leave_Call(  # noqa: N802
+        self, original_node: cst.Call, updated_node: cst.Call
+    ) -> cst.Call:
         # match foo(...)
         if m.matches(original_node.func, m.Name(self.func_name)):
             # skip if already provided
@@ -51,7 +55,9 @@ class FixCallTransformer(cst.CSTTransformer):
         return updated_node
 
 
-def patch_function(source, func_name, param_name):
+def patch_function(
+    source: str, func_name: str, param_name: str
+) -> tuple[str | None, str | None]:
     if not LIBCST_AVAILABLE:
         return None, "libcst not installed"
 
@@ -64,7 +70,9 @@ def patch_function(source, func_name, param_name):
         return None, str(e)
 
 
-def patch_call(source, func_name, param_name):
+def patch_call(
+    source: str, func_name: str, param_name: str
+) -> tuple[str | None, str | None]:
     if not LIBCST_AVAILABLE:
         return None, "libcst not installed"
 

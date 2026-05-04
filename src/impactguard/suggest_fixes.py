@@ -1,5 +1,8 @@
-def suggest(func, issues):
-    suggestions = []
+from typing import Any
+
+
+def suggest(func: dict[str, Any], issues: list[dict[str, Any]]) -> list[str]:
+    suggestions: list[str] = []
 
     if not issues:
         return suggestions
@@ -22,7 +25,7 @@ def suggest(func, issues):
     return suggestions
 
 
-def get_line(file, lineno):
+def get_line(file: str, lineno: int) -> str:
     try:
         lines = open(file).read().splitlines()
         if 0 <= lineno - 1 < len(lines):
@@ -32,8 +35,10 @@ def get_line(file, lineno):
     return ""
 
 
-def enrich_with_fixes(report_item, issues):
-    fixes = []
+def enrich_with_fixes(
+    report_item: dict[str, Any], _issues: list[dict[str, Any]]
+) -> list[dict[str, Any]]:  # noqa: ARG001
+    fixes: list[dict[str, Any]] = []
 
     patches = report_item.get("patches", [])
     if patches:

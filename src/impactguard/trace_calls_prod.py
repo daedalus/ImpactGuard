@@ -2,24 +2,26 @@ import json
 import random
 import time
 from collections import defaultdict
+from collections.abc import Callable
 from functools import wraps
+from typing import Any
 
 SAMPLE_RATE = 0.01  # 1% of calls
 FLUSH_INTERVAL = 10  # seconds
 
-COUNTS = defaultdict(int)
+COUNTS: dict[str, int] = defaultdict(int)
 LAST_FLUSH = time.time()
 
 
-def should_sample():
+def should_sample() -> bool:
     return random.random() < SAMPLE_RATE
 
 
-def trace(func):
+def trace(func: Callable[..., Any]) -> Callable[..., Any]:
     name = f"{func.__module__}.{func.__qualname__}"
 
     @wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
         global LAST_FLUSH
 
         if should_sample():
@@ -39,7 +41,7 @@ def trace(func):
     return wrapper
 
 
-def flush(path="/tmp/runtime_calls.json"):
+def flush(path: str = "/tmp/runtime_calls.json") -> None:
     data = dict(COUNTS)
 
     with open(path, "w") as f:
@@ -48,7 +50,7 @@ def flush(path="/tmp/runtime_calls.json"):
     COUNTS.clear()
 
 
-def install_tracer(module, prefix=None):
+def install_tracer(module: object, prefix: str | None = None) -> None:
     for name in dir(module):
         obj = getattr(module, name)
 

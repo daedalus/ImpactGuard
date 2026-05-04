@@ -1,22 +1,24 @@
 import inspect
 import json
 from collections import defaultdict
+from collections.abc import Callable
 from functools import wraps
+from typing import Any
 
-COUNTS = defaultdict(int)
-DETAILS = {}
+COUNTS: dict[str, int] = defaultdict(int)
+DETAILS: dict[str, dict[str, Any]] = {}
 
 
-def trace(func):
+def trace(func: Callable[..., Any]) -> Callable[..., Any]:
     name = f"{func.__module__}.{func.__qualname__}"
 
     @wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
             COUNTS[name] += 1
             if name not in DETAILS:
                 sig = inspect.signature(func)
-                bound = sig.bind_partial(*args, **kwargs)
+                _ = sig.bind_partial(*args, **kwargs)  # noqa: F841 - called for side effects
                 DETAILS[name] = {"args_count": len(args), "kwargs": list(kwargs.keys())}
         except Exception:
             pass
@@ -26,10 +28,10 @@ def trace(func):
     return wrapper
 
 
-def dump(path=".runtime_calls.json"):
-    data = []
+def dump(path: str = ".runtime_calls.json") -> None:
+    data = []  # noqa: F841
     for name, count in COUNTS.items():
-        entry = {
+        entry: dict[str, Any] = {
             "function": name,
             "count": count,
         }
@@ -40,7 +42,7 @@ def dump(path=".runtime_calls.json"):
         json.dump(data, f, indent=2)
 
 
-def install_tracer(module, prefix=None):
+def install_tracer(module: object, prefix: str | None = None) -> None:
     for name in dir(module):
         obj = getattr(module, name)
 

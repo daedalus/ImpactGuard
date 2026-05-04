@@ -1,3 +1,5 @@
+from typing import Any
+
 """
 ImpactGuard - Lightweight API impact analyzer for Python projects.
 
@@ -21,6 +23,26 @@ from .patch_confidence import (
     get_target_certainty,
 )
 from .risk_model import (
+    SEVERITY_SCORES,
+    classify,
+    compute_risk,
+    confidence,
+    exposure,
+    get_severity,
+)
+from .pipeline import (
+    run_pipeline,
+    quick_check,
+    ImpactGuard,
+)
+from .patch_confidence import (  # noqa: F401
+    compute_confidence,
+    get_complexity_penalty,
+    get_semantic_risk,
+    get_structural_safety,
+    get_target_certainty,
+)
+from .risk_model import (  # noqa: F401
     SEVERITY_SCORES,
     classify,
     compute_risk,
@@ -52,10 +74,14 @@ __all__ = [
     # Reporting
     "generate_html",
     "enforce",
+    # Pipeline (NEW)
+    "run_pipeline",
+    "quick_check",
+    "ImpactGuard",
 ]
 
 
-def extract_signatures(files):
+def extract_signatures(files: list[str]) -> list[dict[str, Any]]:
     """Extract function signatures from Python files.
 
     Args:
@@ -67,7 +93,7 @@ def extract_signatures(files):
     return extract(files)
 
 
-def compare_signatures(old_path, new_path):
+def compare_signatures(old_path: str, new_path: str) -> dict[str, list[str]]:
     """Compare two signature snapshots.
 
     Args:
@@ -80,7 +106,9 @@ def compare_signatures(old_path, new_path):
     return compare(old_path, new_path)
 
 
-def analyze_impact(sigs_path, calls_path, runtime_path=None):
+def analyze_impact(
+    sigs_path: str, calls_path: str, runtime_path: str | None = None
+) -> list[dict[str, Any]]:
     """Analyze impact of signature changes on call sites.
 
     Args:

@@ -1,14 +1,14 @@
 """Tests for trace_calls module."""
 
 import tempfile
-from unittest.mock import patch
 
-from impactguard.trace_calls import install_tracer, dump, COUNTS, DETAILS
+from impactguard.trace_calls import COUNTS, DETAILS, dump, install_tracer
 
 
 def test_install_tracer():
     """Test install_tracer function."""
     import types
+
     mock_module = types.ModuleType("mock_module")
 
     def dummy_func():
@@ -26,11 +26,13 @@ def test_dump():
     COUNTS["test_func"] = 5
     DETAILS["test_func"] = {"args_count": 2, "kwargs": ["x"]}
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         dump(f.name)
         import os
+
         assert os.path.exists(f.name)
         import json
+
         data = json.load(open(f.name))
         assert len(data) > 0
         os.unlink(f.name)

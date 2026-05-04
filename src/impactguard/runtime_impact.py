@@ -1,17 +1,18 @@
 import json
 import sys
+from typing import Any
 
 
-def load_funcs(path):
+def load_funcs(path: str) -> dict[str, dict[str, Any]]:
     data = json.load(open(path))
     return {f["fqname"]: f for f in data}
 
 
-def required_positional(f):
+def required_positional(f: dict[str, Any]) -> int:
     return sum(1 for a in f["positional"] if not a["has_default"])
 
 
-def total_positional(f):
+def total_positional(f: dict[str, Any]) -> int:
     return len(f["positional"])
 
 
