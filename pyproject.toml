@@ -39,7 +39,7 @@ lint = [
 all = ["impactguard[dev,test,lint]"]
 
 [project.scripts]
-impactguard = "impactguard.cli:main"
+impactguard = "impactguard.__main__:main"
 
 [project.urls]
 Homepage = "https://github.com/daedalus/ImpactGuard"
