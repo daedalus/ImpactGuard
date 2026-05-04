@@ -138,6 +138,7 @@ def cmd_check_commits(args: argparse.Namespace) -> int:
         result = run_pipeline_git(
             old_ref=args.old_ref,
             new_ref=args.new_ref,
+            files=args.files if hasattr(args, 'files') else None,
             runtime_path=args.runtime,
             output_path=args.output,
         )
@@ -237,6 +238,7 @@ def main() -> int:
     check_commits_parser = subparsers.add_parser("check-commits", help="Compare two git commits")
     check_commits_parser.add_argument("old_ref", help="Old git reference (commit, branch, tag)")
     check_commits_parser.add_argument("new_ref", help="New git reference (commit, branch, tag)")
+    check_commits_parser.add_argument("--files", nargs="+", help="Specific files to compare (relative to repo root)")
     check_commits_parser.add_argument("runtime", nargs="?", help="Runtime data JSON (optional)")
     check_commits_parser.add_argument("output", nargs="?", help="Output HTML report")
     check_commits_parser.set_defaults(func=cmd_check_commits)
