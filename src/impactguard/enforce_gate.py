@@ -35,11 +35,3 @@ def enforce(report_path: str) -> int:
 
     print("✅ API risk acceptable")
     return 0
-
-
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python enforce_gate.py <report.json>")
-        sys.exit(1)
-
-    sys.exit(enforce(sys.argv[1]))

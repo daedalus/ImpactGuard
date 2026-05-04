@@ -67,6 +67,44 @@ def cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_enforce(args: argparse.Namespace) -> int:
+    """Enforce gate - block on HIGH risk."""
+    from .enforce_gate import enforce
+
+    return enforce(args.report)
+
+
+def cmd_extract_calls(args: argparse.Namespace) -> int:
+    """Extract call sites from Python files."""
+    from .extract_calls import extract
+
+    files = (
+        args.files
+        if args.files
+        else [f for f in sys.stdin.read().splitlines() if f.strip()]
+    )
+
+    if not files:
+        print("Error: No input files provided", file=sys.stderr)
+        return 1
+
+    all_calls = []
+    for f in files:
+        all_calls.extend(extract(Path(f)))
+
+    print(json.dumps(all_calls, indent=2))
+    return 0
+
+
+def cmd_runtime_impact(args: argparse.Namespace) -> int:
+    """Analyze runtime impact of signature changes."""
+    from .runtime_impact import analyze
+
+    issues = analyze(args.signatures, args.calls)
+    print(json.dumps(issues, indent=2))
+    return 0
+
+
 def cmd_trace(args: argparse.Namespace) -> int:
     """Runtime tracing commands."""
     if args.trace_cmd == "install":
@@ -211,6 +249,30 @@ def main() -> int:
         "output", nargs="?", default="api_report.html", help="Output HTML file"
     )
     report_parser.set_defaults(func=cmd_report)
+
+    # enforce subcommand
+    enforce_parser = subparsers.add_parser("enforce", help="Enforce gate - block on HIGH risk")
+    enforce_parser.add_argument("report", help="Risk report JSON file")
+    enforce_parser.set_defaults(func=cmd_enforce)
+
+    # extract-calls subcommand
+    extract_calls_parser = subparsers.add_parser(
+        "extract-calls", help="Extract call sites from Python files"
+    )
+    extract_calls_parser.add_argument(
+        "files", nargs="*", help="Python files to analyze"
+    )
+    extract_calls_parser.set_defaults(func=cmd_extract_calls)
+
+    # runtime-impact subcommand
+    runtime_impact_parser = subparsers.add_parser(
+        "runtime-impact", help="Analyze runtime impact of signature changes"
+    )
+    runtime_impact_parser.add_argument(
+        "signatures", help="Signatures JSON file"
+    )
+    runtime_impact_parser.add_argument("calls", help="Call sites JSON file")
+    runtime_impact_parser.set_defaults(func=cmd_runtime_impact)
 
     # trace subcommand
     trace_parser = subparsers.add_parser("trace", help="Runtime tracing")

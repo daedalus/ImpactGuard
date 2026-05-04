@@ -152,7 +152,3 @@ def main(
 
     print(f"\nReport written to {output_path}")
     return report
-
-
-if __name__ == "__main__":
-    main()
