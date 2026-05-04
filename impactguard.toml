@@ -1,0 +1,80 @@
+# ImpactGuard Configuration File
+
+[impactguard]
+# Severity scores for change types (override defaults)
+[impactguard.severity_scores]
+"REMOVED" = 1.0
+"REQUIRED" = 0.9
+"POSITIONAL REORDER" = 0.8
+"KWONLY REMOVED" = 0.8
+"*args REMOVED" = 0.7
+"**kwargs REMOVED" = 0.7
+"OPTIONAL" = 0.3
+"ADDED" = 0.1
+
+# Risk assessment thresholds
+[impactguard.risk]
+# Confidence threshold for UNKNOWN classification
+confidence_threshold = 0.3
+# Exposure threshold for HIGH risk
+high_exposure_min = 0.1
+# Exposure threshold for MEDIUM risk
+medium_exposure_min = 0.01
+
+# Coverage target (from python-project-scaffold)
+[tool.coverage]
+target = 80
+
+# Patch confidence weights
+[impactguard.patches]
+# Target certainty weights
+target_file_match = 1.0
+target_lineno_match = 1.0
+target_name_only = 0.5
+target_default = 0.2
+
+# Structural safety weights
+structural_default = 1.0
+structural_optional = 1.0
+structural_kwarg = 0.8
+structural_positional = 0.3
+
+# Semantic risk weights
+semantic_required = 0.6
+semantic_default = 1.0
+
+# Complexity penalty weights
+complexity_multiline = 0.7
+complexity_decorators = 0.5
+complexity_annotations = 0.5
+complexity_nested = 0.5
+
+# Runtime tracing
+[impactguard.tracing]
+# Sample rate for production tracing (0.01 = 1%)
+sample_rate = 0.01
+
+# Flush interval for production tracer (seconds)
+flush_interval = 10
+
+# Output settings
+[impactguard.output]
+# Default HTML report title
+report_title = "API Risk Report"
+
+# Default output file for HTML reports
+default_html_output = "api_report.html"
+
+# Default output file for JSON reports
+default_json_output = "report.json"
+
+# Default output file for runtime data
+default_runtime_output = ".runtime_calls.json"
+
+# CLI settings
+[impactguard.cli]
+# Enable verbose output by default
+verbose = false
+
+# Auto-open reports after generation
+auto_open = false
