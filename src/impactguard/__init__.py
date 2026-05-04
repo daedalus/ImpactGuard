@@ -22,6 +22,14 @@ from .patch_confidence import (
     get_structural_safety,
     get_target_certainty,
 )
+from .cst_patch import patch_function, patch_call
+from .suggest_fixes import suggest, enrich_with_fixes, get_line
+from .trace_calls import trace, install_tracer, dump as dump_trace
+from .trace_calls_prod import (
+    flush,
+    should_sample,
+    install_tracer as install_tracer_prod,
+)
 from .risk_model import (
     SEVERITY_SCORES,
     classify,
@@ -36,9 +44,6 @@ from .pipeline import (
     run_pipeline_git,
     ImpactGuard,
 )
-from .suggest_fixes import suggest, enrich_with_fixes
-from .cst_patch import patch_function, patch_call
-from .trace_calls import trace, install_tracer, dump as dump_trace
 
 __version__ = "0.2.0"
 __all__ = [
@@ -61,22 +66,23 @@ __all__ = [
     "compute_confidence",
     "classify_patch",
     "get_target_certainty",
-    "get_structural_safety",
-    "get_semantic_risk",
-    "get_complexity_penalty",
     # Reporting
     "generate_html",
     "enforce",
     # CST patches
     "patch_function",
     "patch_call",
+    # Suggest fixes
+    "suggest",
+    "enrich_with_fixes",
+    "get_line",
     # Runtime tracing
     "trace",
     "install_tracer",
     "dump_trace",
-    # Suggest fixes
-    "suggest",
-    "enrich_with_fixes",
+    "flush",
+    "should_sample",
+    "install_tracer_prod",
     # Pipeline (Recommended)
     "run_pipeline",
     "quick_check",

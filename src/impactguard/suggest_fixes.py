@@ -1,7 +1,7 @@
 from typing import Any
 
 from .patch_confidence import classify_with_factors, compute_confidence
-from .cst_patch import patch_function, patch_call
+
 
 def suggest(
     func: dict[str, Any], issues: list[dict[str, Any]]
@@ -46,7 +46,7 @@ def enrich_with_fixes(
 ) -> list[dict[str, Any]]:
     fixes: list[dict[str, Any]] = []
 
-    # Generate CST-based patches
+    # Generate CST-based patches (preferred)
     patches = report_item.get("patches", [])
     if patches:
         fixes.append(
@@ -74,14 +74,16 @@ def enrich_with_fixes(
                 }
             )
 
-    # If no patches yet, try generating them with CST
+    # If no patches yet, try CST patch
     if not fixes and "function" in report_item:
-        func_name = report_item.get("function", "")
-        change = report_item.get("change", "")
-
-        # Try to generate CST patch for the function
         try:
             from pathlib import Path
+
+            func_name = report_item.get("function", "")
+            change = report_item.get("change", "")
+
+            # Try CST patch first
+            from .cst_patch import patch_function
 
             # Find the source file
             file_path = report_item.get("file", "")
@@ -90,13 +92,13 @@ def enrich_with_fixes(
                 param_name = None
 
                 # Extract param name from change description
-                if "REMOVED" in change:
-                    # Find which param was removed
+                if "REMOVED" in change or "REQUIRED" in change:
                     parts = change.split()
                     if parts:
                         param_name = parts[-1].strip("()")
 
                 if param_name:
+                    # Try CST patch first
                     patched, error = patch_function(
                         source, func_name.split(".")[-1], param_name
                     )
@@ -108,6 +110,48 @@ def enrich_with_fixes(
                                 "confidence_level": "MEDIUM",
                             }
                         )
+                    else:
+                        # Fallback to text-based patch
+                        from .patch_generator import patch_add_default
+
+                        # Build func dict for patch_generator
+                        func_dict = {
+                            "file": file_path,
+                            "lineno": report_item.get("lineno", 0),
+                            "name": func_name,
+                        }
+                        gen_patch = patch_add_default(func_dict, param_name)
+                        if gen_patch:
+                            fixes.append(
+                                {
+                                    "type": "text_patch",
+                                    "patch": gen_patch,
+                                    "confidence_level": "LOW",
+                                }
+                            )
+                    if patched:
+                        fixes.append(
+                            {
+                                "type": "cst_patch",
+                                "patch": patched,
+                                "confidence_level": "MEDIUM",
+                            }
+                        )
+                    else:
+                        # Fallback to text-based patch
+                        from .patch_generator import patch_add_default
+
+                        gen_patch = patch_add_default(
+                            report_item, {"name": param_name}
+                        )
+                        if gen_patch:
+                            fixes.append(
+                                {
+                                    "type": "text_patch",
+                                    "patch": gen_patch,
+                                    "confidence_level": "LOW",
+                                }
+                            )
         except Exception:
             pass
 
