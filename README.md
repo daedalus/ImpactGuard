@@ -461,10 +461,10 @@ ImpactGuard follows strict quality gates:
 
 ## Limitations
 
-- Name collisions across files (uses file:function format)
-- No full type inference — relies on annotations and simple constructor inference
-- Dynamic dispatch, higher-order functions, and rebinding are not resolved
-- Runtime tracing only captures code paths exercised by tests
+- ~~Name collisions across files~~ — **Fixed (v0.2.1+)**: FQNames now use full relative paths (e.g., `src/utils.py:helper`) instead of filename-only, preventing collisions between `src/utils.py` and `tests/utils.py`
+- ~~No full type inference~~ — **Improved**: Now handles `ast.Subscript` nodes (`Optional[X]`, `List[Y]`) and builds full attribute chains (`module.Class.method`); still limited to annotated assignments and simple constructor inference
+- ~~Dynamic dispatch, higher-order functions, and rebinding~~ — **Partially fixed**: Now tracks variable reassignments (`x = y`) and higher-order function assignments (`my_func = imported_func`); full dynamic dispatch resolution remains a future goal
+- Runtime tracing only captures code paths exercised by tests — consider using `sys.settrace()` for automatic tracing or integrating with pytest plugins for broader coverage
 
 ---
 

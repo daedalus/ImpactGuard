@@ -63,11 +63,21 @@ class Analyzer(ast.NodeVisitor):
                 self.scope.set(node.target.id, typ)
 
     def visit_Assign(self, node):
-        # x = MyClass()
+        # x = MyClass() or x = y (alias/reassignment)
         if isinstance(node.value, ast.Call):
             func = node.value.func
             if isinstance(func, ast.Name):
                 typ = func.id
+                # Track higher-order: my_func = imported_function
+                if typ in self.from_imports:
+                    typ = self.from_imports[typ]
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        self.scope.set(target.id, typ)
+        # Handle reassignments: x = y (where y has a known type)
+        elif isinstance(node.value, ast.Name):
+            typ = self.scope.get(node.value.id)
+            if typ:
                 for target in node.targets:
                     if isinstance(target, ast.Name):
                         self.scope.set(target.id, typ)
@@ -120,10 +130,22 @@ class Analyzer(ast.NodeVisitor):
     # ---------------- helpers ----------------
 
     def _type_name(self, node):
+        """Extract type name from an AST annotation node, handling subscripts."""
         if isinstance(node, ast.Name):
             return node.id
         if isinstance(node, ast.Attribute):
-            return node.attr
+            # Build full attribute chain: module.Class.method
+            parts = []
+            while isinstance(node, ast.Attribute):
+                parts.append(node.attr)
+                node = node.value
+            if isinstance(node, ast.Name):
+                parts.append(node.id)
+            return ".".join(reversed(parts))
+        if isinstance(node, ast.Subscript):
+            # Handle Optional[X], List[Y], Dict[K, V], etc.
+            base = self._type_name(node.value)
+            return base  # Return base type (e.g., "Optional", "List")
         return None
 
 
