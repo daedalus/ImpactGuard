@@ -41,8 +41,10 @@ build/
 .DS_Store
 Thumbs.db
 
-# ImpactGuard generated files (uncomment if you don't want to track these)
-# .signatures.txt
-# .signatures.json
-# .calls.json
-# .runtime_calls.json
+# ImpactGuard generated files
+.signatures.txt
+.signatures.json
+.calls.json
+.runtime_calls.json
+impact_report.html
+out.json
