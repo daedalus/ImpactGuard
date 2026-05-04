@@ -284,6 +284,25 @@ exit 0>
     return 0
 
 
+def cmd_generate_changelog(args: argparse.Namespace) -> int:
+    """Generate changelog from signature diffs."""
+    from .pipeline import generate_changelog
+
+    try:
+        changelog = generate_changelog(
+            old_ref=args.old_ref if args.old_ref else None,
+            new_ref=args.new_ref if args.new_ref else None,
+            old_files=args.old_files if hasattr(args, "old_files") else None,
+            new_files=args.new_files if hasattr(args, "new_files") else None,
+            output_path=args.output,
+        )
+        print(changelog)
+        return 0
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="impactguard",
@@ -418,11 +437,33 @@ def main() -> int:
     )
     hooks_parser.set_defaults(func=cmd_install_hooks)
 
+    # generate-changelog subcommand
+    changelog_parser = subparsers.add_parser(
+        "generate-changelog", help="Generate changelog from signature diffs"
+    )
+    changelog_parser.add_argument(
+        "old_ref", nargs="?", help="Old git reference (commit, branch, tag)"
+    )
+    changelog_parser.add_argument(
+        "new_ref", nargs="?", help="New git reference (commit, branch, tag)"
+    )
+    changelog_parser.add_argument(
+        "--old-files", nargs="+", help="Old Python files (alternative to old_ref)"
+    )
+    changelog_parser.add_argument(
+        "--new-files", nargs="+", help="New Python files (alternative to new_ref)"
+    )
+    changelog_parser.add_argument(
+        "output", nargs="?", help="Output file for changelog"
+    )
+    changelog_parser.set_defaults(func=cmd_generate_changelog)
+
     # Make 'check' the default if no subcommand provided but args look like paths
     if len(sys.argv) > 1 and sys.argv[1] not in [
         "extract", "compare", "analyze", "risk", "report", "trace",
         "check", "check-commits", "install-hooks",
-        "enforce", "extract-calls", "runtime-impact"
+        "enforce", "extract-calls", "runtime-impact",
+        "generate-changelog",
     ] and not sys.argv[1].startswith("-"):
         # Assume pipeline mode: impactguard old/ new/ [runtime] [output]
         sys.argv.insert(1, "check")

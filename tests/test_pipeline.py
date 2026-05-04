@@ -275,12 +275,15 @@ def test_pipeline_comparison_breaking(tmp_path):
     """Test that breaking changes are detected."""
     from impactguard.pipeline import run_pipeline
 
-    # Old: function with 2 required args
-    old_file = tmp_path / "old.py"
+    # Use same filename in different dirs so fqnames match
+    old_dir = tmp_path / "old"
+    old_dir.mkdir()
+    old_file = old_dir / "module.py"
     old_file.write_text("def process(data, options): return data\n")
 
-    # New: removed required arg (breaking!)
-    new_file = tmp_path / "new.py"
+    new_dir = tmp_path / "new"
+    new_dir.mkdir()
+    new_file = new_dir / "module.py"  # Same name = matching fqname
     new_file.write_text("def process(data): return data\n")
 
     result = run_pipeline(
@@ -292,7 +295,7 @@ def test_pipeline_comparison_breaking(tmp_path):
     comparison = result["comparison"]
     breaking = comparison["breaking"]
 
-    # Should detect breaking change
+    # Should detect breaking change (positional arg removed)
     assert len(breaking) > 0
     assert any("POSITIONAL" in change for change in breaking)
 

@@ -86,3 +86,97 @@ jobs:
 
       - name: Check package
         run: pip install twine && python -m twine check dist/*
+
+  impactguard:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for git comparisons
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv pip install --system -e ".[test]"
+
+      - name: Run ImpactGuard analysis
+        id: impactguard
+        run: |
+          # Run ImpactGuard on the PR diff
+          python -m impactguard check-commits \
+            --old-ref ${{ github.event.pull_request.base.sha }} \
+            --new-ref ${{ github.event.pull_request.head.sha }} \
+            --output-dir impactguard-output \
+            || true  # Don't fail yet, we'll check the report
+
+      - name: Generate changelog from signature diffs
+        if: always()
+        run: |
+          python -m impactguard generate-changelog \
+            --old-ref ${{ github.event.pull_request.base.sha }} \
+            --new-ref ${{ github.event.pull_request.head.sha }} \
+            --output CHANGELOG_PR.md
+
+      - name: Check risk gate
+        if: always()
+        run: |
+          if [ -f impactguard-output/risk_report.json ]; then
+            python -m impactguard enforce \
+              impactguard-output/risk_report.json \
+              --fail-on HIGH
+          fi
+
+      - name: Upload ImpactGuard report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: impactguard-report
+          path: |
+            impactguard-output/
+            CHANGELOG_PR.md
+          retention-days: 30
+
+      - name: Comment PR with summary
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let comment = '## ImpactGuard Analysis\n\n';
+
+            if (fs.existsSync('impactguard-output/risk_report.json')) {
+              const report = JSON.parse(fs.readFileSync('impactguard-output/risk_report.json', 'utf8'));
+              comment += '### Risk Summary\n';
+              comment += `- Total items: ${report.length}\n`;
+
+              const high = report.filter(i => i.risk_level === 'HIGH').length;
+              const medium = report.filter(i => i.risk_level === 'MEDIUM').length;
+              const low = report.filter(i => i.risk_level === 'LOW').length;
+
+              comment += `- HIGH risk: ${high}\n`;
+              comment += `- MEDIUM risk: ${medium}\n`;
+              comment += `- LOW risk: ${low}\n`;
+            }
+
+            if (fs.existsSync('CHANGELOG_PR.md')) {
+              const changelog = fs.readFileSync('CHANGELOG_PR.md', 'utf8');
+              comment += '\n### Changelog (Signature Changes)\n```\n' + changelog + '\n```\n';
+            }
+
+            comment += '\n📊 [View full report in artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})\n';
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
