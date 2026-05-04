@@ -1,0 +1,1886 @@
+[
+  {
+    "fqname": "src/impactguard/__init__.py:analyze_impact",
+    "name": "analyze_impact",
+    "file": "src/impactguard/__init__.py",
+    "lineno": 109,
+    "end_lineno": 122,
+    "positional": [
+      {
+        "name": "sigs_path",
+        "has_default": false
+      },
+      {
+        "name": "calls_path",
+        "has_default": false
+      },
+      {
+        "name": "runtime_path",
+        "has_default": true
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/__init__.py:compare_signatures",
+    "name": "compare_signatures",
+    "file": "src/impactguard/__init__.py",
+    "lineno": 96,
+    "end_lineno": 106,
+    "positional": [
+      {
+        "name": "old_path",
+        "has_default": false
+      },
+      {
+        "name": "new_path",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/__init__.py:extract_signatures",
+    "name": "extract_signatures",
+    "file": "src/impactguard/__init__.py",
+    "lineno": 84,
+    "end_lineno": 93,
+    "positional": [
+      {
+        "name": "files",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/analyze_module.py:__init__",
+    "name": "__init__",
+    "file": "src/impactguard/analyze_module.py",
+    "lineno": 6,
+    "end_lineno": 8,
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "parent",
+        "has_default": true
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/analyze_module.py:__init__",
+    "name": "__init__",
+    "file": "src/impactguard/analyze_module.py",
+    "lineno": 22,
+    "end_lineno": 27,
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "file",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/analyze_module.py:_type_name",
+    "name": "_type_name",
+    "file": "src/impactguard/analyze_module.py",
+    "lineno": 122,
+    "end_lineno": 127,
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "node",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/analyze_module.py:analyze",
+    "name": "analyze",
+    "file": "src/impactguard/analyze_module.py",
+    "lineno": 130,
+    "end_lineno": 142,
+    "positional": [
+      {
+        "name": "path",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/analyze_module.py:get",
+    "name": "get",
+    "file": "src/impactguard/analyze_module.py",
+    "lineno": 13,
+    "end_lineno": 18,
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "name",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/analyze_module.py:resolve_call",
+    "name": "resolve_call",
+    "file": "src/impactguard/analyze_module.py",
+    "lineno": 97,
+    "end_lineno": 118,
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "node",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/analyze_module.py:set",
+    "name": "set",
+    "file": "src/impactguard/analyze_module.py",
+    "lineno": 10,
+    "end_lineno": 11,
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "name",
+        "has_default": false
+      },
+      {
+        "name": "typ",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/analyze_module.py:visit_AnnAssign",
+    "name": "visit_AnnAssign",
+    "file": "src/impactguard/analyze_module.py",
+    "lineno": 58,
+    "end_lineno": 63,
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "node",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/analyze_module.py:visit_Assign",
+    "name": "visit_Assign",
+    "file": "src/impactguard/analyze_module.py",
+    "lineno": 65,
+    "end_lineno": 73,
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "node",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/analyze_module.py:visit_Call",
+    "name": "visit_Call",
+    "file": "src/impactguard/analyze_module.py",
+    "lineno": 77,
+    "end_lineno": 93,
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "node",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/analyze_module.py:visit_FunctionDef",
+    "name": "visit_FunctionDef",
+    "file": "src/impactguard/analyze_module.py",
+    "lineno": 44,
+    "end_lineno": 54,
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "node",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/analyze_module.py:visit_Import",
+    "name": "visit_Import",
+    "file": "src/impactguard/analyze_module.py",
+    "lineno": 31,
+    "end_lineno": 34,
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "node",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/analyze_module.py:visit_ImportFrom",
+    "name": "visit_ImportFrom",
+    "file": "src/impactguard/analyze_module.py",
+    "lineno": 36,
+    "end_lineno": 40,
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "node",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/cli.py:cmd_analyze",
+    "name": "cmd_analyze",
+    "file": "src/impactguard/cli.py",
+    "lineno": 46,
+    "end_lineno": 52,
+    "positional": [
+      {
+        "name": "args",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/cli.py:cmd_check",
+    "name": "cmd_check",
+    "file": "src/impactguard/cli.py",
+    "lineno": 93,
+    "end_lineno": 128,
+    "positional": [
+      {
+        "name": "args",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/cli.py:cmd_compare",
+    "name": "cmd_compare",
+    "file": "src/impactguard/cli.py",
+    "lineno": 31,
+    "end_lineno": 43,
+    "positional": [
+      {
+        "name": "args",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/cli.py:cmd_extract",
+    "name": "cmd_extract",
+    "file": "src/impactguard/cli.py",
+    "lineno": 12,
+    "end_lineno": 28,
+    "positional": [
+      {
+        "name": "args",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/cli.py:cmd_report",
+    "name": "cmd_report",
+    "file": "src/impactguard/cli.py",
+    "lineno": 62,
+    "end_lineno": 67,
+    "positional": [
+      {
+        "name": "args",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/cli.py:cmd_risk",
+    "name": "cmd_risk",
+    "file": "src/impactguard/cli.py",
+    "lineno": 55,
+    "end_lineno": 59,
+    "positional": [
+      {
+        "name": "args",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/cli.py:cmd_trace",
+    "name": "cmd_trace",
+    "file": "src/impactguard/cli.py",
+    "lineno": 70,
+    "end_lineno": 90,
+    "positional": [
+      {
+        "name": "args",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/cli.py:main",
+    "name": "main",
+    "file": "src/impactguard/cli.py",
+    "lineno": 131,
+    "end_lineno": 219,
+    "positional": [],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/compare_signatures.py:compare",
+    "name": "compare",
+    "file": "src/impactguard/compare_signatures.py",
+    "lineno": 18,
+    "end_lineno": 96,
+    "positional": [
+      {
+        "name": "old_path",
+        "has_default": false
+      },
+      {
+        "name": "new_path",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/compare_signatures.py:is_required",
+    "name": "is_required",
+    "file": "src/impactguard/compare_signatures.py",
+    "lineno": 13,
+    "end_lineno": 15,
+    "positional": [
+      {
+        "name": "arg",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/compare_signatures.py:load",
+    "name": "load",
+    "file": "src/impactguard/compare_signatures.py",
+    "lineno": 6,
+    "end_lineno": 10,
+    "positional": [
+      {
+        "name": "path",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/compare_signatures.py:main",
+    "name": "main",
+    "file": "src/impactguard/compare_signatures.py",
+    "lineno": 99,
+    "end_lineno": 114,
+    "positional": [],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/cst_patch.py:__init__",
+    "name": "__init__",
+    "file": "src/impactguard/cst_patch.py",
+    "lineno": 11,
+    "end_lineno": 13,
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "func_name",
+        "has_default": false
+      },
+      {
+        "name": "param_name",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/cst_patch.py:__init__",
+    "name": "__init__",
+    "file": "src/impactguard/cst_patch.py",
+    "lineno": 35,
+    "end_lineno": 37,
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "func_name",
+        "has_default": false
+      },
+      {
+        "name": "param_name",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/cst_patch.py:leave_Call",
+    "name": "leave_Call",
+    "file": "src/impactguard/cst_patch.py",
+    "lineno": 39,
+    "end_lineno": 55,
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "original_node",
+        "has_default": false
+      },
+      {
+        "name": "updated_node",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/cst_patch.py:leave_FunctionDef",
+    "name": "leave_FunctionDef",
+    "file": "src/impactguard/cst_patch.py",
+    "lineno": 15,
+    "end_lineno": 31,
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "original_node",
+        "has_default": false
+      },
+      {
+        "name": "updated_node",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/cst_patch.py:patch_call",
+    "name": "patch_call",
+    "file": "src/impactguard/cst_patch.py",
+    "lineno": 73,
+    "end_lineno": 85,
+    "positional": [
+      {
+        "name": "source",
+        "has_default": false
+      },
+      {
+        "name": "func_name",
+        "has_default": false
+      },
+      {
+        "name": "param_name",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/cst_patch.py:patch_function",
+    "name": "patch_function",
+    "file": "src/impactguard/cst_patch.py",
+    "lineno": 58,
+    "end_lineno": 70,
+    "positional": [
+      {
+        "name": "source",
+        "has_default": false
+      },
+      {
+        "name": "func_name",
+        "has_default": false
+      },
+      {
+        "name": "param_name",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/enforce_gate.py:enforce",
+    "name": "enforce",
+    "file": "src/impactguard/enforce_gate.py",
+    "lineno": 5,
+    "end_lineno": 37,
+    "positional": [
+      {
+        "name": "report_path",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/extract_calls.py:__init__",
+    "name": "__init__",
+    "file": "src/impactguard/extract_calls.py",
+    "lineno": 9,
+    "end_lineno": 11,
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "file",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/extract_calls.py:extract",
+    "name": "extract",
+    "file": "src/impactguard/extract_calls.py",
+    "lineno": 39,
+    "end_lineno": 47,
+    "positional": [
+      {
+        "name": "path",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/extract_calls.py:get_name",
+    "name": "get_name",
+    "file": "src/impactguard/extract_calls.py",
+    "lineno": 31,
+    "end_lineno": 36,
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "node",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/extract_calls.py:main",
+    "name": "main",
+    "file": "src/impactguard/extract_calls.py",
+    "lineno": 50,
+    "end_lineno": 57,
+    "positional": [],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/extract_calls.py:visit_Call",
+    "name": "visit_Call",
+    "file": "src/impactguard/extract_calls.py",
+    "lineno": 13,
+    "end_lineno": 29,
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "node",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/extract_signatures.py:arg_info",
+    "name": "arg_info",
+    "file": "src/impactguard/extract_signatures.py",
+    "lineno": 13,
+    "end_lineno": 14,
+    "positional": [
+      {
+        "name": "arg",
+        "has_default": false
+      },
+      {
+        "name": "default",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/extract_signatures.py:extract",
+    "name": "extract",
+    "file": "src/impactguard/extract_signatures.py",
+    "lineno": 40,
+    "end_lineno": 63,
+    "positional": [
+      {
+        "name": "files",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/extract_signatures.py:main",
+    "name": "main",
+    "file": "src/impactguard/extract_signatures.py",
+    "lineno": 66,
+    "end_lineno": 69,
+    "positional": [],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/extract_signatures.py:serialize_function",
+    "name": "serialize_function",
+    "file": "src/impactguard/extract_signatures.py",
+    "lineno": 10,
+    "end_lineno": 37,
+    "positional": [
+      {
+        "name": "node",
+        "has_default": false
+      },
+      {
+        "name": "file",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/generate_report.py:color",
+    "name": "color",
+    "file": "src/impactguard/generate_report.py",
+    "lineno": 5,
+    "end_lineno": 11,
+    "positional": [
+      {
+        "name": "level",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/generate_report.py:generate_html",
+    "name": "generate_html",
+    "file": "src/impactguard/generate_report.py",
+    "lineno": 14,
+    "end_lineno": 69,
+    "positional": [
+      {
+        "name": "report_data",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/generate_report.py:main",
+    "name": "main",
+    "file": "src/impactguard/generate_report.py",
+    "lineno": 72,
+    "end_lineno": 81,
+    "positional": [
+      {
+        "name": "report_path",
+        "has_default": false
+      },
+      {
+        "name": "output_path",
+        "has_default": true
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/impact_analysis.py:analyze",
+    "name": "analyze",
+    "file": "src/impactguard/impact_analysis.py",
+    "lineno": 54,
+    "end_lineno": 132,
+    "positional": [
+      {
+        "name": "sigs_path",
+        "has_default": false
+      },
+      {
+        "name": "calls_path",
+        "has_default": false
+      },
+      {
+        "name": "runtime_path",
+        "has_default": true
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/impact_analysis.py:exposure",
+    "name": "exposure",
+    "file": "src/impactguard/impact_analysis.py",
+    "lineno": 47,
+    "end_lineno": 51,
+    "positional": [
+      {
+        "name": "count",
+        "has_default": false
+      },
+      {
+        "name": "max_count",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/impact_analysis.py:get_severity",
+    "name": "get_severity",
+    "file": "src/impactguard/impact_analysis.py",
+    "lineno": 29,
+    "end_lineno": 44,
+    "positional": [
+      {
+        "name": "change_type",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/impact_analysis.py:load_calls",
+    "name": "load_calls",
+    "file": "src/impactguard/impact_analysis.py",
+    "lineno": 13,
+    "end_lineno": 16,
+    "positional": [
+      {
+        "name": "path",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/impact_analysis.py:load_funcs",
+    "name": "load_funcs",
+    "file": "src/impactguard/impact_analysis.py",
+    "lineno": 7,
+    "end_lineno": 10,
+    "positional": [
+      {
+        "name": "path",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/impact_analysis.py:main",
+    "name": "main",
+    "file": "src/impactguard/impact_analysis.py",
+    "lineno": 135,
+    "end_lineno": 156,
+    "positional": [],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/impact_analysis.py:required_positional",
+    "name": "required_positional",
+    "file": "src/impactguard/impact_analysis.py",
+    "lineno": 19,
+    "end_lineno": 21,
+    "positional": [
+      {
+        "name": "func",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/impact_analysis.py:total_positional",
+    "name": "total_positional",
+    "file": "src/impactguard/impact_analysis.py",
+    "lineno": 24,
+    "end_lineno": 26,
+    "positional": [
+      {
+        "name": "func",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/patch_confidence.py:classify",
+    "name": "classify",
+    "file": "src/impactguard/patch_confidence.py",
+    "lineno": 7,
+    "end_lineno": 15,
+    "positional": [
+      {
+        "name": "conf",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/patch_confidence.py:classify_with_factors",
+    "name": "classify_with_factors",
+    "file": "src/impactguard/patch_confidence.py",
+    "lineno": 63,
+    "end_lineno": 74,
+    "positional": [
+      {
+        "name": "target",
+        "has_default": false
+      },
+      {
+        "name": "structural",
+        "has_default": false
+      },
+      {
+        "name": "semantic",
+        "has_default": false
+      },
+      {
+        "name": "complexity",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/patch_confidence.py:compute_confidence",
+    "name": "compute_confidence",
+    "file": "src/impactguard/patch_confidence.py",
+    "lineno": 1,
+    "end_lineno": 4,
+    "positional": [
+      {
+        "name": "target_certainty",
+        "has_default": false
+      },
+      {
+        "name": "structural",
+        "has_default": false
+      },
+      {
+        "name": "semantic",
+        "has_default": false
+      },
+      {
+        "name": "complexity",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/patch_confidence.py:get_complexity_penalty",
+    "name": "get_complexity_penalty",
+    "file": "src/impactguard/patch_confidence.py",
+    "lineno": 45,
+    "end_lineno": 60,
+    "positional": [
+      {
+        "name": "is_multiline",
+        "has_default": false
+      },
+      {
+        "name": "has_decorators",
+        "has_default": false
+      },
+      {
+        "name": "has_complex_annotations",
+        "has_default": false
+      },
+      {
+        "name": "is_nested",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/patch_confidence.py:get_semantic_risk",
+    "name": "get_semantic_risk",
+    "file": "src/impactguard/patch_confidence.py",
+    "lineno": 39,
+    "end_lineno": 42,
+    "positional": [
+      {
+        "name": "change_type",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/patch_confidence.py:get_structural_safety",
+    "name": "get_structural_safety",
+    "file": "src/impactguard/patch_confidence.py",
+    "lineno": 29,
+    "end_lineno": 36,
+    "positional": [
+      {
+        "name": "change_type",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/patch_confidence.py:get_target_certainty",
+    "name": "get_target_certainty",
+    "file": "src/impactguard/patch_confidence.py",
+    "lineno": 18,
+    "end_lineno": 26,
+    "positional": [
+      {
+        "name": "file_match",
+        "has_default": false
+      },
+      {
+        "name": "lineno_match",
+        "has_default": false
+      },
+      {
+        "name": "name_only_match",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/patch_generator.py:patch_add_default",
+    "name": "patch_add_default",
+    "file": "src/impactguard/patch_generator.py",
+    "lineno": 5,
+    "end_lineno": 33,
+    "positional": [
+      {
+        "name": "func",
+        "has_default": false
+      },
+      {
+        "name": "param_name",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/patch_generator.py:patch_callsite",
+    "name": "patch_callsite",
+    "file": "src/impactguard/patch_generator.py",
+    "lineno": 36,
+    "end_lineno": 62,
+    "positional": [
+      {
+        "name": "call",
+        "has_default": false
+      },
+      {
+        "name": "_func",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/pipeline.py:__init__",
+    "name": "__init__",
+    "file": "src/impactguard/pipeline.py",
+    "lineno": 177,
+    "end_lineno": 183,
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "config",
+        "has_default": true
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/pipeline.py:analyze",
+    "name": "analyze",
+    "file": "src/impactguard/pipeline.py",
+    "lineno": 185,
+    "end_lineno": 201,
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "old_path",
+        "has_default": false
+      },
+      {
+        "name": "new_path",
+        "has_default": false
+      },
+      {
+        "name": "runtime_path",
+        "has_default": true
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/pipeline.py:check",
+    "name": "check",
+    "file": "src/impactguard/pipeline.py",
+    "lineno": 232,
+    "end_lineno": 252,
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "path",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/pipeline.py:collect_files",
+    "name": "collect_files",
+    "file": "src/impactguard/pipeline.py",
+    "lineno": 156,
+    "end_lineno": 162,
+    "positional": [
+      {
+        "name": "path",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/pipeline.py:compare",
+    "name": "compare",
+    "file": "src/impactguard/pipeline.py",
+    "lineno": 216,
+    "end_lineno": 230,
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "old_sigs",
+        "has_default": false
+      },
+      {
+        "name": "new_sigs",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/pipeline.py:extract",
+    "name": "extract",
+    "file": "src/impactguard/pipeline.py",
+    "lineno": 203,
+    "end_lineno": 214,
+    "positional": [
+      {
+        "name": "self",
+        "has_default": false
+      },
+      {
+        "name": "files",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/pipeline.py:quick_check",
+    "name": "quick_check",
+    "file": "src/impactguard/pipeline.py",
+    "lineno": 138,
+    "end_lineno": 171,
+    "positional": [
+      {
+        "name": "old_path",
+        "has_default": false
+      },
+      {
+        "name": "new_path",
+        "has_default": false
+      },
+      {
+        "name": "runtime_path",
+        "has_default": true
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/pipeline.py:run_pipeline",
+    "name": "run_pipeline",
+    "file": "src/impactguard/pipeline.py",
+    "lineno": 9,
+    "end_lineno": 135,
+    "positional": [
+      {
+        "name": "old_files",
+        "has_default": true
+      },
+      {
+        "name": "new_files",
+        "has_default": true
+      },
+      {
+        "name": "old_sigs_path",
+        "has_default": true
+      },
+      {
+        "name": "new_sigs_path",
+        "has_default": true
+      },
+      {
+        "name": "calls_path",
+        "has_default": true
+      },
+      {
+        "name": "runtime_path",
+        "has_default": true
+      },
+      {
+        "name": "output_dir",
+        "has_default": true
+      },
+      {
+        "name": "config",
+        "has_default": true
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/risk_gate.py:classify",
+    "name": "classify",
+    "file": "src/impactguard/risk_gate.py",
+    "lineno": 39,
+    "end_lineno": 55,
+    "positional": [
+      {
+        "name": "severity",
+        "has_default": false
+      },
+      {
+        "name": "count",
+        "has_default": false
+      },
+      {
+        "name": "max_count",
+        "has_default": false
+      },
+      {
+        "name": "samples",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/risk_gate.py:confidence",
+    "name": "confidence",
+    "file": "src/impactguard/risk_gate.py",
+    "lineno": 34,
+    "end_lineno": 36,
+    "positional": [
+      {
+        "name": "samples",
+        "has_default": false
+      },
+      {
+        "name": "threshold",
+        "has_default": true
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/risk_gate.py:exposure",
+    "name": "exposure",
+    "file": "src/impactguard/risk_gate.py",
+    "lineno": 27,
+    "end_lineno": 31,
+    "positional": [
+      {
+        "name": "count",
+        "has_default": false
+      },
+      {
+        "name": "max_count",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/risk_gate.py:get_severity",
+    "name": "get_severity",
+    "file": "src/impactguard/risk_gate.py",
+    "lineno": 19,
+    "end_lineno": 24,
+    "positional": [
+      {
+        "name": "change_type",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/risk_gate.py:main",
+    "name": "main",
+    "file": "src/impactguard/risk_gate.py",
+    "lineno": 126,
+    "end_lineno": 154,
+    "positional": [
+      {
+        "name": "diff_path",
+        "has_default": true
+      },
+      {
+        "name": "runtime_path",
+        "has_default": true
+      },
+      {
+        "name": "output_path",
+        "has_default": true
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/risk_gate.py:run",
+    "name": "run",
+    "file": "src/impactguard/risk_gate.py",
+    "lineno": 58,
+    "end_lineno": 123,
+    "positional": [
+      {
+        "name": "diff_path",
+        "has_default": false
+      },
+      {
+        "name": "runtime_path",
+        "has_default": false
+      },
+      {
+        "name": "output_path",
+        "has_default": true
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/risk_model.py:classify",
+    "name": "classify",
+    "file": "src/impactguard/risk_model.py",
+    "lineno": 35,
+    "end_lineno": 50,
+    "positional": [
+      {
+        "name": "severity",
+        "has_default": false
+      },
+      {
+        "name": "count",
+        "has_default": false
+      },
+      {
+        "name": "max_count",
+        "has_default": false
+      },
+      {
+        "name": "samples",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/risk_model.py:compute_risk",
+    "name": "compute_risk",
+    "file": "src/impactguard/risk_model.py",
+    "lineno": 53,
+    "end_lineno": 54,
+    "positional": [
+      {
+        "name": "severity",
+        "has_default": false
+      },
+      {
+        "name": "exposure_val",
+        "has_default": false
+      },
+      {
+        "name": "confidence_val",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/risk_model.py:confidence",
+    "name": "confidence",
+    "file": "src/impactguard/risk_model.py",
+    "lineno": 31,
+    "end_lineno": 32,
+    "positional": [
+      {
+        "name": "samples",
+        "has_default": false
+      },
+      {
+        "name": "threshold",
+        "has_default": true
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/risk_model.py:exposure",
+    "name": "exposure",
+    "file": "src/impactguard/risk_model.py",
+    "lineno": 25,
+    "end_lineno": 28,
+    "positional": [
+      {
+        "name": "count",
+        "has_default": false
+      },
+      {
+        "name": "max_count",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/risk_model.py:get_severity",
+    "name": "get_severity",
+    "file": "src/impactguard/risk_model.py",
+    "lineno": 18,
+    "end_lineno": 22,
+    "positional": [
+      {
+        "name": "change_type",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/runtime_impact.py:load_funcs",
+    "name": "load_funcs",
+    "file": "src/impactguard/runtime_impact.py",
+    "lineno": 6,
+    "end_lineno": 8,
+    "positional": [
+      {
+        "name": "path",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/runtime_impact.py:required_positional",
+    "name": "required_positional",
+    "file": "src/impactguard/runtime_impact.py",
+    "lineno": 11,
+    "end_lineno": 12,
+    "positional": [
+      {
+        "name": "f",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/runtime_impact.py:total_positional",
+    "name": "total_positional",
+    "file": "src/impactguard/runtime_impact.py",
+    "lineno": 15,
+    "end_lineno": 16,
+    "positional": [
+      {
+        "name": "f",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/suggest_fixes.py:enrich_with_fixes",
+    "name": "enrich_with_fixes",
+    "file": "src/impactguard/suggest_fixes.py",
+    "lineno": 38,
+    "end_lineno": 53,
+    "positional": [
+      {
+        "name": "report_item",
+        "has_default": false
+      },
+      {
+        "name": "_issues",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/suggest_fixes.py:get_line",
+    "name": "get_line",
+    "file": "src/impactguard/suggest_fixes.py",
+    "lineno": 28,
+    "end_lineno": 35,
+    "positional": [
+      {
+        "name": "file",
+        "has_default": false
+      },
+      {
+        "name": "lineno",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/suggest_fixes.py:suggest",
+    "name": "suggest",
+    "file": "src/impactguard/suggest_fixes.py",
+    "lineno": 4,
+    "end_lineno": 25,
+    "positional": [
+      {
+        "name": "func",
+        "has_default": false
+      },
+      {
+        "name": "issues",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/trace_calls.py:dump",
+    "name": "dump",
+    "file": "src/impactguard/trace_calls.py",
+    "lineno": 31,
+    "end_lineno": 42,
+    "positional": [
+      {
+        "name": "path",
+        "has_default": true
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/trace_calls.py:install_tracer",
+    "name": "install_tracer",
+    "file": "src/impactguard/trace_calls.py",
+    "lineno": 45,
+    "end_lineno": 55,
+    "positional": [
+      {
+        "name": "module",
+        "has_default": false
+      },
+      {
+        "name": "prefix",
+        "has_default": true
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/trace_calls.py:trace",
+    "name": "trace",
+    "file": "src/impactguard/trace_calls.py",
+    "lineno": 12,
+    "end_lineno": 28,
+    "positional": [
+      {
+        "name": "func",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/trace_calls.py:wrapper",
+    "name": "wrapper",
+    "file": "src/impactguard/trace_calls.py",
+    "lineno": 16,
+    "end_lineno": 26,
+    "positional": [],
+    "kwonly": [],
+    "vararg": true,
+    "kwarg": true
+  },
+  {
+    "fqname": "src/impactguard/trace_calls_prod.py:flush",
+    "name": "flush",
+    "file": "src/impactguard/trace_calls_prod.py",
+    "lineno": 44,
+    "end_lineno": 50,
+    "positional": [
+      {
+        "name": "path",
+        "has_default": true
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/trace_calls_prod.py:install_tracer",
+    "name": "install_tracer",
+    "file": "src/impactguard/trace_calls_prod.py",
+    "lineno": 53,
+    "end_lineno": 63,
+    "positional": [
+      {
+        "name": "module",
+        "has_default": false
+      },
+      {
+        "name": "prefix",
+        "has_default": true
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/trace_calls_prod.py:should_sample",
+    "name": "should_sample",
+    "file": "src/impactguard/trace_calls_prod.py",
+    "lineno": 16,
+    "end_lineno": 17,
+    "positional": [],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/trace_calls_prod.py:trace",
+    "name": "trace",
+    "file": "src/impactguard/trace_calls_prod.py",
+    "lineno": 20,
+    "end_lineno": 41,
+    "positional": [
+      {
+        "name": "func",
+        "has_default": false
+      }
+    ],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false
+  },
+  {
+    "fqname": "src/impactguard/trace_calls_prod.py:wrapper",
+    "name": "wrapper",
+    "file": "src/impactguard/trace_calls_prod.py",
+    "lineno": 24,
+    "end_lineno": 39,
+    "positional": [],
+    "kwonly": [],
+    "vararg": true,
+    "kwarg": true
+  }
+]
