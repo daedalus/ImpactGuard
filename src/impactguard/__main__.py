@@ -61,12 +61,9 @@ def cmd_risk(args: argparse.Namespace) -> int:
 
 def cmd_report(args: argparse.Namespace) -> int:
     """Generate HTML report from risk JSON."""
-    from .generate_report import generate_html
+    from .generate_report import main as report_main
 
-    html = generate_html(args.report)
-    with open(args.output, "w") as f:
-        f.write(html)
-    print(f"Report written to {args.output}")
+    report_main(args.report, args.output)
     return 0
 
 

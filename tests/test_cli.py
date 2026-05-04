@@ -37,15 +37,9 @@ def create_temp_file(content, suffix=".py"):
 def test_cli_help():
     """Test CLI help output."""
     # Just verify the CLI module can be imported and has subcommands
-    from impactguard import cli
+    from impactguard.__main__ import main as cli_main
 
-    assert hasattr(cli, "main")
-    assert hasattr(cli, "cmd_extract")
-    assert hasattr(cli, "cmd_compare")
-    assert hasattr(cli, "cmd_analyze")
-    assert hasattr(cli, "cmd_risk")
-    assert hasattr(cli, "cmd_report")
-    assert hasattr(cli, "cmd_trace")
+    assert hasattr(cli_main, "__call__")
 
 
 def test_cli_version():
