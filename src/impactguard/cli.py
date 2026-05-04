@@ -198,6 +198,13 @@ def main() -> int:
     check_parser.add_argument("output", nargs="?", default="impact_report.html", help="Output HTML report")
     check_parser.set_defaults(func=cmd_check)
 
+    # Make 'check' the default if no subcommand provided but args look like paths
+    if len(sys.argv) > 1 and sys.argv[1] not in [
+        "extract", "compare", "analyze", "risk", "report", "trace", "check"
+    ]:
+        # Assume pipeline mode: impactguard old/ new/ [runtime] [output]
+        sys.argv.insert(1, "check")
+
     args = parser.parse_args()
 
     if not args.command:

@@ -7,6 +7,7 @@
 
 ## Features
 
+- **Pipeline orchestrator** — connects all components in one unified workflow
 - **AST-based signature extraction** — handles `async def`, decorators, type hints, `*args`, `**kwargs`
 - **Semantic API diff** — classifies changes as breaking vs non-breaking
 - **Call-site extraction** — finds all function/method calls in your codebase
@@ -17,6 +18,23 @@
 - **HTML reporting** — generates static HTML reports from risk analysis
 - **Patch suggestions** — provides fix suggestions with confidence scoring
 - **CST-based patches** — preserves source formatting with libcst
+- **Configuration system** — `impactguard.toml` for thresholds and settings
+
+## Quick Start
+
+```bash
+# Install
+pip install impactguard
+
+# Compare two versions of your code (default pipeline mode)
+impactguard old_version/ new_version/
+
+# Or use Python API
+from impactguard import run_pipeline, quick_check
+
+result = run_pipeline("old/", "new/")
+print(f"Breaking changes: {len(result['comparison']['breaking'])}")
+```
 
 ## Install
 
@@ -26,6 +44,28 @@ pip install impactguard
 
 ## Usage
 
+**Python API (recommended):**
+```python
+from impactguard import run_pipeline, quick_check, ImpactGuard
+
+# Full pipeline - extract, compare, analyze, risk, report
+result = run_pipeline(
+    old_path="src/",
+    new_path="src/",
+    runtime_path="runtime.json",  # optional
+    output_path="report.html"      # optional
+)
+
+# Quick comparison only (extract + compare)
+changes = quick_check("old/", "new/")
+print(f"Breaking: {len(changes['comparison']['breaking'])}")
+
+# Use ImpactGuard class for more control
+guard = ImpactGuard()
+report = guard.check("old/", "new/", output="report.html")
+```
+
+**Individual components (advanced):**
 ```python
 from impactguard import extract, compare, analyze_impact
 
@@ -42,28 +82,33 @@ issues = analyze_impact("signatures.json", "calls.json", "runtime.json")
 
 ## CLI
 
+**Pipeline mode (default):**
 ```bash
-# Extract function signatures
+# Simplest usage - just provide old and new paths
+impactguard old_version/ new_version/
+impactguard old_version/ new_version/ runtime.json -o report.html
+
+# Using 'check' subcommand (equivalent, backwards compatible)
+impactguard check old_version/ new_version/
+```
+
+**Individual commands (advanced):**
+```bash
 impactguard extract file1.py file2.py
-
-# Compare signature snapshots
-impactguard compare old_sigs.json new_sigs.json -o diff.json
-
-# Analyze impact
-impactguard analyze signatures.json calls.json [runtime.json]
-
-# Run risk analysis
+impactguard compare old_sigs.json new_sigs.json
+impactguard analyze signatures.json calls.json runtime.json
 impactguard risk diff.txt runtime.json output.json
-
-# Generate HTML report
 impactguard report risk.json output.html
-
-# Runtime tracing
 impactguard trace install mypackage
 impactguard trace dump runtime.json
 ```
 
 ## API
+
+### Pipeline (Recommended)
+- `run_pipeline(old_path, new_path, runtime_path, output_path)` — Run full pipeline
+- `quick_check(old_path, new_path)` — Quick extract + compare
+- `ImpactGuard` class — Full control with `check()`, `extract()`, `compare()` methods
 
 ### Signature Extraction
 - `extract(files)` — Extract function signatures from Python files
