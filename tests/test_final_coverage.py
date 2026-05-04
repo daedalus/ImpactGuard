@@ -6,29 +6,28 @@ from tempfile import mkdtemp
 
 def test_suggest_fixes_with_cst_mock(tmp_path):
     """Test suggest_fixes with cst_patch mocked."""
-    from impactguard.suggest_fixes import suggest, enrich_with_fixes
+    from impactguard.suggest_fixes import suggest
 
-    # Mock cst_patch to be available
-    mock_patch = MagicMock(return_value=("patched_code", None))
-    
-    with patch.dict('sys.modules', {'impactguard.cst_patch': MagicMock()}):
-        with patch('impactguard.suggest_fixes.cst_patch', 
-                     available=True, 
-                     patch_function=MagicMock(return_value=("patched", None))):
-            
-            item = {
-                "fqname": "test.py:foo",
-                "change": "OPTIONAL POSITIONAL ADDED",
-                "file": str(tmp_path / "test.py"),
-                "lineno": 1,
-            }
-            
-            # Create the source file
-            source_file = tmp_path / "test.py"
-            source_file.write_text("def foo(a): pass\n")
-            
-            result = suggest(item, [item])
-            assert isinstance(result, list)
+    # Mock the import of cst_patch
+    import sys
+    original_import = __builtins__.__import__
+
+    def mock_import(name, *args, **kwargs):
+        if name == "cst" or name.startswith("cst."):
+            raise ImportError("cst not available")
+        return original_import(name, *args, **kwargs)
+
+    __builtins__.__import__ = mock_import
+
+    try:
+        item = {
+            "fqname": "test.py:foo",
+            "change": "OPTIONAL POSITIONAL ADDED",
+        }
+        result = suggest(item, [item])
+        assert isinstance(result, list)
+    finally:
+        __builtins__.__import__ = original_import
 
 
 def test_suggest_fixes_without_cst(tmp_path):
