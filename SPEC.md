@@ -17,13 +17,15 @@ ImpactGuard is a lightweight API impact analyzer for Python projects. It tracks 
 - Patch confidence scoring with target certainty, structural safety, semantic risk, and complexity penalty
 - CST-based patch generation that preserves source formatting
 - CLI interface with subcommands for all major operations
-- Post-commit hook for automatic signature tracking
+- **Class context in signatures** (ClassName.method format)
+- **Automatic changelog generation** from signature diffs
+- **Post-commit hook for automatic signature tracking**
+- **CI integration for enforcement**
 
 ### Out of Scope
 - Full type inference engine (relies on annotations and simple constructor inference)
 - Dynamic dispatch resolution
 - Higher-order function analysis
-- Complete class context in signatures (currently flat function list)
 - Runtime tracing of production code outside test runs
 
 ## Public API / Interface
@@ -38,8 +40,8 @@ Extract function signatures from Python files using AST parsing.
 
 **Returns:**
 List of signature dictionaries with keys:
-- `fqname`: Fully qualified name (`file:function`)
-- `name`: Function name
+- `fqname`: Fully qualified name (`file:function` or `file:ClassName.method`)
+- `name`: Function name (or `ClassName.method` for methods)
 - `file`: Source file path
 - `lineno`: Starting line number
 - `end_lineno`: Ending line number
@@ -47,6 +49,7 @@ List of signature dictionaries with keys:
 - `kwonly`: List of keyword-only arg dicts
 - `vararg`: Boolean indicating `*args` presence
 - `kwarg`: Boolean indicating `**kwargs` presence
+- `class_name`: Class name if function is a method (None for top-level functions)
 
 ---
 
@@ -686,6 +689,15 @@ Install git hooks for ImpactGuard.
 - Pre-commit hook: Extracts signatures from staged Python files
 - Post-commit hook: Updates `.signatures.txt` after commit
 
+#### `impactguard generate-changelog [--old-files file1.py file2.py] [--new-files file3.py file4.py] [--old-ref REF] [--new-ref REF] [output]`
+Generate changelog from signature diffs.
+- `--old-files`: Old Python files (alternative to --old-ref)
+- `--new-files`: New Python files (alternative to --new-ref)
+- `--old-ref`: Old git reference (commit, branch, tag)
+- `--new-ref`: New git reference (commit, branch, tag)
+- `output`: Output file for changelog (default: stdout)
+- Generates markdown changelog with sections: Added, Changed, Removed, Breaking Changes
+
 ---
 
 ### Convenience Functions (in `__init__.py`)
@@ -718,7 +730,20 @@ Wrapper for `impact_analysis.analyze()`.
     ],
     "kwonly": [],
     "vararg": false,
-    "kwarg": true
+    "kwarg": true,
+    "class_name": null
+  },
+  {
+    "fqname": "src/module.py:ClassName.method_name",
+    "name": "ClassName.method_name",
+    "file": "src/module.py",
+    "lineno": 20,
+    "end_lineno": 25,
+    "positional": [...],
+    "kwonly": [],
+    "vararg": false,
+    "kwarg": false,
+    "class_name": "ClassName"
   }
 ]
 ```
@@ -765,17 +790,17 @@ Wrapper for `impact_analysis.analyze()`.
 ---
 
 ## Edge Cases
-
 1. **Empty input files list**: `extract([])` returns empty list
 2. **Syntax errors in source**: Files with parse errors are silently skipped
 3. **Missing JSON files**: `load()` and `compare()` should handle missing files gracefully
 4. **Empty signature snapshots**: Comparison should handle empty old or new snapshots
-5. **Zero runtime samples**: `confidence(0)` returns 0.0, `exposure(0, N)` returns 0.0
+5. **Zero runtime samples**: `confidence(0)` returns `0.0`, `exposure(0, N)` returns `0.0`
 6. **Single-element input**: Functions with no arguments, single call site
 7. **Large input**: Projects with thousands of functions (must handle efficiently)
 8. **Unicode in source**: Python files with non-ASCII characters
 9. **Nested functions**: Inner functions are included with their names (no class/function context)
-10. **Files with only classes**: No functions to extract (returns empty list)
+10. **Class methods**: Now include class context in `fqname` (`ClassName.method`) and `class_name` field
+11. **Files with only classes**: No functions to extract (returns empty list)
 
 ---
 
