@@ -45,17 +45,3 @@ def extract(path: Path) -> list[dict[str, Any]]:
     visitor = CallVisitor(str(path))
     visitor.visit(tree)
     return visitor.calls
-
-
-def main() -> None:
-    files = sys.argv[1:]
-    all_calls: list[dict[str, Any]] = []
-
-    for f in files:
-        all_calls.extend(extract(Path(f)))
-
-    print(json.dumps(all_calls, indent=2))
-
-
-if __name__ == "__main__":
-    main()

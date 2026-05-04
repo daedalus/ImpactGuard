@@ -79,13 +79,3 @@ def main(report_path: str, output_path: str | None = None) -> None:
         f.write(html)
 
     print(f"Report written to {output_path}")
-
-
-if __name__ == "__main__":
-    import sys
-
-    if len(sys.argv) > 1:
-        main(sys.argv[1])
-    else:
-        print("Usage: python generate_report.py <report.json> [output.html]")
-        sys.exit(1)

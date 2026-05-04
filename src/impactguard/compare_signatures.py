@@ -94,25 +94,3 @@ def compare(old_path: str, new_path: str) -> dict[str, list[str]]:  # noqa: MC00
             breaking.append(f"**kwargs REMOVED: {k}")
 
     return {"breaking": sorted(set(breaking)), "nonbreaking": sorted(set(nonbreaking))}
-
-
-def main() -> None:
-    """CLI entry point for compare command."""
-    if len(sys.argv) < 3:
-        print("Usage: python compare_signatures.py <old.json> <new.json>")
-        sys.exit(1)
-
-    result = compare(sys.argv[1], sys.argv[2])
-
-    print("=== BREAKING ===")
-    print("\n".join(result["breaking"]) or "None")
-
-    print("\n=== NON-BREAKING ===")
-    print("\n".join(result["nonbreaking"]) or "None")
-
-    if result["breaking"]:
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()

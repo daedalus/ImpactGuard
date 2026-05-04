@@ -61,13 +61,3 @@ def extract(files: list[str]) -> list[dict[str, Any]]:
     # stable ordering
     all_funcs.sort(key=lambda x: x["fqname"])
     return all_funcs
-
-
-def main() -> None:
-    files = sys.argv[1:]
-    all_funcs = extract(files)
-    print(json.dumps(all_funcs, indent=2))
-
-
-if __name__ == "__main__":
-    main()
