@@ -1,4 +1,4 @@
-**ImpactGuard** — Lightweight API impact analyzer for Python projects.
+# **ImpactGuard** — Lightweight API impact analyzer for Python projects
 
 <img src="logo.png" width="300px">
 
@@ -6,31 +6,237 @@
 [![Python](https://img.shields.io/pypi/pyversions/impactguard.svg)](https://pypi.org/project/impactguard/)
 [![Coverage](https://codecov.io/gh/daedalus/ImpactGuard/branch/main/graph/badge.svg)](https://codecov.io/gh/daedalus/ImpactGuard)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/daedalus/ImpactGuard)
 
-## Features
+## Overview
 
-- **Pipeline orchestrator** — Unified workflow connecting all components
-- **Git commit comparison** — Compare any two git refs (commits, branches, tags)
-- **AST-based signature extraction** — handles `async def`, decorators, type hints, `*args`, `**kwargs`
-- **Semantic API diff** — classifies changes as breaking vs non-breaking
-- **Call-site extraction** — finds all function/method calls in your codebase
-- **Import-aware resolution** — resolves `from x import y`, aliases, and basic class context
-- **Type-informed analysis** — uses type annotations and constructor inference
-- **Runtime tracing** — optionally records actual calls during test runs
-- **Risk assessment** — computes risk as S × E × C (severity × exposure × confidence)
-- **HTML reporting** — generates static HTML reports from risk analysis
-- **Patch suggestions** — provides fix suggestions with confidence scoring
-- **CST-based patches** — preserves source formatting with libcst
-- **Configuration system** — `impactguard.toml` for thresholds and settings
-- **Self-validating** — Successfully tested on its own codebase (dogfooding)
+ImpactGuard is a lightweight API impact analyzer for Python projects designed to maintain API stability by tracking function signatures across commits, detecting breaking changes, and analyzing call-site impact using both static and runtime techniques.
+
+It provides a quantitative risk framework to help developers understand the consequences of code changes before they are merged.
+
+### Core Capabilities
+
+- **AST-based Extraction**: Automatically extracts function signatures, including `async def`, decorators, and type hints
+- **Semantic API Diffing**: Classifies changes into a taxonomy of breaking (e.g., removing positional arguments) vs. non-breaking (e.g., adding optional keyword-only arguments)
+- **Impact Analysis**: Correlates signature changes with static call-site extraction and optional runtime tracing to identify affected downstream code
+- **Risk Assessment**: Quantifies the danger of a change using the **S × E × C** (Severity × Exposure × Confidence) model
+- **Automated Remediation**: Generates format-preserving patches using LibCST to fix broken call sites
+
+### System Components
+
+| Component | Module | Description |
+|-----------|--------|-------------|
+| Signature Extraction | `extract_signatures.py` | AST-based extraction of function metadata |
+| Signature Comparison | `compare_signatures.py` | Semantic diffing of API changes |
+| Call-Site Analysis | `extract_calls.py`, `analyze_module.py` | Static call-site extraction and resolution |
+| Impact Analysis | `impact_analysis.py` | Correlates changes with call sites |
+| Risk Model | `risk_model.py` | S × E × C risk scoring |
+| Risk Gate | `risk_gate.py`, `enforce_gate.py` | CI enforcement engine |
+| Runtime Tracing | `trace_calls.py`, `trace_calls_prod.py` | Development and production tracers |
+| Patch Generation | `cst_patch.py`, `patch_generator.py` | Format-preserving automated fixes |
+| Reporting | `generate_report.py` | Static HTML report generation |
+| CLI | `cli.py` | Command-line interface |
+
+---
 
 ## Quick Start
 
+### Installation
+
+**Prerequisites:**
+- Python 3.11 or higher
+- Dependencies: `libcst` for concrete syntax tree manipulations
+
 ```bash
-# Install
+# Install from PyPI
 pip install impactguard
 
-# Compare two versions of your code (default pipeline mode)
+# Or install for development
+git clone https://github.com/daedalus/ImpactGuard.git
+cd ImpactGuard
+pip install -e ".[test]"
+```
+
+### Project Layout
+
+| Path | Description |
+|------|-------------|
+| `src/impactguard/` | Core package containing the analysis logic, risk model, and CLI |
+| `extract_signatures.py` | Utility for extracting function metadata into JSON/Text |
+| `extract_calls.py` | AST-based call site extractor |
+| `impact_analysis.py` | Logic for correlating signatures with call sites |
+| `risk_gate.py` | The CI-ready enforcement engine |
+| `trace_calls.py` | Runtime instrumentation for capturing live execution data |
+| `Makefile` | Task runner for the standard analysis pipeline |
+
+### First Analysis Run
+
+The full pipeline can be executed using the provided `Makefile`:
+
+```bash
+# 1. Extract signatures and calls
+make signatures
+make calls
+
+# 2. Capture runtime exposure (optional)
+make trace
+
+# 3. Compare and analyze risk
+make risk
+
+# 4. Generate the report
+make report
+```
+
+Or use the Python API:
+
+```python
+from impactguard import run_pipeline
+
+result = run_pipeline(
+    old_path="old_version/",
+    new_path="new_version/",
+    runtime_path="runtime.json",  # optional
+    output_path="report.html"      # optional
+)
+print(f"Breaking changes: {len(result['comparison']['breaking'])}")
+```
+
+---
+
+## Core Analysis Pipeline
+
+ImpactGuard operates as a **pipe-and-filter architecture** where artifacts from one stage inform the next.
+
+### 1. Signature Extraction
+
+The first stage involves deep inspection of Python source files using the `ast` module. The `extract` function walks the Abstract Syntax Tree to identify all function and method definitions. It generates a "fingerprint" for every callable, including its Fully Qualified Name (FQN), parameters, defaults, and decorators.
+
+- **Key Component:** `extract_signatures.py`
+- **Output:** `.signatures.json` and `.signatures.txt`
+- **Role:** Establishes the baseline of the API surface
+
+### 2. Signature Comparison
+
+Once two snapshots of a codebase exist (e.g., `HEAD` vs `main`), the `compare` utility performs a semantic diff. Unlike a standard text-based diff, this stage understands Python's parameter rules. It categorizes changes into **Breaking** (e.g., removing a parameter, reordering positional arguments) and **Non-breaking** (e.g., adding an optional keyword argument).
+
+- **Key Component:** `compare_signatures.py`
+- **Output:** A structured list of semantic changes
+- **Role:** Identifies exactly how the API contract has evolved
+
+### 3. Call-Site and Module Analysis
+
+To understand the "blast radius" of a change, ImpactGuard must find where the modified functions are actually used. This is achieved through two complementary approaches:
+
+1. **Lightweight Extraction:** Rapidly finding call nodes in the AST
+2. **Deep Module Analysis:** Tracking imports and assignments to resolve method calls to their actual definitions (FQN resolution)
+
+- **Key Components:** `extract_calls.py` and `analyze_module.py`
+- **Output:** `.calls.json`
+- **Role:** Maps the internal dependency graph of the codebase
+
+### 4. Impact Analysis
+
+The final stage of the core pipeline, `analyze`, correlates the detected API changes with the discovered call sites. It validates whether the arguments passed at a specific call site still satisfy the requirements of the new function signature. If runtime data is available, it is integrated here to provide context on how often a specific impacted path is actually executed.
+
+- **Key Component:** `impact_analysis.py`
+- **Input:** Signature diffs, call-site data, and optional runtime traces
+- **Role:** Pinpoints exactly which lines of code are broken by a change
+
+---
+
+## Risk Model and Enforcement
+
+The **Risk Model and Enforcement** subsystem is the decision-making engine of ImpactGuard. It transforms raw signature changes and runtime telemetry into actionable risk levels (`HIGH`, `MEDIUM`, `LOW`, or `UNKNOWN`). These levels are then used to automatically block or permit CI/CD pipelines based on the potential impact on consumers.
+
+### The S × E × C Risk Framework
+
+The core logic resides in `risk_model.py`. It quantifies risk by evaluating three distinct dimensions:
+
+| Component | Code Entity | Description |
+|-----------|-------------|-------------|
+| **Severity (S)** | `get_severity()` | Score (0.1 to 1.0) based on change type (e.g., `REMOVED` = 1.0, `ADDED` = 0.1) |
+| **Exposure (E)** | `exposure()` | Logarithmic scale mapping call counts to a 0.0-1.0 range |
+| **Confidence (C)** | `confidence()` | Measures data reliability based on sample size against a threshold |
+| **Classification** | `classify()` | Uses a decision tree to assign the final risk label |
+
+**Exposure Calculation:** `min(1.0, log(1 + count) / log(1 + max_count))`
+
+### CI Enforcement
+
+The risk assessment is operationalized through `risk_gate.py` and `enforce_gate.py`:
+
+1. **Risk Gate Execution**: `risk_gate.py` contains the `run()` function which parses the diff and runtime data to generate a comprehensive `report.json`
+2. **Gate Enforcement**: `enforce_gate.py` consumes this report:
+   - If any item is flagged as `HIGH` risk → exits with code `1` (blocks build)
+   - If `UNKNOWN` risks are detected → issues a warning but allows build (exit code `0`)
+
+---
+
+## Runtime Tracing
+
+The **Runtime Tracing** subsystem provides dynamic analysis capabilities to complement ImpactGuard's static analysis pipeline. By observing actual execution patterns, the system captures "Exposure" data which is used by the `risk_model.py` to weight the impact of breaking changes.
+
+### Development Tracer (`trace_calls.py`)
+
+Designed for test suites and local execution where performance is less critical than data accuracy. It uses an `@trace` decorator to capture not just call counts, but also signature metadata like argument counts and keyword argument names.
+
+- **Key Mechanism:** Uses `inspect.signature(func).bind_partial(*args, **kwargs)` to validate and record invocations
+- **Integration:** Commonly used via `install_tracer()` in test fixtures
+
+### Production Sampler (`trace_calls_prod.py`)
+
+Optimized for minimal overhead in live environments. It employs a probabilistic sampling strategy (default 1%) to capture a representative subset of traffic.
+
+- **Sampling Logic:** Only records data if `random.random() < SAMPLE_RATE`
+- **Background Flushing:** Periodically flushes captured counts to disk (default every 10 seconds)
+
+| Feature | Development Tracer | Production Sampler |
+|---------|-------------------|-------------------|
+| **Primary Goal** | Deep visibility / Test coverage | Low overhead monitoring |
+| **Data Captured** | Counts + Arg structure | Call Counts only |
+| **Sampling** | 100% (No sampling) | 1% (Adjustable) |
+| **Storage Trigger** | Manual `dump()` call | Periodic `flush()` (10s interval) |
+
+---
+
+## Patch Generation and Remediation
+
+The Patch Generation subsystem transforms identified impact risks into actionable code fixes. It provides a multi-tiered approach to remediation, ranging from high-level suggestions to precise, format-preserving code transformations using Concrete Syntax Trees (CST).
+
+### Patch Suggestion and Diff-Based Patching
+
+The system first generates high-level suggestions based on the nature of the breaking change. For simple scenarios, it employs a naive line-based patching strategy using Python's `difflib`.
+
+- **Logic Location**: `suggest_fixes.py` analyzes issues to recommend actions
+- **Naive Patching**: `patch_generator.py` uses `difflib.unified_diff` for simple string replacement
+
+### CST-Based Patching (`cst_patch.py`)
+
+To handle complex code structures, ImpactGuard utilizes `LibCST`. Unlike standard AST, a Concrete Syntax Tree preserves formatting, comments, and whitespace.
+
+- **Transformers**: Uses `AddDefaultTransformer` to modify function signatures and `FixCallTransformer` to inject missing arguments into call sites
+- **Safety**: Gracefully falls back to simpler methods if `libcst` is not installed
+
+### Patch Confidence Scoring
+
+Every generated patch is assigned a confidence score (0.0 to 1.0) to determine if it can be auto-applied:
+
+1. **Target Certainty (T)**: How sure we are that we found the correct line
+2. **Structural Safety (S)**: Is the change a simple default addition or a risky positional reorder?
+3. **Semantic Risk (R)**: Does the change affect required parameters?
+4. **Complexity Penalty (C)**: Is the code heavily decorated or nested?
+
+---
+
+## CLI Reference
+
+The `impactguard` command-line tool is the primary entry point for developers and automation scripts.
+
+### Pipeline Mode (Recommended)
+
+```bash
+# Compare two versions of your code
 impactguard old_version/ new_version/
 
 # Compare two git commits directly
@@ -38,34 +244,10 @@ impactguard check-commits HEAD~1 HEAD
 
 # Compare specific files between commits
 impactguard check-commits HEAD~1 HEAD --files src/module.py src/utils.py
-
-# Or use Python API
-from impactguard import run_pipeline, quick_check, run_pipeline_git
-
-result = run_pipeline("old/", "new/")
-print(f"Breaking changes: {len(result['comparison']['breaking'])}")
-
-# Compare git commits via API
-result = run_pipeline_git("HEAD~1", "HEAD", files=["src/module.py"])
 ```
 
-## CLI
+### Individual Commands (Advanced)
 
-**Pipeline mode (default):**
-```bash
-# Simplest usage - just provide old and new paths
-impactguard old_version/ new_version/
-impactguard old_version/ new_version/ runtime.json -o report.html
-
-# Compare two git commits
-impactguard check-commits HEAD~1 HEAD
-impactguard check-commits main feature-branch --files src/core.py
-
-# Using 'check' subcommand (equivalent, backwards compatible)
-impactguard check old_version/ new_version/
-```
-
-**Individual commands (advanced):**
 ```bash
 impactguard extract file1.py file2.py
 impactguard compare old_sigs.json new_sigs.json
@@ -77,7 +259,8 @@ impactguard trace dump runtime.json
 impactguard install-hooks . --both  # Install git hooks
 ```
 
-**Install Git Hooks:**
+### Git Hooks Installation
+
 ```bash
 # Install both pre-commit and post-commit hooks
 impactguard install-hooks .
@@ -87,14 +270,16 @@ impactguard install-hooks . --pre
 
 # Install only post-commit hook (updates .signatures.txt)
 impactguard install-hooks . --post
-
-# Install to a specific repo
-impactguard install-hooks /path/to/repo --both
 ```
 
-## Python API
+---
 
-**Pipeline (recommended):**
+## Python Library API
+
+The `impactguard` package exports its core functionality for programmatic integration.
+
+### Pipeline (Recommended)
+
 ```python
 from impactguard import run_pipeline, quick_check, run_pipeline_git, ImpactGuard
 
@@ -102,8 +287,8 @@ from impactguard import run_pipeline, quick_check, run_pipeline_git, ImpactGuard
 result = run_pipeline(
     old_path="src/",
     new_path="src/",
-    runtime_path="runtime.json",  # optional
-    output_path="report.html"      # optional
+    runtime_path="runtime.json",
+    output_path="report.html"
 )
 
 # Quick comparison only (extract + compare)
@@ -114,7 +299,7 @@ print(f"Breaking: {len(changes['comparison']['breaking'])}")
 result = run_pipeline_git(
     old_ref="HEAD~1",
     new_ref="HEAD",
-    files=["src/module.py"],  # optional: specific files only
+    files=["src/module.py"]
 )
 
 # Use ImpactGuard class for more control
@@ -122,7 +307,8 @@ guard = ImpactGuard()
 report = guard.check("old/", "new/", output="report.html")
 ```
 
-**Individual components (advanced):**
+### Individual Components (Advanced)
+
 ```python
 from impactguard import extract, compare, analyze_impact
 
@@ -137,56 +323,112 @@ print(f"Breaking changes: {len(result['breaking'])}")
 issues = analyze_impact("signatures.json", "calls.json", "runtime.json")
 ```
 
-## API Reference
+---
 
-### Pipeline (Recommended)
-- `run_pipeline(old_path, new_path, runtime_path, output_path)` — Run full pipeline
-- `quick_check(old_path, new_path)` — Quick extract + compare
-- `run_pipeline_git(old_ref, new_ref, files, runtime_path, output_path)` — Compare two git commits
-- `ImpactGuard` class — Full control with `check()`, `analyze()`, `compare()` methods
+## Git Hooks and Workflow Integration
 
-### Signature Extraction
-- `extract(files)` — Extract function signatures from Python files
-- `serialize_function(node, file)` — Convert AST node to signature dict
+ImpactGuard is designed to be deeply integrated into the standard Git development workflow.
 
-### Comparison
-- `compare(old_path, new_path)` — Compare two signature snapshots
-- `load(path)` — Load signatures from JSON file
+### Post-Commit Hook
 
-### Impact Analysis
-- `analyze(sigs_path, calls_path, runtime_path)` — Analyze impact on call sites
-- `analyze_calls(signatures_file, calls_file, runtime_file)` — Type-aware impact analysis
+This hook ensures that every commit is accompanied by an updated `.signatures.txt` file. It includes a `SKIP_SIGNATURE_HOOK` environment variable check to prevent infinite recursion when the hook itself creates a new commit.
 
-### Risk Model
-- `get_severity(change_type)` — Get severity score for change type
-- `exposure(count, max_count)` — Calculate exposure score
-- `confidence(samples, threshold)` — Calculate confidence score
-- `classify(severity, count, max_count, samples)` — Classify risk level
-- `compute_risk(severity, exposure_val, confidence_val)` — Compute risk score
+### Pre-Push Hook
 
-### Reporting
-- `generate_html(risk_json_path, output_path)` — Generate HTML report
-- `enforce(diff_path, runtime_path, output_path)` — CI gate for risk enforcement
+This acts as the final safety gate. It typically runs `compare_signatures.py` to evaluate the delta between the local branch and `origin/main`. If the risk gate detects high-risk breaking changes without appropriate mitigations, the push is blocked.
+
+### Makefile Targets
+
+| Target | Description | Artifacts |
+|--------|-------------|-----------|
+| `signatures` | Runs `extract_signatures.py` on all tracked `.py` files | `.signatures.txt` |
+| `calls` | Runs `extract_calls.py` to map call sites | `.calls.json` |
+| `analyze` | Performs static impact analysis | (Console Output) |
+| `risk` | Runs `risk_gate.py` using diff and runtime data | `report.json` |
+| `report` | Generates a visual HTML report | `api_report.html` |
+| `compare` | Compares two JSON signature files | (Diff Output) |
+| `check` | Verifies if `.signatures.txt` is in sync | Exit Code 0/1 |
+| `clean` | Removes all intermediate artifacts | (Cleanup) |
+
+---
+
+## CI/CD and Release Infrastructure
+
+### CI Pipeline
+
+The CI pipeline is defined in `.github/workflows/ci.yml` and executes on all pushes and pull requests targeting the `master` branch. It consists of three parallel jobs:
+
+- **Test Matrix:** Executes `pytest` across Python versions 3.11, 3.12, and 3.13
+- **Static Analysis (Linting):** Runs `ruff`, `prospector`, `semgrep`, and `mypy`
+- **Build Verification:** Ensures the package can be successfully built via `twine check`
+
+### Packaging and Release
+
+ImpactGuard uses modern Python packaging standards with `hatchling` as the build backend.
+
+**Dependency Groups:**
+| Group | Purpose | Key Tools |
+|-------|---------|-----------|
+| `dev` | General development | `hatch`, `pip-api` |
+| `test` | Automated testing | `pytest`, `hypothesis` |
+| `lint` | Static analysis | `ruff`, `mypy`, `semgrep` |
+
+**Release Automation:**
+- **Version Management:** Uses `bumpversion` to maintain consistency across `pyproject.toml` and `src/impactguard/__init__.py`
+- **Automated Publishing:** The `pypi-publish.yml` workflow triggers on GitHub Release events to build and publish to PyPI using Trusted Publishers (OIDC)
+
+---
+
+## Testing
+
+The ImpactGuard test suite ensures the reliability of the signature extraction pipeline, the accuracy of the risk model, and the stability of the CLI. The project maintains a strict quality gate, requiring a minimum of 80% code coverage.
+
+### Test Architecture
+
+1. **Unit Tests**: Isolated testing of individual modules (extraction, comparison, patching)
+2. **Integration Tests**: End-to-end CLI flows and public API surface validation
+3. **Coverage Enforcement**: Automated checks to ensure the codebase meets the 80% threshold
+
+### Test Fixtures
+
+| Fixture | Description |
+|---------|-------------|
+| `sample_signature_data` | Returns a list of dictionaries representing serialized function signatures |
+| `sample_signatures_file` | Creates a temporary `.json` file containing signature data |
+| `sample_python_file` | Generates a temporary `.py` file with functions and classes |
+| `runtime_data_file` | Provides a temporary JSON file simulating tracer output |
+
+---
 
 ## How It Works
 
-1. **Signature Extraction** — Parses Python AST to extract function signatures with full structural information (positional args, kwonly args, vararg/kwarg presence, defaults).
+1. **Signature Extraction** — Parses Python AST to extract function signatures with full structural information
+2. **API Diff** — Compares signature snapshots to detect removed functions, added required args, positional reordering, and other breaking changes
+3. **Call-Site Analysis** — Combines signature data with call-site extraction to predict which callers will break
+4. **Runtime Validation** — Instruments functions during test runs to record actual call patterns
+5. **Pipeline Orchestrator** — Connects all components in one unified workflow (`run_pipeline()`)
+6. **Git Integration** — Compare any two git commits directly (`run_pipeline_git()`)
 
-2. **API Diff** — Compares signature snapshots to detect removed functions, added required args, positional reordering, and other breaking changes.
+---
 
-3. **Call-Site Analysis** — Combines signature data with call-site extraction to predict which callers will break.
+## Intermediate Artifacts
 
-4. **Runtime Validation** — Instruments functions during test runs to record actual call patterns, then compares against new signatures.
+The pipeline relies on standardized JSON schemas to pass data between filters:
 
-5. **Pipeline Orchestrator** — Connects all components in one unified workflow (`run_pipeline()`).
+| Artifact | Producer | Consumer | Description |
+|----------|-----------|----------|-------------|
+| `.signatures.json` | `extract_signatures.py` | `compare_signatures.py`, `impact_analysis.py` | Function metadata including arguments, defaults, and line numbers |
+| `.calls.json` | `extract_calls.py` | `impact_analysis.py` | Static call sites mapped by caller and callee |
+| `.runtime_calls.json` | `trace_calls.py` | `impact_analysis.py`, `risk_gate.py` | Frequency and argument data from execution |
+| `report.json` | `risk_gate.py` | `generate_report.py`, `suggest_fixes.py` | Final risk classifications (HIGH/MEDIUM/LOW) |
 
-6. **Git Integration** — Compare any two git commits directly (`run_pipeline_git()`).
+---
 
 ## Self-Testing (Dogfooding)
 
 ImpactGuard has been **tested on itself** to validate its own API changes:
 
-```
+```bash
 # Extract signatures from own codebase
 $ impactguard extract src/impactguard/*.py
 ✓ Extracted 98 function signatures
@@ -203,33 +445,7 @@ $ impactguard check-commits HEAD~5 HEAD
 ✓ Generated HTML report with risk analysis
 ```
 
-## Install
-
-```bash
-pip install impactguard
-```
-
-## Development
-
-```bash
-git clone https://github.com/daedalus/ImpactGuard.git
-cd ImpactGuard
-pip install -e ".[test]"
-
-# run tests
-pytest
-
-# format
-ruff format src/ tests/
-
-# lint
-ruff check src/ tests/
-prospector src/
-semgrep --config=auto --severity=ERROR src/
-
-# type check
-mypy src/
-```
+---
 
 ## Quality Standards
 
@@ -241,6 +457,8 @@ ImpactGuard follows strict quality gates:
 - **Coverage** — ≥80% (target)
 - **Tests** — All passing
 
+---
+
 ## Limitations
 
 - Name collisions across files (uses file:function format)
@@ -248,10 +466,41 @@ ImpactGuard follows strict quality gates:
 - Dynamic dispatch, higher-order functions, and rebinding are not resolved
 - Runtime tracing only captures code paths exercised by tests
 
-## Future Directions
+---
 
-- Include class context (`ClassName.method`)
-- Integrate with CI for enforcement
-- Auto-generate changelogs from signature diffs
-- Connect remaining components (analyze_module.py, patch_confidence.py, etc.)
-- Boost test coverage from ~71% to 80%+
+## Glossary
+
+### Core Concepts
+
+- **Signature**: A structured representation of a Python function's interface, including positional arguments, keyword-only arguments, and variadic arguments
+- **FQName (Fully Qualified Name)**: A unique identifier in `file_path:function_name` format (e.g., `src/auth.py:login`)
+- **Breaking Change**: A modification that prevents existing callers from executing correctly (e.g., `REMOVED`, `REQUIRED_POSITIONAL_ADDED`, `POSITIONAL_REORDER`)
+
+### Risk Framework (S × E × C)
+
+- **Severity (S)**: The technical impact of the change type (0.1 to 1.0)
+- **Exposure (E)**: How often the function is called, calculated logarithmically
+- **Confidence (C)**: The reliability of runtime data based on sample size
+
+### Patching
+
+- **CST (Concrete Syntax Tree)**: Unlike AST, preserves formatting, comments, and whitespace
+- **Patch Confidence**: A score from 0.0 to 1.0 representing the likelihood that an automated fix is correct
+
+---
+
+## Further Documentation
+
+For deeper exploration of specific subsystems, refer to the [DeepWiki documentation](https://deepwiki.com/daedalus/ImpactGuard):
+
+- [Getting Started](https://deepwiki.com/daedalus/ImpactGuard/1.1-getting-started)
+- [Architecture and Data Flow](https://deepwiki.com/daedalus/ImpactGuard/1.2-architecture-and-data-flow)
+- [Core Analysis Pipeline](https://deepwiki.com/daedalus/ImpactGuard/2-core-analysis-pipeline)
+- [Risk Model and Enforcement](https://deepwiki.com/daedalus/ImpactGuard/3-risk-model-and-enforcement)
+- [Runtime Tracing](https://deepwiki.com/daedalus/ImpactGuard/4-runtime-tracing)
+- [Patch Generation and Remediation](https://deepwiki.com/daedalus/ImpactGuard/5-patch-generation-and-remediation)
+- [CLI and Public API](https://deepwiki.com/daedalus/ImpactGuard/6-cli-and-public-api)
+- [Git Hooks and Workflow Integration](https://deepwiki.com/daedalus/ImpactGuard/7-git-hooks-and-workflow-integration)
+- [CI/CD and Release Infrastructure](https://deepwiki.com/daedalus/ImpactGuard/8-cicd-and-release-infrastructure)
+- [Testing](https://deepwiki.com/daedalus/ImpactGuard/9-testing)
+- [Glossary](https://deepwiki.com/daedalus/ImpactGuard/10-glossary)
