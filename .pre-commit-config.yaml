@@ -1,0 +1,33 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.0
+    hooks:
+      - id: ruff-format
+      - id: ruff
+        args: [--fix]
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.14.0
+    hooks:
+      - id: mypy
+        args: [--config-file=pyproject.toml, src/]
+
+  - repo: https://github.com/landscapeio/prospector-pre-commit
+    rev: v1.18.0
+    hooks:
+      - id: prospector
+        args: [--path=src/]
+
+  - repo: https://github.com/semgrep/semgrep
+    rev: v1.161.0
+    hooks:
+      - id: semgrep
+        args: [--config=auto, --severity=ERROR, src/]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
