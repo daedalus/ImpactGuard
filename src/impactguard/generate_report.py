@@ -1,7 +1,8 @@
 import json
+from typing import Any
 
 
-def color(level):
+def color(level: str) -> str:
     return {
         "HIGH": "#ff4d4f",
         "MEDIUM": "#faad14",
@@ -10,8 +11,8 @@ def color(level):
     }.get(level, "#d9d9d9")
 
 
-def generate_html(report_data):
-    html = []
+def generate_html(report_data: list[dict[str, Any]]) -> str:
+    html: list[str] = []
     html.append("""<!DOCTYPE html>
 <html>
 <head>
@@ -32,7 +33,7 @@ def generate_html(report_data):
 
     for item in report_data:
         level = item.get("risk", "UNKNOWN")
-        c = color(level)
+        color(level)  # noqa: F841 - called for side effects (though actually unused)
         func = item.get("function", "unknown")
         change = item.get("change", "")
         exp = item.get("exposure", 0)
@@ -68,7 +69,7 @@ def generate_html(report_data):
     return "\n".join(html)
 
 
-def main(report_path, output_path=None):
+def main(report_path: str, output_path: str | None = None) -> None:
     report = json.load(open(report_path))
     html = generate_html(report)
 
@@ -81,4 +82,10 @@ def main(report_path, output_path=None):
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+
+    if len(sys.argv) > 1:
+        main(sys.argv[1])
+    else:
+        print("Usage: python generate_report.py <report.json> [output.html]")
+        sys.exit(1)

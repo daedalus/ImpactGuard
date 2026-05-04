@@ -1,6 +1,6 @@
 """Tests for suggest_fixes module."""
 
-from impactguard.suggest_fixes import suggest, get_line, enrich_with_fixes
+from impactguard.suggest_fixes import enrich_with_fixes, get_line, suggest
 
 
 def test_suggest():
@@ -16,7 +16,7 @@ def test_get_line():
     """Test get_line function."""
     import tempfile
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
         f.write("line1\nline2\nline3\n")
         fname = f.name
 
@@ -24,6 +24,7 @@ def test_get_line():
     assert "line2" in result or result == ""  # Might return empty on error
 
     import os
+
     os.unlink(fname)
 
 

@@ -2,7 +2,7 @@ import json
 import sys
 
 
-def enforce(report_path):
+def enforce(report_path: str) -> int:
     try:
         report = json.load(open(report_path))
     except Exception:

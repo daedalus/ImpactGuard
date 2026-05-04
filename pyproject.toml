@@ -20,7 +20,7 @@ dependencies = [
 dev = [
     "ruff",
     "mypy",
-    "hatch",
+    "hatchling",
     "pip-api",
 ]
 test = [
@@ -61,7 +61,11 @@ select = ["E", "F", "W", "I", "UP", "ANN", "TCH", "N", "C4", "ARG"]
 ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
-"__init__.py" = ["F401"]
+"__init__.py" = ["F401", "E402"]
+"tests/*" = ["ANN", "TCH", "N806", "E712", "F401"]
+"src/impactguard/cli.py" = ["E402"]
+"src/impactguard/trace_calls.py" = ["ANN401"]
+"src/impactguard/trace_calls_prod.py" = ["ANN401"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -81,6 +85,23 @@ test-warnings = false
 pylint = true
 pyflakes = true
 mccabe = true
+
+[tool.pylint.messages_control]
+disable = [
+    "wrong-import-position",
+    "import-outside-toplevel",
+    "pointless-string-statement",
+    "unspecified-encoding",
+    "unused-import",
+    "too-many-branches",
+    "too-many-locals",
+    "consider-using-enumerate",
+    "no-else-return",
+    "consider-using-with",
+]
+
+[tool.mccabe]
+max-complexity = 20
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -14,7 +14,7 @@ ImpactGuard is a lightweight API impact analyzer for Python projects. It tracks 
 - Runtime call tracing during test execution
 - Risk assessment using S × E × C model (severity × exposure × confidence)
 - HTML report generation from risk analysis
-- Automated patch suggestion with confidence scoring
+- Patch confidence scoring with target certainty, structural safety, semantic risk, and complexity penalty
 - CST-based patch generation that preserves source formatting
 - CLI interface with subcommands for all major operations
 - Post-commit hook for automatic signature tracking
@@ -28,15 +28,10 @@ ImpactGuard is a lightweight API impact analyzer for Python projects. It tracks 
 
 ## Public API / Interface
 
-### Signature Extraction
+### Signature Extraction (`extract_signatures.py`)
 
-#### `extract(files: list[str | Path]) -> list[dict]`
+#### `extract(files: list[str]) -> list[dict[str, Any]]`
 Extract function signatures from Python files using AST parsing.
-
-**Signature:**
-```python
-def extract(files: list) -> list[dict]:
-```
 
 **Args:**
 - `files`: List of Python file paths (strings or Path objects)
@@ -53,26 +48,10 @@ List of signature dictionaries with keys:
 - `vararg`: Boolean indicating `*args` presence
 - `kwarg`: Boolean indicating `**kwargs` presence
 
-**Invariants:**
-- Output is sorted by `fqname` for stable comparison
-- Handles both `def` and `async def`
-- Skips files that fail to parse (with silent continuation)
-
-**Edge Cases:**
-- Empty file list returns empty list
-- Files with syntax errors are skipped
-- Nested functions are included
-- Decorators are ignored (not part of signature)
-
 ---
 
-#### `serialize_function(node: ast.FunctionDef, file: str) -> dict`
+#### `serialize_function(node: ast.FunctionDef | ast.AsyncFunctionDef, file: str) -> dict[str, Any]`
 Convert an AST function node to a signature dictionary.
-
-**Signature:**
-```python
-def serialize_function(node, file: str) -> dict:
-```
 
 **Args:**
 - `node`: AST node (FunctionDef or AsyncFunctionDef)
@@ -83,15 +62,21 @@ Signature dictionary (see `extract` return format)
 
 ---
 
-### Signature Comparison
+### Signature Comparison (`compare_signatures.py`)
 
-#### `compare(old_path: str, new_path: str) -> dict`
+#### `load(path: str) -> dict[str, dict[str, Any]]`
+Load signatures from a JSON file into a dictionary keyed by fqname.
+
+**Args:**
+- `path`: Path to signatures JSON file
+
+**Returns:**
+Dictionary mapping `fqname` to signature dictionary
+
+---
+
+#### `compare(old_path: str, new_path: str) -> dict[str, list[str]]`  # noqa: MC0001
 Compare two signature snapshots and classify changes.
-
-**Signature:**
-```python
-def compare(old_path: str, new_path: str) -> dict:
-```
 
 **Args:**
 - `old_path`: Path to old signatures JSON file
@@ -105,7 +90,7 @@ Dictionary with keys:
 **Breaking Changes Detected:**
 - Function removal
 - Positional argument removal
-- Positional argument reorder/renaming
+- Positional argument reorder/rename
 - Required positional argument addition
 - Required kwonly argument addition
 - `*args` removal
@@ -122,31 +107,54 @@ Dictionary with keys:
 
 ---
 
-#### `load(path: str) -> dict`
-Load signatures from a JSON file into a dictionary keyed by fqname.
+### Impact Analysis (`impact_analysis.py`)
 
-**Signature:**
-```python
-def load(path: str) -> dict:
-```
+#### `load_funcs(path: str) -> dict[str, dict[str, Any]]`
+Load function signatures from JSON file.
 
 **Args:**
-- `path`: Path to signatures JSON file
+- `path`: Path to JSON file
 
 **Returns:**
 Dictionary mapping `fqname` to signature dictionary
 
 ---
 
-### Impact Analysis
+#### `load_calls(path: str) -> list[dict[str, Any]]`
+Load call sites from JSON file.
 
-#### `analyze(sigs_path: str, calls_path: str, runtime_path: str | None = None) -> list[dict]`
+**Args:**
+- `path`: Path to JSON file
+
+**Returns:**
+List of call site dictionaries
+
+---
+
+#### `required_positional(func: dict[str, Any]) -> int`
+Count required positional arguments.
+
+**Args:**
+- `func`: Function signature dictionary
+
+**Returns:**
+Number of required positional arguments
+
+---
+
+#### `total_positional(func: dict[str, Any]) -> int`
+Count total positional arguments.
+
+**Args:**
+- `func`: Function signature dictionary
+
+**Returns:**
+Total number of positional arguments
+
+---
+
+#### `analyze(sigs_path: str, calls_path: str, runtime_path: str | None = None) -> list[dict[str, Any]]`
 Analyze impact of signature changes on call sites.
-
-**Signature:**
-```python
-def analyze(sigs_path: str, calls_path: str, runtime_path: str | None = None) -> list[dict]:
-```
 
 **Args:**
 - `sigs_path`: Path to signatures JSON file
@@ -158,25 +166,45 @@ List of impact issue dictionaries
 
 ---
 
-#### `analyze_calls(signatures_file: str, calls_file: str, runtime_file: str | None = None) -> list[dict]`
-Type-aware impact analysis combining signatures with call-site data.
+### Runtime Impact (`runtime_impact.py`)
 
-**Signature:**
-```python
-def analyze_calls(signatures_file: str, calls_file: str, runtime_file: str | None = None) -> list[dict]:
-```
+#### `load_funcs(path: str) -> dict[str, dict[str, Any]]`
+Load function signatures from JSON file.
+
+**Args:**
+- `path`: Path to JSON file
+
+**Returns:**
+Dictionary mapping `fqname` to signature dictionary
 
 ---
 
-### Risk Model
+#### `required_positional(func: dict[str, Any]) -> int`
+Count required positional arguments.
+
+**Args:**
+- `func`: Function signature dictionary
+
+**Returns:**
+Number of required positional arguments
+
+---
+
+#### `total_positional(func: dict[str, Any]) -> int`
+Count total positional arguments.
+
+**Args:**
+- `func`: Function signature dictionary
+
+**Returns:**
+Total number of positional arguments
+
+---
+
+### Risk Model (`risk_model.py`)
 
 #### `get_severity(change_type: str) -> float`
 Get severity score for a change type.
-
-**Signature:**
-```python
-def get_severity(change_type: str) -> float:
-```
 
 **Args:**
 - `change_type`: String describing the change (e.g., "REMOVED", "REQUIRED POSITIONAL ADDED")
@@ -201,11 +229,6 @@ Severity score between 0.0 and 1.0
 #### `exposure(count: int, max_count: int) -> float`
 Calculate exposure score from call count.
 
-**Signature:**
-```python
-def exposure(count: int, max_count: int) -> float:
-```
-
 **Args:**
 - `count`: Number of times function was called
 - `max_count`: Maximum call count across all functions
@@ -219,11 +242,6 @@ Exposure score between 0.0 and 1.0
 #### `confidence(samples: int, threshold: int = 100) -> float`
 Calculate confidence from sample count.
 
-**Signature:**
-```python
-def confidence(samples: int, threshold: int = 100) -> float:
-```
-
 **Args:**
 - `samples`: Number of runtime samples collected
 - `threshold`: Sample count for full confidence (default: 100)
@@ -235,11 +253,6 @@ Confidence score between 0.0 and 1.0
 
 #### `classify(severity: float, count: int, max_count: int, samples: int) -> tuple[str, float, float]`
 Classify risk level based on severity, exposure, and confidence.
-
-**Signature:**
-```python
-def classify(severity: float, count: int, max_count: int, samples: int) -> tuple[str, float, float]:
-```
 
 **Args:**
 - `severity`: Severity score (0.0 to 1.0)
@@ -261,11 +274,6 @@ Tuple of (risk_level, exposure, confidence) where risk_level is "HIGH", "MEDIUM"
 #### `compute_risk(severity: float, exposure_val: float, confidence_val: float) -> float`
 Compute risk as S × E × C.
 
-**Signature:**
-```python
-def compute_risk(severity: float, exposure_val: float, confidence_val: float) -> float:
-```
-
 **Args:**
 - `severity`: Severity score
 - `exposure_val`: Exposure score
@@ -276,15 +284,30 @@ Risk score (product of the three inputs)
 
 ---
 
-### Risk Gate
+### Risk Gate (`risk_gate.py`)
 
-#### `run(diff_path: str, runtime_path: str, output_path: str | None = None) -> list[dict]`
+#### `get_severity(change_type: str) -> float`
+Get severity score for a change type (same as `risk_model.get_severity`).
+
+---
+
+#### `exposure(count: int, max_count: int) -> float`
+Calculate exposure score (same as `risk_model.exposure`).
+
+---
+
+#### `confidence(samples: int, threshold: int = 100) -> float`
+Calculate confidence (same as `risk_model.confidence`).
+
+---
+
+#### `classify(severity: float, count: int, max_count: int, samples: int) -> tuple[str, float, float]`
+Classify risk level (same as `risk_model.classify`).
+
+---
+
+#### `run(diff_path: str, runtime_path: str, output_path: str | None = None) -> list[dict[str, Any]]`
 Run risk analysis pipeline combining diff and runtime data.
-
-**Signature:**
-```python
-def run(diff_path: str, runtime_path: str, output_path: str | None = None) -> list[dict]:
-```
 
 **Args:**
 - `diff_path`: Path to diff text file
@@ -296,88 +319,334 @@ List of risk report items with keys: function, risk, change, exposure, confidenc
 
 ---
 
-#### `enforce(diff_path: str, runtime_path: str, output_path: str | None = None) -> int`
-CI gate: blocks on HIGH risk, warns on UNKNOWN.
-
-**Signature:**
-```python
-def enforce(diff_path: str, runtime_path: str, output_path: str | None = None) -> int:
-```
-
-**Returns:**
-- 0 if no HIGH risk issues
-- 1 if HIGH risk detected
+#### `main(diff_path: str | None = None, runtime_path: str | None = None, output_path: str | None = None) -> list[dict[str, Any]]`
+CLI entry point for risk gate.
 
 ---
 
-### Patch Confidence
+### Patch Confidence (`patch_confidence.py`)
 
-#### `compute_confidence(target_certainty: float, structural_safety: float, semantic_risk: float, complexity_penalty: float) -> float`
+#### `compute_confidence(target_certainty: float, structural: float, semantic: float, complexity: float) -> float`
 Score patch confidence by multiplying target × structural × semantic × complexity.
-
-**Signature:**
-```python
-def compute_confidence(target_certainty: float, structural_safety: float, semantic_risk: float, complexity_penalty: float) -> float:
-```
 
 **Args:**
 - `target_certainty`: Confidence in target identification (0.0 to 1.0)
-- `structural_safety`: Safety of structural changes (0.0 to 1.0)
-- `semantic_risk`: Semantic risk factor (0.0 to 1.0)
-- `complexity_penalty`: Penalty for code complexity (0.0 to 1.0)
+- `structural`: Safety of structural changes (0.0 to 1.0)
+- `semantic`: Semantic risk factor (0.0 to 1.0)
+- `complexity`: Penalty for code complexity (0.0 to 1.0)
 
 **Returns:**
 Confidence score between 0.0 and 1.0
 
 ---
 
-#### `classify_patch(confidence: float) -> str`
+#### `classify(conf: float) -> str`
 Classify patch confidence into categories.
 
-**Signature:**
-```python
-def classify_patch(confidence: float) -> str:
-```
+**Args:**
+- `conf`: Confidence score (0.0 to 1.0)
 
 **Returns:**
 "HIGH", "MEDIUM", "LOW", or "UNKNOWN"
 
+**Classification Rules:**
+- conf >= 0.75: "HIGH"
+- conf >= 0.4: "MEDIUM"
+- conf >= 0.2: "LOW"
+- Otherwise: "UNKNOWN"
+
 ---
 
-#### `get_target_certainty(...) -> float`
+#### `get_target_certainty(file_match: bool, lineno_match: bool, name_only_match: bool) -> float`
 Calculate target certainty score.
 
-#### `get_structural_safety(...) -> float`
-Calculate structural safety score.
+**Args:**
+- `file_match`: Whether file matches
+- `lineno_match`: Whether line number matches
+- `name_only_match`: Whether name-only match
 
-#### `get_semantic_risk(...) -> float`
-Calculate semantic risk score.
-
-#### `get_complexity_penalty(...) -> float`
-Calculate complexity penalty.
+**Returns:**
+- If file_match and lineno_match: 1.0
+- If name_only_match: 0.5
+- Otherwise: 0.2
 
 ---
 
-### Report Generation
-
-#### `generate_html(risk_json_path: str, output_path: str | None = None) -> str`
-Generate static HTML report from risk JSON.
-
-**Signature:**
-```python
-def generate_html(risk_json_path: str, output_path: str | None = None) -> str:
-```
+#### `get_structural_safety(change_type: str) -> float`
+Calculate structural safety score.
 
 **Args:**
-- `risk_json_path`: Path to risk report JSON
-- `output_path`: Optional output HTML file path
+- `change_type`: Description of the change
+
+**Returns:**
+- If "default" or "optional" in change_type: 1.0
+- If "kwarg" in change_type: 0.8
+- If "positional" in change_type: 0.3
+- Otherwise: 0.5
+
+---
+
+#### `get_semantic_risk(change_type: str) -> float`
+Calculate semantic risk score.
+
+**Args:**
+- `change_type`: Description of the change
+
+**Returns:**
+- If "required" in change_type: 0.6
+- Otherwise: 1.0
+
+---
+
+#### `get_complexity_penalty(is_multiline: bool, has_decorators: bool, has_complex_annotations: bool, is_nested: bool) -> float`
+Calculate complexity penalty.
+
+**Args:**
+- `is_multiline`: Whether change spans multiple lines
+- `has_decorators`: Whether function has decorators
+- `has_complex_annotations`: Whether function has complex type annotations
+- `is_nested`: Whether function is nested
+
+**Returns:**
+Penalty factor starting at 1.0, multiplied by:
+- 0.7 if multiline
+- 0.5 if has decorators
+- 0.5 if has complex annotations
+- 0.5 if nested
+
+---
+
+#### `classify_with_factors(target: float, structural: float, semantic: float, complexity: float) -> tuple[str, dict[str, float]]`
+Classify patch and return confidence factors.
+
+**Args:**
+- `target`: Target certainty score
+- `structural`: Structural safety score
+- `semantic`: Semantic risk score
+- `complexity`: Complexity penalty
+
+**Returns:**
+Tuple of (risk_level, factors_dict) where factors_dict contains:
+- `target`: Target certainty
+- `structure`: Structural safety
+- `semantic`: Semantic risk
+- `complexity`: Complexity penalty
+- `final`: Final confidence score
+
+---
+
+### Report Generation (`generate_report.py`)
+
+#### `color(level: str) -> str`
+Get HTML color for risk level.
+
+**Args:**
+- `level`: Risk level ("HIGH", "MEDIUM", "LOW", "UNKNOWN")
+
+**Returns:**
+Hex color string
+
+---
+
+#### `generate_html(report_data: list[dict[str, Any]]) -> str`
+Generate static HTML report from risk JSON.
+
+**Args:**
+- `report_data`: List of risk report dictionaries
 
 **Returns:**
 HTML content as string
 
 ---
 
-### CLI Interface
+#### `main(report_path: str, output_path: str | None = None) -> None`
+CLI entry point for report generation.
+
+---
+
+### Patch Generation (`patch_generator.py`)
+
+#### `patch_add_default(func: dict[str, Any], param_name: str) -> tuple[str | None, str | None]`
+Generate patch to add default value to parameter.
+
+**Args:**
+- `func`: Function signature dictionary
+- `param_name`: Parameter name to patch
+
+**Returns:**
+Tuple of (patch_string, error_message)
+
+---
+
+#### `patch_call_site(call: dict[str, Any], func: dict[str, Any]) -> tuple[str | None, str | None]`
+Generate patch for call site.
+
+**Args:**
+- `call`: Call site dictionary
+- `func`: Function signature dictionary
+
+**Returns:**
+Tuple of (patch_string, error_message)
+
+---
+
+### CST Patch (`cst_patch.py`)
+
+#### `patch_function(source: str, func_name: str, param_name: str) -> tuple[str | None, str | None]`
+Patch function definition using CST to add default value.
+
+**Args:**
+- `source`: Source code string
+- `func_name`: Function name
+- `param_name`: Parameter name
+
+**Returns:**
+Tuple of (patched_source, error_message)
+
+---
+
+#### `patch_call(source: str, func_name: str, param_name: str) -> tuple[str | None, str | None]`
+Patch function call to add missing argument.
+
+**Args:**
+- `source`: Source code string
+- `func_name`: Function name
+- `param_name`: Parameter name
+
+**Returns:**
+Tuple of (patched_source, error_message)
+
+---
+
+### Suggest Fixes (`suggest_fixes.py`)
+
+#### `suggest(func: dict[str, Any], issues: list[dict[str, Any]]) -> list[str]`
+Generate fix suggestions for issues.
+
+**Args:**
+- `func`: Function dictionary
+- `issues`: List of issue dictionaries
+
+**Returns:**
+List of suggestion strings
+
+---
+
+#### `get_line(file: str, lineno: int) -> str`
+Get source line from file.
+
+**Args:**
+- `file`: File path
+- `lineno`: Line number
+
+**Returns:**
+Source line or empty string
+
+---
+
+#### `enrich_with_fixes(report_item: dict[str, Any], issues: list[dict[str, Any]]) -> list[dict[str, Any]]`
+Enrich report item with patch information.
+
+**Args:**
+- `report_item`: Report item dictionary
+- `issues`: List of issue dictionaries
+
+**Returns:**
+List of fix dictionaries
+
+---
+
+### Trace Calls (`trace_calls.py`)
+
+#### `trace(func: Callable[..., Any]) -> Callable[..., Any]`
+Decorator to trace function calls at runtime.
+
+**Args:**
+- `func`: Function to trace
+
+**Returns:**
+Wrapped function that records call information
+
+---
+
+#### `dump(path: str = ".runtime_calls.json") -> None`
+Dump collected trace data to JSON file.
+
+**Args:**
+- `path`: Output file path
+
+---
+
+#### `install_tracer(module: object, prefix: str | None = None) -> None`
+Install tracer on all functions in a module.
+
+**Args:**
+- `module`: Module to trace
+- `prefix`: Optional module prefix filter
+
+---
+
+### Trace Calls Prod (`trace_calls_prod.py`)
+
+#### `should_sample() -> bool`
+Determine if current call should be sampled.
+
+**Returns:**
+True if call should be sampled (based on SAMPLE_RATE)
+
+---
+
+#### `trace(func: Callable[..., Any]) -> Callable[..., Any]`
+Production tracer decorator with periodic flush.
+
+---
+
+#### `flush(path: str = "/tmp/runtime_calls.json") -> None`
+Flush collected data to file.
+
+---
+
+#### `install_tracer(module: object, prefix: str | None = None) -> None`
+Install production tracer on module.
+
+---
+
+### Module Analysis (`analyze_module.py`)
+
+#### `analyze(path: str) -> dict[str, Any] | None`
+Analyze Python module and extract function calls with scope tracking.
+
+**Args:**
+- `path`: Path to Python file
+
+**Returns:**
+Dictionary with keys: `file`, `calls` (list of call dictionaries)
+
+**Call Dictionary Keys:**
+- `fqname`: Fully qualified function name
+- `file`: Source file
+- `lineno`: Line number
+- `args`: Number of positional arguments
+- `kwargs`: List of keyword argument names
+- `starargs`: Whether *args present
+- `kwargs_any`: Whether **kwargs present
+
+---
+
+### Extract Calls (`extract_calls.py`)
+
+#### `extract(path: Path) -> list[dict[str, Any]]`
+Extract function calls from Python file.
+
+**Args:**
+- `path`: Path to Python file
+
+**Returns:**
+List of call dictionaries (see `analyze` for format)
+
+---
+
+### CLI Interface (`cli.py`)
 
 The `impactguard` command provides the following subcommands:
 
@@ -406,14 +675,14 @@ Dump collected runtime trace data.
 
 ### Convenience Functions (in `__init__.py`)
 
-#### `extract_signatures(files) -> list[dict]`
-Wrapper for `extract()`.
+#### `extract_signatures(files: list[str]) -> list[dict[str, Any]]`
+Wrapper for `extract_signatures.extract()`.
 
-#### `compare_signatures(old_path, new_path) -> dict`
-Wrapper for `compare()`.
+#### `compare_signatures(old_path: str, new_path: str) -> dict[str, list[str]]`
+Wrapper for `compare_signatures.compare()`.
 
-#### `analyze_impact(sigs_path, calls_path, runtime_path=None) -> list[dict]`
-Wrapper for `analyze()`.
+#### `analyze_impact(sigs_path: str, calls_path: str, runtime_path: str | None = None) -> list[dict[str, Any]]`
+Wrapper for `impact_analysis.analyze()`.
 
 ---
 
@@ -443,10 +712,13 @@ Wrapper for `analyze()`.
 ```json
 [
   {
-    "caller": "src/caller.py:caller_func",
-    "callee": "target_function",
-    "line": 25,
-    "args": ["arg1", "arg2"]
+    "name": "target_function",
+    "lineno": 25,
+    "args": 2,
+    "kwargs": ["arg1", "arg2"],
+    "has_starargs": false,
+    "has_kwargs": false,
+    "file": "src/caller.py"
   }
 ]
 ```
@@ -500,7 +772,7 @@ Wrapper for `analyze()`.
 - Memory: Should handle projects with 10,000+ functions within 512MB RAM
 
 ### Constraints
-- Requires Python 3.9+ (uses `ast.unparse` for Python 3.9+)
+- Requires Python 3.11+ (uses `ast` module features)
 - Runtime tracing adds overhead; use sampling in production (`trace_calls_prod.py`)
 - External dependency: `libcst>=0.4.0` for CST-based patching
 - No network access required
@@ -510,3 +782,26 @@ Wrapper for `analyze()`.
 - Do not use `eval()` or `exec()` on user code
 - Do not modify source files during analysis (except patches which are explicit)
 - Do not introduce circular imports within the package
+- All imports should be at the top of the module (lazy imports used only in CLI for performance)
+
+---
+
+## Invariants
+
+### All Modules
+- Type annotations present on all public functions (mypy strict mode compliant)
+- Ruff format clean (0 issues)
+- Ruff check clean (0 issues)
+- Prospector clean (0 warnings)
+- Semgrep clean (0 findings)
+- MyPy clean (0 errors in strict mode)
+
+### Signature Extraction
+- Output is sorted by `fqname` for stable comparison
+- Handles both `def` and `async def`
+- Skips files that fail to parse (with silent continuation)
+
+### Risk Analysis
+- Coverage requirement: ≥ 80% (currently at 73.33%)
+- All edge cases listed above have corresponding tests
+- Tests pass with 0 failures (currently 80 passed)

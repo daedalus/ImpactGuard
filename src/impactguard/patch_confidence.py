@@ -1,8 +1,10 @@
-def compute_confidence(target_certainty, structural, semantic, complexity):
+def compute_confidence(
+    target_certainty: float, structural: float, semantic: float, complexity: float
+) -> float:
     return target_certainty * structural * semantic * complexity
 
 
-def classify(conf):
+def classify(conf: float) -> str:
     if conf >= 0.75:
         return "HIGH"
     elif conf >= 0.4:
@@ -13,7 +15,9 @@ def classify(conf):
         return "UNKNOWN"
 
 
-def get_target_certainty(file_match, lineno_match, name_only_match):
+def get_target_certainty(
+    file_match: bool, lineno_match: bool, name_only_match: bool
+) -> float:
     if file_match and lineno_match:
         return 1.0
     elif name_only_match:
@@ -22,7 +26,7 @@ def get_target_certainty(file_match, lineno_match, name_only_match):
         return 0.2
 
 
-def get_structural_safety(change_type):
+def get_structural_safety(change_type: str) -> float:
     if "default" in change_type.lower() or "optional" in change_type.lower():
         return 1.0
     elif "kwarg" in change_type.lower():
@@ -32,15 +36,18 @@ def get_structural_safety(change_type):
     return 0.5
 
 
-def get_semantic_risk(change_type):
+def get_semantic_risk(change_type: str) -> float:
     if "required" in change_type.lower():
         return 0.6
     return 1.0
 
 
 def get_complexity_penalty(
-    is_multiline, has_decorators, has_complex_annotations, is_nested
-):
+    is_multiline: bool,
+    has_decorators: bool,
+    has_complex_annotations: bool,
+    is_nested: bool,
+) -> float:
     penalty = 1.0
     if is_multiline:
         penalty *= 0.7
@@ -53,13 +60,15 @@ def get_complexity_penalty(
     return penalty
 
 
-def classify_with_factors(T, S, R, C):
-    conf = compute_confidence(T, S, R, C)
+def classify_with_factors(
+    target: float, structural: float, semantic: float, complexity: float
+) -> tuple[str, dict[str, float]]:
+    conf = compute_confidence(target, structural, semantic, complexity)
     level = classify(conf)
     return level, {
-        "target": T,
-        "structure": S,
-        "semantic": R,
-        "complexity": C,
+        "target": target,
+        "structure": structural,
+        "semantic": semantic,
+        "complexity": complexity,
         "final": conf,
     }

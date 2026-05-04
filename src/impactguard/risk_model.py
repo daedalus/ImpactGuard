@@ -15,38 +15,40 @@ SEVERITY_SCORES = {
 }
 
 
-def get_severity(change_type):
+def get_severity(change_type: str) -> float:
     for key, score in SEVERITY_SCORES.items():
         if key in change_type:
             return score
     return 0.5
 
 
-def exposure(count, max_count):
+def exposure(count: int, max_count: int) -> float:
     if count == 0:
         return 0
     return min(1.0, math.log(1 + count) / math.log(1 + max_count))
 
 
-def confidence(samples, threshold=100):
+def confidence(samples: int, threshold: int = 100) -> float:
     return min(1.0, samples / threshold)
 
 
-def classify(severity, count, max_count, samples):
-    E = exposure(count, max_count)
-    C = confidence(samples)
+def classify(
+    severity: float, count: int, max_count: int, samples: int
+) -> tuple[str, float, float]:
+    exposure_val = exposure(count, max_count)
+    confidence_val = confidence(samples)
 
-    if C < 0.3:
-        return "UNKNOWN", E, C
+    if confidence_val < 0.3:
+        return "UNKNOWN", exposure_val, confidence_val
 
-    if severity > 0.8 and E > 0.1:
-        return "HIGH", E, C
+    if severity > 0.8 and exposure_val > 0.1:
+        return "HIGH", exposure_val, confidence_val
 
-    if severity > 0.5 and E > 0.01:
-        return "MEDIUM", E, C
+    if severity > 0.5 and exposure_val > 0.01:
+        return "MEDIUM", exposure_val, confidence_val
 
-    return "LOW", E, C
+    return "LOW", exposure_val, confidence_val
 
 
-def compute_risk(severity, exposure_val, confidence_val):
+def compute_risk(severity: float, exposure_val: float, confidence_val: float) -> float:
     return severity * exposure_val * confidence_val

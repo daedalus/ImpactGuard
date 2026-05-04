@@ -1,6 +1,7 @@
 import json
 import math
 import sys
+from typing import Any
 
 # Severity scores for different types of changes
 SEVERITY_SCORES = {
@@ -15,7 +16,7 @@ SEVERITY_SCORES = {
 }
 
 
-def get_severity(change_type):
+def get_severity(change_type: str) -> float:
     """Get severity score for a change type."""
     for key, score in SEVERITY_SCORES.items():
         if key in change_type:
@@ -23,36 +24,40 @@ def get_severity(change_type):
     return 0.5
 
 
-def exposure(count, max_count):
+def exposure(count: int, max_count: int) -> float:
     """Calculate exposure score from call count."""
     if count == 0:
         return 0
     return min(1.0, math.log(1 + count) / math.log(1 + max_count))
 
 
-def confidence(samples, threshold=100):
+def confidence(samples: int, threshold: int = 100) -> float:
     """Calculate confidence from sample count."""
     return min(1.0, samples / threshold)
 
 
-def classify(severity, count, max_count, samples):
+def classify(
+    severity: float, count: int, max_count: int, samples: int
+) -> tuple[str, float, float]:
     """Classify risk level based on severity, exposure, and confidence."""
-    E = exposure(count, max_count)
-    C = confidence(samples)
+    exposure_val = exposure(count, max_count)
+    confidence_val = confidence(samples)
 
-    if C < 0.3:
-        return "UNKNOWN", E, C
+    if confidence_val < 0.3:
+        return "UNKNOWN", exposure_val, confidence_val
 
-    if severity > 0.8 and E > 0.1:
-        return "HIGH", E, C
+    if severity > 0.8 and exposure_val > 0.1:
+        return "HIGH", exposure_val, confidence_val
 
-    if severity > 0.5 and E > 0.01:
-        return "MEDIUM", E, C
+    if severity > 0.5 and exposure_val > 0.01:
+        return "MEDIUM", exposure_val, confidence_val
 
-    return "LOW", E, C
+    return "LOW", exposure_val, confidence_val
 
 
-def run(diff_path, runtime_path, output_path=None):
+def run(
+    diff_path: str, runtime_path: str, output_path: str | None = None
+) -> list[dict[str, Any]]:
     """Run risk analysis pipeline.
 
     Args:
@@ -79,7 +84,7 @@ def run(diff_path, runtime_path, output_path=None):
     max_count = max(runtime.values()) if runtime else 1
 
     # Parse breaking/non-breaking from diff
-    report = []
+    report: list[dict[str, Any]] = []
 
     for line in diff_text.splitlines():
         if (
@@ -94,22 +99,22 @@ def run(diff_path, runtime_path, output_path=None):
 
             count = runtime.get(func_name.strip(), 0)
             severity = get_severity(line)
-            risk, E, C = classify(severity, count, max_count, count)
+            risk, exp, conf = classify(severity, count, max_count, count)
 
             report.append(
                 {
                     "function": func_name.strip(),
                     "risk": risk,
                     "change": current_change,
-                    "exposure": E,
-                    "confidence": C,
+                    "exposure": exp,
+                    "confidence": conf,
                     "details": f"called {count} times" if count > 0 else "not observed",
                 }
             )
 
     # Sort by risk level
     risk_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2, "UNKNOWN": 3}
-    report.sort(key=lambda x: risk_order.get(x["risk"], 4))
+    report.sort(key=lambda x: risk_order.get(str(x["risk"]), 4))
 
     if output_path:
         with open(output_path, "w") as f:
@@ -118,7 +123,11 @@ def run(diff_path, runtime_path, output_path=None):
     return report
 
 
-def main(diff_path=None, runtime_path=None, output_path=None):
+def main(
+    diff_path: str | None = None,
+    runtime_path: str | None = None,
+    output_path: str | None = None,
+) -> list[dict[str, Any]]:
     """CLI entry point."""
     if diff_path is None:
         if len(sys.argv) < 3:
@@ -127,6 +136,9 @@ def main(diff_path=None, runtime_path=None, output_path=None):
         diff_path = sys.argv[1]
         runtime_path = sys.argv[2]
         output_path = sys.argv[3] if len(sys.argv) > 3 else "report.json"
+
+    if runtime_path is None:
+        return []
 
     report = run(diff_path, runtime_path, output_path)
 

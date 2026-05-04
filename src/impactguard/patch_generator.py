@@ -1,7 +1,8 @@
 import difflib
+from typing import Any
 
 
-def patch_add_default(func, param_name):
+def patch_add_default(func: dict[str, Any], param_name: str) -> str | None:
     file = func.get("file", "")
     lineno = func.get("lineno", 0)
 
@@ -32,7 +33,7 @@ def patch_add_default(func, param_name):
         return None
 
 
-def patch_callsite(call, func):
+def patch_callsite(call: dict[str, Any], _func: dict[str, Any]) -> str | None:  # noqa: ARG001
     file = call.get("file", "")
     lineno = call.get("lineno", 0)
 

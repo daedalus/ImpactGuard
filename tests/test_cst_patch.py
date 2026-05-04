@@ -2,6 +2,7 @@
 
 try:
     from impactguard.cst_patch import AddDefaultTransformer, FixCallTransformer
+
     LIBCST_AVAILABLE = True
 except ImportError:
     LIBCST_AVAILABLE = False
@@ -13,6 +14,7 @@ def test_cst_available():
 
 
 if LIBCST_AVAILABLE:
+
     def test_add_default_transformer():
         """Test AddDefaultTransformer."""
         import libcst as cst

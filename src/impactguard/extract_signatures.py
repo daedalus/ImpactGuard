@@ -2,22 +2,25 @@ import ast
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 # ImpactGuard signature extractor
 
 
-def serialize_function(node, file):
-    def arg_info(arg, default):
+def serialize_function(
+    node: ast.FunctionDef | ast.AsyncFunctionDef, file: str
+) -> dict[str, Any]:
+    def arg_info(arg: ast.arg, default: object) -> dict[str, Any]:
         return {"name": arg.arg, "has_default": default is not None}
 
     args = node.args
 
-    pos = []
-    defaults = [None] * (len(args.args) - len(args.defaults)) + args.defaults
+    pos: list[dict[str, Any]] = []
+    defaults = [None] * (len(args.args) - len(args.defaults)) + list(args.defaults)
     for a, d in zip(args.args, defaults):
         pos.append(arg_info(a, d))
 
-    kwonly = []
+    kwonly: list[dict[str, Any]] = []
     for a, d in zip(args.kwonlyargs, args.kw_defaults):
         kwonly.append(arg_info(a, d))
 
@@ -34,7 +37,7 @@ def serialize_function(node, file):
     }
 
 
-def extract(files):
+def extract(files: list[str]) -> list[dict[str, Any]]:
     """Extract function signatures from Python files.
 
     Args:
@@ -43,7 +46,7 @@ def extract(files):
     Returns:
         List of signature dictionaries.
     """
-    all_funcs = []
+    all_funcs: list[dict[str, Any]] = []
     for f in files:
         path = Path(f)
         try:
@@ -60,7 +63,7 @@ def extract(files):
     return all_funcs
 
 
-def main():
+def main() -> None:
     files = sys.argv[1:]
     all_funcs = extract(files)
     print(json.dumps(all_funcs, indent=2))

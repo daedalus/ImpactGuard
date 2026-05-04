@@ -17,7 +17,7 @@ def test_enforce_no_high_risk():
         }
     ]
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(report_data, f)
         report_file = f.name
 
@@ -37,7 +37,7 @@ def test_enforce_with_high_risk():
         }
     ]
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(report_data, f)
         report_file = f.name
 

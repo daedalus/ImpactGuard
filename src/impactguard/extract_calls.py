@@ -2,14 +2,15 @@ import ast
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 
 class CallVisitor(ast.NodeVisitor):
-    def __init__(self, file):
+    def __init__(self, file: str) -> None:
         self.file = file
-        self.calls = []
+        self.calls: list[dict[str, Any]] = []
 
-    def visit_Call(self, node):
+    def visit_Call(self, node: ast.Call) -> None:
         name = self.get_name(node.func)
 
         if name:
@@ -27,7 +28,7 @@ class CallVisitor(ast.NodeVisitor):
 
         self.generic_visit(node)
 
-    def get_name(self, node):
+    def get_name(self, node: ast.expr) -> str | None:
         if isinstance(node, ast.Name):
             return node.id
         if isinstance(node, ast.Attribute):
@@ -35,7 +36,7 @@ class CallVisitor(ast.NodeVisitor):
         return None
 
 
-def extract(path):
+def extract(path: Path) -> list[dict[str, Any]]:
     try:
         tree = ast.parse(path.read_text())
     except Exception:
@@ -46,9 +47,9 @@ def extract(path):
     return visitor.calls
 
 
-def main():
+def main() -> None:
     files = sys.argv[1:]
-    all_calls = []
+    all_calls: list[dict[str, Any]] = []
 
     for f in files:
         all_calls.extend(extract(Path(f)))
