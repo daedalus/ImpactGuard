@@ -33,6 +33,7 @@ from .risk_model import (
 from .pipeline import (
     run_pipeline,
     quick_check,
+    run_pipeline_git,
     ImpactGuard,
 )
 from .patch_confidence import (  # noqa: F401
@@ -74,9 +75,10 @@ __all__ = [
     # Reporting
     "generate_html",
     "enforce",
-    # Pipeline (NEW)
+    # Pipeline (Recommended)
     "run_pipeline",
     "quick_check",
+    "run_pipeline_git",
     "ImpactGuard",
 ]
 
