@@ -128,6 +128,41 @@ def cmd_check(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_check_commits(args: argparse.Namespace) -> int:
+    """Run ImpactGuard pipeline comparing two git commits."""
+    from .pipeline import run_pipeline_git
+
+    print(f"Checking impact: {args.old_ref} → {args.new_ref}")
+
+    try:
+        result = run_pipeline_git(
+            old_ref=args.old_ref,
+            new_ref=args.new_ref,
+            runtime_path=args.runtime,
+            output_path=args.output,
+        )
+
+        print(f"\n=== Comparison ===")
+        comparison = result.get('comparison', {})
+        print(f"Breaking changes: {len(comparison.get('breaking', []))}")
+        print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
+
+        if 'risk' in result:
+            risk_items = result['risk']
+            high = sum(1 for r in risk_items if r.get('risk') == 'HIGH')
+            print(f"\n=== Risk Analysis ===")
+            print(f"HIGH risk: {high}")
+
+        if 'report_html' in result and args.output:
+            print(f"\nReport written to {args.output}")
+
+        return 0
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="impactguard",
@@ -198,9 +233,17 @@ def main() -> int:
     check_parser.add_argument("output", nargs="?", default="impact_report.html", help="Output HTML report")
     check_parser.set_defaults(func=cmd_check)
 
+    # check-commits subcommand (NEW - git commit comparison)
+    check_commits_parser = subparsers.add_parser("check-commits", help="Compare two git commits")
+    check_commits_parser.add_argument("old_ref", help="Old git reference (commit, branch, tag)")
+    check_commits_parser.add_argument("new_ref", help="New git reference (commit, branch, tag)")
+    check_commits_parser.add_argument("runtime", nargs="?", help="Runtime data JSON (optional)")
+    check_commits_parser.add_argument("output", nargs="?", help="Output HTML report")
+    check_commits_parser.set_defaults(func=cmd_check_commits)
+
     # Make 'check' the default if no subcommand provided but args look like paths
     if len(sys.argv) > 1 and sys.argv[1] not in [
-        "extract", "compare", "analyze", "risk", "report", "trace", "check"
+        "extract", "compare", "analyze", "risk", "report", "trace", "check", "check-commits"
     ]:
         # Assume pipeline mode: impactguard old/ new/ [runtime] [output]
         sys.argv.insert(1, "check")

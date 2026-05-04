@@ -171,6 +171,78 @@ def quick_check(
     )
 
 
+def run_pipeline_git(
+    old_ref: str,
+    new_ref: str,
+    runtime_path: str | None = None,
+    output_path: str | None = None,
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Run pipeline comparing two git commits.
+
+    Args:
+        old_ref: Git reference (commit, branch, tag) for old version
+        new_ref: Git reference for new version
+        runtime_path: Path to runtime data JSON
+        output_path: Path for HTML report output
+        config: Optional configuration dictionary
+
+    Returns:
+        Same as run_pipeline()
+    """
+    import subprocess
+    import tempfile
+    from pathlib import Path
+
+    def extract_commit_files(ref: str, dest: str) -> None:
+        """Extract Python files from a git commit to a directory."""
+        # Get list of ALL Python files in the commit
+        result = subprocess.run(
+            ["git", "ls-tree", "-r", "--name-only", ref],
+            capture_output=True, text=True, check=True
+        )
+        py_files = [f for f in result.stdout.splitlines() if f.endswith(".py")]
+
+        if not py_files:
+            print(f"  Warning: No Python files found in {ref}")
+            return
+
+        # Extract each file
+        for py_file in py_files:
+            # Create subdirectory structure
+            dest_path = Path(dest) / py_file
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Extract file content from git
+            result = subprocess.run(
+                ["git", "show", f"{ref}:{py_file}"],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0 and result.stdout:
+                dest_path.write_text(result.stdout)
+            else:
+                print(f"  Warning: Could not extract {py_file} from {ref}")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        old_dir = f"{tmpdir}/old"
+        new_dir = f"{tmpdir}/new"
+        Path(old_dir).mkdir(parents=True, exist_ok=True)
+        Path(new_dir).mkdir(parents=True, exist_ok=True)
+
+        print(f"Extracting files from {old_ref}...")
+        extract_commit_files(old_ref, old_dir)
+        print(f"Extracting files from {new_ref}...")
+        extract_commit_files(new_ref, new_dir)
+
+        return run_pipeline(
+            old_files=[str(p) for p in Path(old_dir).rglob("*.py")] or None,
+            new_files=[str(p) for p in Path(new_dir).rglob("*.py")] or None,
+            runtime_path=runtime_path,
+            output_dir=output_path or tmpdir,
+            config=config,
+        )
+
+
 class ImpactGuard:
     """Unified API class for ImpactGuard."""
 

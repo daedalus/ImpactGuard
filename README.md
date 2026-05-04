@@ -29,11 +29,17 @@ pip install impactguard
 # Compare two versions of your code (default pipeline mode)
 impactguard old_version/ new_version/
 
+# Compare two git commits directly
+impactguard check-commits HEAD~1 HEAD
+
 # Or use Python API
-from impactguard import run_pipeline, quick_check
+from impactguard import run_pipeline, quick_check, run_pipeline_git
 
 result = run_pipeline("old/", "new/")
 print(f"Breaking changes: {len(result['comparison']['breaking'])}")
+
+# Compare git commits via API
+result = run_pipeline_git("HEAD~1", "HEAD")
 ```
 
 ## Install
@@ -88,6 +94,9 @@ issues = analyze_impact("signatures.json", "calls.json", "runtime.json")
 impactguard old_version/ new_version/
 impactguard old_version/ new_version/ runtime.json -o report.html
 
+# Compare two git commits directly
+impactguard check-commits HEAD~1 HEAD
+
 # Using 'check' subcommand (equivalent, backwards compatible)
 impactguard check old_version/ new_version/
 ```
@@ -108,6 +117,7 @@ impactguard trace dump runtime.json
 ### Pipeline (Recommended)
 - `run_pipeline(old_path, new_path, runtime_path, output_path)` — Run full pipeline
 - `quick_check(old_path, new_path)` — Quick extract + compare
+- `run_pipeline_git(old_ref, new_ref, runtime_path, output_path)` — Compare two git commits
 - `ImpactGuard` class — Full control with `check()`, `extract()`, `compare()` methods
 
 ### Signature Extraction
