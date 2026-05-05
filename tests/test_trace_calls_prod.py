@@ -36,7 +36,8 @@ def test_flush():
     flush(fname)
     assert os.path.exists(fname)
 
-    data = json.load(open(fname))
+    with open(fname) as fh:
+        data = json.load(fh)
     assert len(data) > 0
 
     os.unlink(fname)

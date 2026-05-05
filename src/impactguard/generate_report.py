@@ -206,7 +206,8 @@ def generate_html_from_file(
     """
     import json
 
-    report = json.load(open(risk_json_path))
+    with open(risk_json_path) as f:
+        report = json.load(f)
     html = generate_html(report)
 
     if output_path:
@@ -217,7 +218,8 @@ def generate_html_from_file(
 
 
 def main(report_path: str, output_path: str | None = None) -> None:
-    report = json.load(open(report_path))
+    with open(report_path) as f:
+        report = json.load(f)
     html = generate_html(report)
 
     if output_path is None:
