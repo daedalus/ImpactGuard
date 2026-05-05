@@ -55,21 +55,20 @@ def compare(old_path: str, new_path: str) -> dict[str, list[str]]:  # noqa: MC00
         # positional argument removal
         if len(n_pos) < len(o_pos):
             breaking.append(f"POSITIONAL REMOVED: {k}")
-            continue
+        else:
+            # positional arg changes
+            for i in range(len(o_pos)):
+                if o_pos[i]["name"] != n_pos[i]["name"]:
+                    breaking.append(f"POSITIONAL REORDER/RENAME: {k}")
+                    break
 
-        # positional arg changes
-        for i in range(len(o_pos)):
-            if o_pos[i]["name"] != n_pos[i]["name"]:
-                breaking.append(f"POSITIONAL REORDER/RENAME: {k}")
-                break
-
-        # new positional args
-        if len(n_pos) > len(o_pos):
-            added = n_pos[len(o_pos) :]
-            if any(is_required(a) for a in added):
-                breaking.append(f"REQUIRED POSITIONAL ADDED: {k}")
-            else:
-                nonbreaking.append(f"OPTIONAL POSITIONAL ADDED: {k}")
+            # new positional args
+            if len(n_pos) > len(o_pos):
+                added = n_pos[len(o_pos) :]
+                if any(is_required(a) for a in added):
+                    breaking.append(f"REQUIRED POSITIONAL ADDED: {k}")
+                else:
+                    nonbreaking.append(f"OPTIONAL POSITIONAL ADDED: {k}")
 
         # kwonly args
         o_kw = {a["name"]: a for a in o["kwonly"]}

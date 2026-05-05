@@ -1,9 +1,44 @@
 """Pipeline orchestrator - connects all ImpactGuard components."""
 
 import json
+import re
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
+
+
+def _validate_git_ref(ref: str) -> bool:
+    """Validate git ref format to prevent command injection.
+
+    Allows: alphanumeric, dots, hyphens, slashes, underscores, ~, ^, @, {, }
+    Disallows: shell metacharacters, path traversal
+    """
+    if not ref or len(ref) > 255:
+        return False
+    # Disallow shell metacharacters
+    if any(c in ref for c in ['|', ';', '&', '$', '`', '!', '(', ')', '<', '>']):
+        return False
+    # Disallow path traversal
+    if '..' in ref or ref.startswith('/'):
+        return False
+    # Allow safe git ref characters
+    if not re.match(r'^[a-zA-Z0-9._\-/~^@{}]+$', ref):
+        return False
+    return True
+
+
+def _validate_git_path(path: str) -> bool:
+    """Validate file path from git to prevent path traversal."""
+    if not path or len(path) > 255:
+        return False
+    # Disallow path traversal
+    if '..' in path or path.startswith('/') or path.startswith('\\'):
+        return False
+    # Must be a relative path
+    if Path(path).is_absolute():
+        return False
+    return True
 
 
 def run_pipeline(
@@ -367,41 +402,7 @@ def run_pipeline_git(
     Returns:
         Same as run_pipeline()
     """
-    import re
     import subprocess
-    import tempfile
-    from pathlib import Path
-
-    def _validate_git_ref(ref: str) -> bool:
-        """Validate git ref format to prevent command injection.
-        
-        Allows: alphanumeric, dots, hyphens, slashes, underscores, ~, ^, @, {, }
-        Disallows: shell metacharacters, path traversal
-        """
-        if not ref or len(ref) > 255:
-            return False
-        # Disallow shell metacharacters
-        if any(c in ref for c in ['|', ';', '&', '$', '`', '!', '(', ')', '<', '>']):
-            return False
-        # Disallow path traversal
-        if '..' in ref or ref.startswith('/'):
-            return False
-        # Allow safe git ref characters
-        if not re.match(r'^[a-zA-Z0-9._\-/~^@{}]+$', ref):
-            return False
-        return True
-
-    def _validate_git_path(path: str) -> bool:
-        """Validate file path from git to prevent path traversal."""
-        if not path or len(path) > 255:
-            return False
-        # Disallow path traversal
-        if '..' in path or path.startswith('/') or path.startswith('\\'):
-            return False
-        # Must be a relative path
-        if Path(path).is_absolute():
-            return False
-        return True
 
     def extract_commit_files(ref: str, dest: str) -> None:
         """Extract Python files from a git commit to a directory."""
