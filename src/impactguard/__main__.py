@@ -72,7 +72,7 @@ def cmd_enforce(args: argparse.Namespace) -> int:
     """Enforce gate - block on HIGH risk."""
     from .enforce_gate import enforce
 
-    block_unknown: bool | None = True if getattr(args, "block_unknown", False) else None
+    block_unknown: bool | None = getattr(args, "block_unknown", None) or None
     return enforce(args.diff, args.runtime, getattr(args, "output", None), block_unknown=block_unknown)
 
 

@@ -756,6 +756,8 @@ def test_analyze_transitive_opt_in(tmp_path: Path):
         issues = analyze(sigs_p, calls_p)
         transitive = [i for i in issues if i.get("transitive")]
         assert len(transitive) >= 1  # at least one transitive entry
+        # Verify hop distance matches the configured depth (depth=1 → hop=1)
+        assert all(i.get("hop", 1) == 1 for i in transitive)
     finally:
         os.unlink(sigs_p)
         os.unlink(calls_p)

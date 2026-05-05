@@ -95,7 +95,7 @@ def analyze(
     """
     from .config import get as cfg_get
 
-    transitive_depth: int = int(cfg_get("analysis", "transitive_depth", 1))
+    transitive_depth: int = int(cfg_get("analysis", "transitive_depth", 0))
 
     funcs = load_funcs(sigs_path)
     calls = load_calls(calls_path)

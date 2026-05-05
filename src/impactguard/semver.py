@@ -90,13 +90,16 @@ def format_semver_recommendation(
     return result
 
 
+_MIN_SEMVER_PARTS = 3  # major.minor.patch
+
+
 def _increment(version: str, bump: str) -> str:
     """Increment a semver string by *bump* level.
 
     Non-semver strings are returned unchanged with ``"-next"`` appended.
     """
     parts = version.lstrip("v").split(".")
-    if len(parts) < 3:  # noqa: PLR2004
+    if len(parts) < _MIN_SEMVER_PARTS:
         return version + "-next"
     try:
         major, minor, patch = int(parts[0]), int(parts[1]), int(parts[2])
