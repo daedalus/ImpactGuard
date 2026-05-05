@@ -118,7 +118,7 @@ def test_impactguard_analyze(tmp_path):
     assert "comparison" in result
 
 
-def test_impactguard_extract():
+def test_impactguard_extract(tmp_path):
     """Test ImpactGuard.extract method."""
     from impactguard import ImpactGuard
 

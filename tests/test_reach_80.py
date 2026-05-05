@@ -35,7 +35,7 @@ def test_suggest_fixes_full_coverage(tmp_path):
 
 def test_enforce_gate_full_coverage(tmp_path):
     """Test enforce_gate module fully."""
-    from impactguard.enforce_gate import enforce
+    from impactguard.enforce_gate import enforce_report
 
     # Test with HIGH risk - should fail
     report_path = tmp_path / "high.json"

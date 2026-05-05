@@ -19,8 +19,7 @@ def test_cli_help(capsys):
     result = run_cli(['--help'])
     # Help exits with 0
     assert result == 0
-    captured = capsys.readouterr()
-    assert "usage" in captured.lower() or "usage" in (capsys.readouterr() or "")
+    assert "usage" in capsys.readouterr().out.lower()
 
 
 def test_cli_version(capsys):
@@ -30,15 +29,18 @@ def test_cli_version(capsys):
     assert result == 0
 
 
-def test_cli_extract_no_files(capsys):
+def test_extract_no_files(capsys):
     """Test extract with no files."""
-    result = run_cli(['extract'])
+    from io import StringIO
+    from unittest.mock import patch
+    with patch('sys.stdin', StringIO('')):
+        result = run_cli(['extract'])
     captured = capsys.readouterr()
-    assert "no input" in captured.lower() or result == 1
+    assert "no input" in captured.out.lower() or result == 1
 
 
 def test_cli_no_command(capsys):
     """Test CLI with no command."""
     result = run_cli([])
     captured = capsys.readouterr()
-    assert "usage" in captured.lower() or result == 1
+    assert "usage" in captured.out.lower() or result == 1
