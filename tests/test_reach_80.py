@@ -40,17 +40,17 @@ def test_enforce_gate_full_coverage(tmp_path):
     # Test with HIGH risk - should fail
     report_path = tmp_path / "high.json"
     report_path.write_text(json.dumps([{"risk": "HIGH", "function": "test:foo"}]))
-    assert enforce(str(report_path)) == 1
+    assert enforce_report(str(report_path)) == 1
 
     # Test with LOW risk - should pass
     report_path = tmp_path / "low.json"
     report_path.write_text(json.dumps([{"risk": "LOW", "function": "test:foo"}]))
-    assert enforce(str(report_path)) == 0
+    assert enforce_report(str(report_path)) == 0
 
     # Test with UNKNOWN risk - should warn but pass
     report_path = tmp_path / "unknown.json"
     report_path.write_text(json.dumps([{"risk": "UNKNOWN", "function": "test:bar"}]))
-    result = enforce(str(report_path))
+    result = enforce_report(str(report_path))
     assert result == 0
 
     # Test with mixed - should fail
@@ -59,7 +59,7 @@ def test_enforce_gate_full_coverage(tmp_path):
         {"risk": "LOW", "function": "test:foo"},
         {"risk": "HIGH", "function": "test:bar"},
     ]))
-    assert enforce(str(report_path)) == 1
+    assert enforce_report(str(report_path)) == 1
 
 
 def test_risk_gate_full_coverage(tmp_path):

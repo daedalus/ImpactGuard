@@ -3,14 +3,12 @@ import math
 # Severity scores for different types of changes
 SEVERITY_SCORES = {
     "REMOVED": 1.0,
-    "REQUIRED POSITIONAL ADDED": 0.9,
-    "POSITIONAL REORDER/RENAME": 0.8,
-    "REQUIRED KWONLY ADDED": 0.9,
+    "REQUIRED": 0.9,
+    "POSITIONAL REORDER": 0.8,
     "KWONLY REMOVED": 0.8,
     "*args REMOVED": 0.7,
     "**kwargs REMOVED": 0.7,
-    "OPTIONAL POSITIONAL ADDED": 0.3,
-    "OPTIONAL KWONLY ADDED": 0.3,
+    "OPTIONAL": 0.3,
     "ADDED": 0.1,
 }
 

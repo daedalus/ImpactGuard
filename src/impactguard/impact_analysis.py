@@ -3,53 +3,26 @@ import math
 import sys
 from typing import Any
 
+from .risk_model import get_severity, exposure
+
+
+def required_positional(func: dict[str, Any]) -> int:
+    """Count required positional arguments."""
+    return sum(1 for a in func.get("positional", []) if not a.get("has_default"))
+
+def total_positional(func: dict[str, Any]) -> int:
+    """Count total positional arguments."""
+    return len(func.get("positional", []))
 
 def load_funcs(path: str) -> dict[str, dict[str, Any]]:
     """Load function signatures from JSON file."""
     data: list[dict[str, Any]] = json.load(open(path))
     return {f["fqname"]: f for f in data}
 
-
 def load_calls(path: str) -> list[dict[str, Any]]:
     """Load call sites from JSON file."""
     data: list[dict[str, Any]] = json.load(open(path))
     return data
-
-
-def required_positional(func: dict[str, Any]) -> int:
-    """Count required positional arguments."""
-    return sum(1 for a in func["positional"] if not a["has_default"])
-
-
-def total_positional(func: dict[str, Any]) -> int:
-    """Count total positional arguments."""
-    return len(func["positional"])
-
-
-def get_severity(change_type: str) -> float:
-    """Get severity score for a change type."""
-    scores = {
-        "REMOVED": 1.0,
-        "REQUIRED": 0.9,
-        "POSITIONAL REORDER": 0.8,
-        "KWONLY REMOVED": 0.8,
-        "*args REMOVED": 0.7,
-        "**kwargs REMOVED": 0.7,
-        "OPTIONAL": 0.3,
-        "ADDED": 0.1,
-    }
-    for key, score in scores.items():
-        if key in change_type:
-            return score
-    return 0.5
-
-
-def exposure(count: int, max_count: int) -> float:
-    """Calculate exposure score from call count."""
-    if count == 0:
-        return 0
-    return min(1.0, math.log(1 + count) / math.log(1 + max_count))
-
 
 def analyze(
     sigs_path: str, calls_path: str, runtime_path: str | None = None

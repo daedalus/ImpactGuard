@@ -1,5 +1,6 @@
 import ast
 from pathlib import Path
+from typing import Any
 
 
 class Scope:
@@ -162,3 +163,22 @@ def analyze(path):
         "file": path,
         "calls": a.calls,
     }
+
+
+def analyze_calls(files: list[str]) -> list[dict[str, Any]]:
+    """Analyze call sites across multiple Python files.
+
+    Args:
+        files: List of Python file paths.
+
+    Returns:
+        Flat list of call site dictionaries from all files, each with keys:
+        fqname, file, lineno, args, kwargs, starargs, kwargs_any.
+    """
+    all_calls: list[dict[str, Any]] = []
+    for path in files:
+        result = analyze(path)
+        if result:
+            all_calls.extend(result.get("calls", []))
+
+    return all_calls

@@ -306,13 +306,69 @@ def cmd_generate_changelog(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_suggest(args: argparse.Namespace) -> int:
+    """Generate fix suggestions for a risk report."""
+    import json
+    from .suggest_fixes import suggest
+
+    try:
+        report = json.load(open(args.report))
+    except Exception as e:
+        print(f"Error reading report: {e}", file=sys.stderr)
+        return 1
+
+    all_suggestions: list[str] = []
+    for item in report:
+        sug = suggest(item, [item])
+        all_suggestions.extend(sug)
+
+    if args.output:
+        with open(args.output, "w") as f:
+            json.dump(all_suggestions, f, indent=2)
+    else:
+        for s in all_suggestions:
+            print(s)
+
+    return 0
+
+
+def cmd_patch(args: argparse.Namespace) -> int:
+    """Generate CST-based patches for a source file."""
+    from pathlib import Path
+    from .cst_patch import patch_function, patch_call
+
+    try:
+        source = Path(args.file).read_text()
+    except Exception as e:
+        print(f"Error reading file: {e}", file=sys.stderr)
+        return 1
+
+    if args.patch_type == "function":
+        result, err = patch_function(source, args.func_name, args.param_name)
+    else:
+        result, err = patch_call(source, args.func_name, args.param_name)
+
+    if err:
+        print(f"Patch error: {err}", file=sys.stderr)
+        return 1
+
+    if args.output:
+        Path(args.output).write_text(result or "")
+    else:
+        print(result)
+
+    return 0
+
+
 def main() -> int:
+    from . import __version__
+
     parser = argparse.ArgumentParser(
         prog="impactguard",
         description="ImpactGuard - API impact analyzer for Python",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--version", action="version", version="%(prog)s 0.1.0")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
@@ -354,8 +410,28 @@ def main() -> int:
 
     # enforce subcommand
     enforce_parser = subparsers.add_parser("enforce", help="Enforce gate - block on HIGH risk")
-    enforce_parser.add_argument("report", help="Risk report JSON file")
+    enforce_parser.add_argument("diff", help="Diff text file")
+    enforce_parser.add_argument("runtime", help="Runtime data JSON file")
+    enforce_parser.add_argument("-o", "--output", help="Output report JSON file")
     enforce_parser.set_defaults(func=cmd_enforce)
+
+    # suggest subcommand
+    suggest_parser = subparsers.add_parser("suggest", help="Generate fix suggestions from risk report")
+    suggest_parser.add_argument("report", help="Risk report JSON file")
+    suggest_parser.add_argument("-o", "--output", help="Output JSON file for suggestions")
+    suggest_parser.set_defaults(func=cmd_suggest)
+
+    # patch subcommand
+    patch_parser = subparsers.add_parser("patch", help="Generate CST-based patches")
+    patch_parser.add_argument("file", help="Python source file to patch")
+    patch_parser.add_argument("func_name", help="Function name to patch")
+    patch_parser.add_argument("param_name", help="Parameter name to patch")
+    patch_parser.add_argument(
+        "--type", dest="patch_type", choices=["function", "call"], default="function",
+        help="Patch type: 'function' adds default, 'call' fixes call site"
+    )
+    patch_parser.add_argument("-o", "--output", help="Output file (default: stdout)")
+    patch_parser.set_defaults(func=cmd_patch)
 
     # extract-calls subcommand
     extract_calls_parser = subparsers.add_parser(
@@ -466,7 +542,7 @@ def main() -> int:
         "extract", "compare", "analyze", "risk", "report", "trace",
         "check", "check-commits", "install-hooks",
         "enforce", "extract-calls", "runtime-impact",
-        "generate-changelog",
+        "generate-changelog", "suggest", "patch",
     ] and not sys.argv[1].startswith("-"):
         # Assume pipeline mode: impactguard old/ new/ [runtime] [output]
         sys.argv.insert(1, "check")

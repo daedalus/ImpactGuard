@@ -42,12 +42,24 @@ def trace(func: Callable[..., Any]) -> Callable[..., Any]:
 
 
 def flush(path: str = "/tmp/runtime_calls.json") -> None:
+    import os
+    import tempfile
+
     data = dict(COUNTS)
 
-    with open(path, "w") as f:
+    dir_name = os.path.dirname(os.path.abspath(path)) or "."
+    with tempfile.NamedTemporaryFile(
+        mode="w", dir=dir_name, delete=False, suffix=".json"
+    ) as f:
         json.dump(data, f)
+        temp_path = f.name
 
-    COUNTS.clear()
+    os.replace(temp_path, path)
+
+
+import atexit as _atexit
+
+_atexit.register(flush)
 
 
 def install_tracer(module: object, prefix: str | None = None) -> None:

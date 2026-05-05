@@ -16,9 +16,9 @@ from impactguard import (
 
 def test_get_severity():
     assert get_severity("REMOVED: foo") == 1.0
-    assert get_severity("REQUIRED POSITIONAL ADDED: foo") == 0.9
-    assert get_severity("POSITIONAL REORDER/RENAME: foo") == 0.8
-    assert get_severity("OPTIONAL POSITIONAL ADDED: foo") == 0.3
+    assert get_severity("REQUIRED positional arg removed") == 0.9
+    assert get_severity("POSITIONAL REORDER: foo") == 0.8
+    assert get_severity("OPTIONAL arg added") == 0.3
     assert get_severity("unknown change") == 0.5
 
 
@@ -55,5 +55,5 @@ def test_compute_risk():
 def test_severity_scores():
     assert "REMOVED" in SEVERITY_SCORES
     assert SEVERITY_SCORES["REMOVED"] == 1.0
-    assert "REQUIRED POSITIONAL ADDED" in SEVERITY_SCORES
-    assert SEVERITY_SCORES["REQUIRED POSITIONAL ADDED"] == 0.9
+    assert "REQUIRED" in SEVERITY_SCORES
+    assert SEVERITY_SCORES["REQUIRED"] == 0.9

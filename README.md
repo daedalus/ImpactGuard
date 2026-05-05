@@ -4,7 +4,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/impactguard.svg)](https://pypi.org/project/impactguard/)
 [![Python](https://img.shields.io/pypi/pyversions/impactguard.svg)](https://pypi.org/project/impactguard/)
-[![Coverage](https://codecov.io/gh/daedalus/ImpactGuard/branch/main/graph/badge.svg)](https://codecov.io/gh/daedalus/ImpactGuard)
+[![Coverage](https://codecov.io/gh/daedalus/ImpactGuard/branch/master/graph/badge.svg)](https://codecov.io/gh/daedalus/ImpactGuard)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/daedalus/ImpactGuard)
 
@@ -67,29 +67,26 @@ pip install -e ".[test]"
 | `impact_analysis.py` | Logic for correlating signatures with call sites |
 | `risk_gate.py` | The CI-ready enforcement engine |
 | `trace_calls.py` | Runtime instrumentation for capturing live execution data |
-| `Makefile` | Task runner for the standard analysis pipeline |
+| `SPEC.md` | Technical specification and public API |
 
-### First Analysis Run
-
-The full pipeline can be executed using the provided `Makefile`:
+The full pipeline can be executed using the `impactguard` CLI:
 
 ```bash
 # 1. Extract signatures and calls
-make signatures
-make calls
+impactguard extract $(git ls-files '*.py') > .signatures.json
+impactguard extract-calls $(git ls-files '*.py') > .calls.json
 
 # 2. Capture runtime exposure (optional)
-make trace
+impactguard trace dump .runtime_calls.json
 
 # 3. Compare and analyze risk
-make risk
+impactguard risk diff.txt .runtime_calls.json report.json
 
 # 4. Generate the report
-make report
+impactguard report report.json api_report.html
 ```
 
 Or use the Python API:
-
 ```python
 from impactguard import run_pipeline
 
@@ -335,20 +332,7 @@ This hook ensures that every commit is accompanied by updated signature tracking
 
 ### Pre-Push Hook
 
-This acts as the final safety gate. It typically runs `compare_signatures.py` to evaluate the delta between the local branch and `origin/main`. If the risk gate detects high-risk breaking changes without appropriate mitigations, the push is blocked.
-
-### Makefile Targets
-
-| Target | Description | Artifacts |
-|--------|-------------|-----------|
-| `signatures` | Runs `extract_signatures.py` on all tracked `.py` files | `.signatures.json` |
-| `calls` | Runs `extract_calls.py` to map call sites | `.calls.json` |
-| `analyze` | Performs static impact analysis | (Console Output) |
-| `risk` | Runs `risk_gate.py` using diff and runtime data | `report.json` |
-| `report` | Generates a visual HTML report | `api_report.html` |
-| `compare` | Compares two JSON signature files | (Diff Output) |
-| `check` | Verifies if signature tracking is in sync | Exit Code 0/1 |
-| `clean` | Removes all intermediate artifacts | (Cleanup) |
+This acts as the final safety gate. It typically runs `compare_signatures.py` to evaluate the delta between the local branch and `origin/master`. If the risk gate detects high-risk breaking changes without appropriate mitigations, the push is blocked.
 
 ---
 
