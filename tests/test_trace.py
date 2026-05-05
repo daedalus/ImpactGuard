@@ -33,7 +33,8 @@ def test_dump():
         assert os.path.exists(f.name)
         import json
 
-        data = json.load(open(f.name))
+        with open(f.name) as fh:
+            data = json.load(fh)
         assert len(data) > 0
         os.unlink(f.name)
 

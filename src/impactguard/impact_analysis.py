@@ -16,12 +16,14 @@ def total_positional(func: dict[str, Any]) -> int:
 
 def load_funcs(path: str) -> dict[str, dict[str, Any]]:
     """Load function signatures from JSON file."""
-    data: list[dict[str, Any]] = json.load(open(path))
+    with open(path) as f:
+        data: list[dict[str, Any]] = json.load(f)
     return {f["fqname"]: f for f in data}
 
 def load_calls(path: str) -> list[dict[str, Any]]:
     """Load call sites from JSON file."""
-    data: list[dict[str, Any]] = json.load(open(path))
+    with open(path) as f:
+        data: list[dict[str, Any]] = json.load(f)
     return data
 
 
@@ -104,7 +106,8 @@ def analyze(
     runtime: dict[str, int] = {}
     if runtime_path:
         try:
-            rt_data = json.load(open(runtime_path))
+            with open(runtime_path) as f:
+                rt_data = json.load(f)
             runtime = {item["function"]: item.get("count", 1) for item in rt_data}
         except (json.JSONDecodeError, KeyError) as e:
             print(f"Warning: Failed to parse runtime data: {e}", file=sys.stderr)
