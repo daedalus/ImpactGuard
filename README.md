@@ -142,6 +142,24 @@ The final stage of the core pipeline, `analyze`, correlates the detected API cha
 
 ---
 
+### Examples of Changes
+
+#### Non-Breaking Changes
+These changes do NOT break existing callers:
+- **Adding optional parameters**: `def foo(a, b=1)` → `def foo(a, b=1, c=0)` (no callers need to change)
+- **Adding keyword-only arguments**: `def foo(a)` → `def foo(a, *, debug=False)` (existing callers unaffected)
+- **Adding new functions/classes**: Entirely new APIs that don't affect existing code
+- **Adding `*args` or `**kwargs`**: `def foo(a)` → `def foo(a, *args)` (backward compatible)
+
+#### Breaking Changes
+These changes WILL break existing callers:
+- **Removing required parameters**: `def foo(a, b)` → `def foo(a)` (callers passing `b` will fail)
+- **Reordering positional arguments**: `def foo(a, b)` → `def foo(b, a)` (callers' positional args swap)
+- **Removing functions/methods**: Any callable that's removed entirely
+- **Changing parameter types**: `def foo(a: int)` → `def foo(a: str)` (type safety breaks)
+
+---
+
 ## Risk Model and Enforcement
 
 The **Risk Model and Enforcement** subsystem is the decision-making engine of ImpactGuard. It transforms raw signature changes and runtime telemetry into actionable risk levels (`HIGH`, `MEDIUM`, `LOW`, or `UNKNOWN`). These levels are then used to automatically block or permit CI/CD pipelines based on the potential impact on consumers.
