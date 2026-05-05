@@ -168,7 +168,7 @@ def test_impactguard_compare(tmp_path):
 
 
 def test_config_file(tmp_path):
-    """Test that impactionguard.toml is present in the repository root."""
+    """Test that impactguard.toml is present in the repository root."""
     repo_root = Path(__file__).parent.parent
     config_path = repo_root / "impactguard.toml"
 
