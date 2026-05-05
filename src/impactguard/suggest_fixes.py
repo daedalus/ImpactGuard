@@ -33,7 +33,8 @@ def suggest(
 
 def get_line(file: str, lineno: int) -> str:
     try:
-        lines = open(file).read().splitlines()
+        with open(file) as f:
+            lines = f.read().splitlines()
         if 0 <= lineno - 1 < len(lines):
             return lines[lineno - 1]
     except Exception:

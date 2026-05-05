@@ -120,7 +120,8 @@ def run_pipeline(
 
     # If no old signatures, just return new signatures
     if not old_sigs_path:
-        result["signatures"] = {"new": json.load(open(new_sigs_path))}
+        with open(new_sigs_path) as f:
+            result["signatures"] = {"new": json.load(f)}
         return result
 
     # Step 2: Compare signatures
@@ -148,7 +149,8 @@ def run_pipeline(
         # Also include runtime data if available
         if runtime_path and Path(runtime_path).exists():
             try:
-                rt_data = json.load(open(runtime_path))
+                with open(runtime_path) as f:
+                    rt_data = json.load(f)
                 for item in rt_data:
                     all_calls.append(
                         {
