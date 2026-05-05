@@ -21,13 +21,15 @@ def run(
     """
     # Parse diff file
     try:
-        diff_text = open(diff_path).read()
+        with open(diff_path) as f:
+            diff_text = f.read()
     except Exception:
         diff_text = ""
 
     # Load runtime data
     try:
-        runtime_data = json.load(open(runtime_path))
+        with open(runtime_path) as f:
+            runtime_data = json.load(f)
         runtime = {item["function"]: item.get("count", 1) for item in runtime_data}
     except Exception:
         runtime = {}

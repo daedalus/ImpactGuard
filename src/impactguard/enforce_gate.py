@@ -80,7 +80,8 @@ def enforce_report(report_path: str, block_unknown: bool | None = None) -> int:
         block_unknown = bool(cfg_get("risk", "block_unknown", False))
 
     try:
-        report = json.load(open(report_path))
+        with open(report_path) as f:
+            report = json.load(f)
     except Exception:
         print("⚠️ Could not read report")
         return 0
