@@ -15,18 +15,43 @@ def is_required(arg: dict[str, Any]) -> bool:
     return not arg["has_default"]
 
 
-def compare(old_path: str, new_path: str) -> dict[str, list[str]]:  # noqa: MC0001
+def _is_public(fqname: str) -> bool:
+    """Return True if the function name (last segment) is public (no leading _)."""
+    name_part = fqname.split(":")[-1]
+    # For class methods like ClassName.method, check the method part
+    leaf = name_part.split(".")[-1]
+    return not leaf.startswith("_")
+
+
+def compare(  # noqa: MC0001
+    old_path: str,
+    new_path: str,
+    include_private: bool | None = None,
+) -> dict[str, list[str]]:
     """Compare two signature snapshots.
 
     Args:
         old_path: Path to old signatures JSON.
         new_path: Path to new signatures JSON.
+        include_private: When *False* (default from config), functions whose
+            leaf name starts with ``_`` are excluded from comparison.  Pass
+            *True* to include them.
 
     Returns:
         Dictionary with 'breaking' and 'nonbreaking' lists.
     """
+    from .config import get as cfg_get
+
+    if include_private is None:
+        include_private = bool(cfg_get("analysis", "include_private", False))
+
     old = load(old_path)
     new = load(new_path)
+
+    # Filter private symbols unless explicitly included
+    if not include_private:
+        old = {k: v for k, v in old.items() if _is_public(k)}
+        new = {k: v for k, v in new.items() if _is_public(k)}
 
     breaking: list[str] = []
     nonbreaking: list[str] = []
@@ -64,7 +89,7 @@ def compare(old_path: str, new_path: str) -> dict[str, list[str]]:  # noqa: MC00
 
             # new positional args
             if len(n_pos) > len(o_pos):
-                added = n_pos[len(o_pos) :]
+                added = n_pos[len(o_pos):]
                 if any(is_required(a) for a in added):
                     breaking.append(f"REQUIRED POSITIONAL ADDED: {k}")
                 else:
@@ -91,5 +116,38 @@ def compare(old_path: str, new_path: str) -> dict[str, list[str]]:  # noqa: MC00
 
         if o["kwarg"] and not n["kwarg"]:
             breaking.append(f"**kwargs REMOVED: {k}")
+
+        # ── Type annotation changes (new in this version) ──────────────────
+
+        # Per-argument type changes
+        for i, (o_arg, n_arg) in enumerate(zip(o_pos, n_pos)):
+            o_type = o_arg.get("type")
+            n_type = n_arg.get("type")
+            if o_type is not None and n_type is not None and o_type != n_type:
+                breaking.append(f"TYPE CHANGED: {k} arg '{o_arg['name']}' {o_type} -> {n_type}")
+
+        for o_arg_name, o_arg in o_kw.items():
+            if o_arg_name in n_kw:
+                o_type = o_arg.get("type")
+                n_type = n_kw[o_arg_name].get("type")
+                if o_type is not None and n_type is not None and o_type != n_type:
+                    breaking.append(
+                        f"TYPE CHANGED: {k} kwarg '{o_arg_name}' {o_type} -> {n_type}"
+                    )
+
+        # Return type changes
+        o_ret = o.get("return_type")
+        n_ret = n.get("return_type")
+        if o_ret is not None and n_ret is not None and o_ret != n_ret:
+            breaking.append(f"RETURN TYPE CHANGED: {k} {o_ret} -> {n_ret}")
+
+        # ── Decorator changes (new in this version) ────────────────────────
+        o_decs = set(o.get("decorators", []))
+        n_decs = set(n.get("decorators", []))
+        for removed_dec in o_decs - n_decs:
+            breaking.append(f"DECORATOR REMOVED: {k} @{removed_dec}")
+        for added_dec in n_decs - o_decs:
+            # Adding a decorator is usually breaking (changes calling convention)
+            breaking.append(f"DECORATOR ADDED: {k} @{added_dec}")
 
     return {"breaking": sorted(set(breaking)), "nonbreaking": sorted(set(nonbreaking))}

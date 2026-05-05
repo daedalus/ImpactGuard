@@ -1,3 +1,13 @@
+def _cfg(key: str, default: float) -> float:
+    """Read a patch-confidence weight from config with a fallback default."""
+    try:
+        from .config import get as cfg_get
+        value = cfg_get("patches", key, default)
+        return float(value)
+    except Exception:
+        return default
+
+
 def compute_confidence(
     target_certainty: float, structural: float, semantic: float, complexity: float
 ) -> float:
@@ -19,27 +29,27 @@ def get_target_certainty(
     file_match: bool, lineno_match: bool, name_only_match: bool
 ) -> float:
     if file_match and lineno_match:
-        return 1.0
+        return _cfg("target_file_match", 1.0)
     elif name_only_match:
-        return 0.5
+        return _cfg("target_name_only", 0.5)
     else:
-        return 0.2
+        return _cfg("target_default", 0.2)
 
 
 def get_structural_safety(change_type: str) -> float:
     if "default" in change_type.lower() or "optional" in change_type.lower():
-        return 1.0
+        return _cfg("structural_default", 1.0)
     elif "kwarg" in change_type.lower():
-        return 0.8
+        return _cfg("structural_kwarg", 0.8)
     elif "positional" in change_type.lower():
-        return 0.3
+        return _cfg("structural_positional", 0.3)
     return 0.5
 
 
 def get_semantic_risk(change_type: str) -> float:
     if "required" in change_type.lower():
-        return 0.6
-    return 1.0
+        return _cfg("semantic_required", 0.6)
+    return _cfg("semantic_default", 1.0)
 
 
 def get_complexity_penalty(
@@ -50,13 +60,13 @@ def get_complexity_penalty(
 ) -> float:
     penalty = 1.0
     if is_multiline:
-        penalty *= 0.7
+        penalty *= _cfg("complexity_multiline", 0.7)
     if has_decorators:
-        penalty *= 0.5
+        penalty *= _cfg("complexity_decorators", 0.5)
     if has_complex_annotations:
-        penalty *= 0.5
+        penalty *= _cfg("complexity_annotations", 0.5)
     if is_nested:
-        penalty *= 0.5
+        penalty *= _cfg("complexity_nested", 0.5)
     return penalty
 
 
