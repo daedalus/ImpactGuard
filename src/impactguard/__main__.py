@@ -72,7 +72,8 @@ def cmd_enforce(args: argparse.Namespace) -> int:
     """Enforce gate - block on HIGH risk."""
     from .enforce_gate import enforce
 
-    return enforce(args.report)
+    block_unknown: bool | None = True if getattr(args, "block_unknown", False) else None
+    return enforce(args.diff, args.runtime, getattr(args, "output", None), block_unknown=block_unknown)
 
 
 def cmd_extract_calls(args: argparse.Namespace) -> int:
@@ -164,42 +165,83 @@ def cmd_check(args: argparse.Namespace) -> int:
     """Run full ImpactGuard pipeline check."""
     from .pipeline import quick_check
 
-    print(f"Checking impact: {args.old} → {args.new}")
+    watch: bool = getattr(args, "watch", False)
 
+    def _run_once() -> int:
+        print(f"Checking impact: {args.old} → {args.new}")
+        try:
+            result = quick_check(args.old, args.new, args.runtime)
+            print(f"\n=== Comparison ===")
+            print(
+                f"Breaking changes: {len(result.get('comparison', {}).get('breaking', []))}"
+            )
+            print(
+                f"Non-breaking changes: {len(result.get('comparison', {}).get('nonbreaking', []))}"
+            )
+
+            if "semver" in result:
+                sv = result["semver"]
+                print(f"\n=== Semver Recommendation ===")
+                print(f"Bump: {sv.get('bump', 'patch').upper()}  — {sv.get('reason', '')}")
+
+            if "risk" in result:
+                risk_items = result["risk"]
+                high = sum(1 for r in risk_items if r.get("risk") == "HIGH")
+                print(f"\n=== Risk Analysis ===")
+                print(f"HIGH risk: {high}")
+
+            if "report_html" in result:
+                output = args.output or "impact_report.html"
+                with open(output, "w") as f:
+                    f.write(result["report_html"])
+                print(f"\nReport written to {output}")
+
+            if "fixes" in result:
+                fixes = result["fixes"]
+                if fixes:
+                    print(f"\n=== Suggested Fixes ({len(fixes)}) ===")
+                    for fix in fixes[:5]:
+                        print(f"  - {fix}")
+
+            return 0
+        except Exception as e:
+            print(f"Error: {e}")
+            return 1
+
+    if not watch:
+        return _run_once()
+
+    # ── Watch mode — re-run whenever any *.py file in old/new dirs changes ──
+    import time
+    import glob as _glob
+
+    print(f"Watch mode enabled. Press Ctrl-C to stop.")
+
+    def _mtimes() -> dict[str, float]:
+        times: dict[str, float] = {}
+        for pattern in [f"{args.old}/**/*.py", f"{args.new}/**/*.py",
+                         f"{args.old}/*.py", f"{args.new}/*.py"]:
+            for p in _glob.glob(pattern, recursive=True):
+                try:
+                    times[p] = Path(p).stat().st_mtime
+                except OSError:
+                    pass
+        return times
+
+    last_times = _mtimes()
+    _run_once()
     try:
-        result = quick_check(args.old, args.new, args.runtime)
-        print(f"\n=== Comparison ===")
-        print(
-            f"Breaking changes: {len(result.get('comparison', {}).get('breaking', []))}"
-        )
-        print(
-            f"Non-breaking changes: {len(result.get('comparison', {}).get('nonbreaking', []))}"
-        )
+        while True:
+            time.sleep(1)
+            current = _mtimes()
+            if current != last_times:
+                last_times = current
+                print("\n[watch] Change detected — re-running…\n")
+                _run_once()
+    except KeyboardInterrupt:
+        print("\n[watch] Stopped.")
+    return 0
 
-        if "risk" in result:
-            risk_items = result["risk"]
-            high = sum(1 for r in risk_items if r.get("risk") == "HIGH")
-            print(f"\n=== Risk Analysis ===")
-            print(f"HIGH risk: {high}")
-
-        if "report_html" in result:
-            output = args.output or "impact_report.html"
-            with open(output, "w") as f:
-                f.write(result["report_html"])
-            print(f"\nReport written to {output}")
-
-        if "fixes" in result:
-            fixes = result["fixes"]
-            if fixes:
-                print(f"\n=== Suggested Fixes ({len(fixes)}) ===")
-                for fix in fixes[:5]:
-                    print(f"  - {fix}")
-
-        return 0
-
-    except Exception as e:
-        print(f"Error: {e}")
-        return 1
 
 
 def cmd_check_commits(args: argparse.Namespace) -> int:
@@ -393,6 +435,114 @@ def cmd_patch(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_baseline(args: argparse.Namespace) -> int:
+    """Manage ImpactGuard baselines."""
+    from .baseline import (
+        save_baseline,
+        load_baseline,
+        compare_with_baseline,
+        baseline_exists,
+        DEFAULT_BASELINE_PATH,
+    )
+
+    subcommand: str = args.baseline_cmd or "status"
+    baseline_path: str | None = getattr(args, "baseline_path", None)
+
+    if subcommand == "save":
+        files = getattr(args, "files", None) or []
+        if not files:
+            # Collect all tracked Python files
+            import glob as _glob
+            files = list(_glob.glob("**/*.py", recursive=True))
+            if not files:
+                print("Error: No Python files found", file=sys.stderr)
+                return 1
+
+        import datetime
+        metadata = {
+            "saved_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "files_count": len(files),
+        }
+        saved = save_baseline(files, baseline_path, metadata)
+        print(f"Baseline saved: {saved} ({len(files)} file(s))")
+        return 0
+
+    elif subcommand == "status":
+        effective = baseline_path or DEFAULT_BASELINE_PATH
+        if baseline_exists(effective):
+            data = load_baseline(effective)
+            meta = data.get("metadata", {})
+            sigs = data.get("signatures", [])
+            print(f"Baseline: {effective}")
+            print(f"  Functions: {len(sigs)}")
+            if meta.get("saved_at"):
+                print(f"  Saved at:  {meta['saved_at']}")
+        else:
+            print(f"No baseline found at: {effective}")
+            print("Run `impactguard baseline save` to create one.")
+        return 0
+
+    elif subcommand == "compare":
+        files = getattr(args, "files", None) or []
+        if not files:
+            import glob as _glob
+            files = list(_glob.glob("**/*.py", recursive=True))
+            if not files:
+                print("Error: No Python files found", file=sys.stderr)
+                return 1
+
+        try:
+            result = compare_with_baseline(files, baseline_path)
+        except FileNotFoundError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+        comparison = result["comparison"]
+        semver = result["semver"]
+        print(f"Breaking changes:     {len(comparison.get('breaking', []))}")
+        print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
+        print(f"Semver recommendation: {semver.get('bump', 'patch').upper()} — {semver.get('reason', '')}")
+
+        for item in comparison.get("breaking", []):
+            print(f"  ⚠ {item}")
+
+        output = getattr(args, "output", None)
+        if output:
+            import json
+            with open(output, "w") as f:
+                json.dump(result, f, indent=2)
+            print(f"\nResult written to {output}")
+
+        return 1 if comparison.get("breaking") else 0
+
+    print(f"Unknown baseline subcommand: {subcommand}", file=sys.stderr)
+    return 1
+
+
+def cmd_semver(args: argparse.Namespace) -> int:
+    """Suggest a semver bump from two signature snapshots."""
+    from .compare_signatures import compare
+    from .semver import format_semver_recommendation
+
+    result = compare(args.old, args.new)
+    rec = format_semver_recommendation(result, getattr(args, "current_version", None))
+
+    print(f"Recommended bump: {rec['bump'].upper()}")
+    print(f"Reason: {rec['reason']}")
+    print(f"Breaking changes:     {rec['breaking_count']}")
+    print(f"Non-breaking changes: {rec['nonbreaking_count']}")
+    if "next_version" in rec:
+        print(f"Next version:         {rec['next_version']}")
+
+    output = getattr(args, "output", None)
+    if output:
+        import json
+        with open(output, "w") as f:
+            json.dump(rec, f, indent=2)
+
+    return 0
+
+
 def main() -> int:
     from . import __version__
 
@@ -446,6 +596,11 @@ def main() -> int:
     enforce_parser.add_argument("diff", help="Diff text file")
     enforce_parser.add_argument("runtime", help="Runtime data JSON file")
     enforce_parser.add_argument("-o", "--output", help="Output report JSON file")
+    enforce_parser.add_argument(
+        "--block-unknown",
+        action="store_true",
+        help="Treat UNKNOWN risk as a blocking condition (same as HIGH)",
+    )
     enforce_parser.set_defaults(func=cmd_enforce)
 
     # suggest subcommand
@@ -498,6 +653,10 @@ def main() -> int:
     )
     check_parser.add_argument(
         "output", nargs="?", default="impact_report.html", help="Output HTML report"
+    )
+    check_parser.add_argument(
+        "--watch", action="store_true",
+        help="Re-run automatically when source files change",
     )
     check_parser.set_defaults(func=cmd_check)
 
@@ -570,12 +729,43 @@ def main() -> int:
     )
     changelog_parser.set_defaults(func=cmd_generate_changelog)
 
+    # baseline subcommand
+    baseline_parser = subparsers.add_parser(
+        "baseline", help="Manage ImpactGuard signature baselines"
+    )
+    baseline_sub = baseline_parser.add_subparsers(
+        dest="baseline_cmd", help="Baseline subcommands"
+    )
+    baseline_save = baseline_sub.add_parser("save", help="Save current signatures as baseline")
+    baseline_save.add_argument("files", nargs="*", help="Python files to snapshot (default: all)")
+    baseline_save.add_argument("--path", dest="baseline_path", help="Path to baseline JSON file")
+    baseline_status = baseline_sub.add_parser("status", help="Show baseline info")
+    baseline_status.add_argument("--path", dest="baseline_path", help="Path to baseline JSON file")
+    baseline_compare = baseline_sub.add_parser("compare", help="Compare current code against baseline")
+    baseline_compare.add_argument("files", nargs="*", help="Python files to compare (default: all)")
+    baseline_compare.add_argument("--path", dest="baseline_path", help="Path to baseline JSON file")
+    baseline_compare.add_argument("-o", "--output", help="Output JSON file for comparison result")
+    baseline_parser.set_defaults(func=cmd_baseline)
+
+    # semver subcommand
+    semver_parser = subparsers.add_parser(
+        "semver", help="Suggest semver bump from two signature snapshots"
+    )
+    semver_parser.add_argument("old", help="Old signatures JSON file")
+    semver_parser.add_argument("new", help="New signatures JSON file")
+    semver_parser.add_argument(
+        "--current-version", dest="current_version", help="Current version string (e.g. 1.2.3)"
+    )
+    semver_parser.add_argument("-o", "--output", help="Output JSON file for recommendation")
+    semver_parser.set_defaults(func=cmd_semver)
+
     # Make 'check' the default if no subcommand provided but args look like paths
     if len(sys.argv) > 1 and sys.argv[1] not in [
         "extract", "compare", "analyze", "risk", "report", "trace",
         "check", "check-commits", "install-hooks",
         "enforce", "extract-calls", "runtime-impact",
         "generate-changelog", "suggest", "patch",
+        "baseline", "semver",
     ] and not sys.argv[1].startswith("-"):
         # Assume pipeline mode: impactguard old/ new/ [runtime] [output]
         sys.argv.insert(1, "check")

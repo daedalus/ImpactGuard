@@ -194,6 +194,10 @@ def run_pipeline(
             fixes.extend(enriched)
     result["fixes"] = fixes
 
+    # Step 8: Semver recommendation
+    from .semver import format_semver_recommendation
+    result["semver"] = format_semver_recommendation(comparison)
+
     # Add signatures to result
     with open(old_sigs_path) as f:
         result["signatures"] = {"old": json.load(f), "new": []}
@@ -530,24 +534,35 @@ class ImpactGuard:
 
         return compare(old_sigs, new_sigs)
 
-    def check(self, path: str) -> dict[str, Any]:
-        """Check a single file/directory (compare with previous version).
+    def check(self, path: str, baseline_path: str | None = None) -> dict[str, Any]:
+        """Check a single file/directory against a stored baseline.
+
+        When a baseline exists at *baseline_path* (or the default path), this
+        performs a full comparison and risk analysis against it.  Otherwise it
+        just extracts and returns the current signatures.
 
         Args:
-            path: Path to check
+            path: Path to file or directory to check.
+            baseline_path: Optional explicit path to a baseline JSON file.
 
         Returns:
-            Analysis results
+            Full pipeline result dict when a baseline is available, or
+            ``{"signatures": [...], "status": "no_baseline"}`` when no
+            baseline has been saved yet.
         """
-        # This would need version control integration
-        # For now, just extract signatures
+        from .baseline import compare_with_baseline, baseline_exists, DEFAULT_BASELINE_PATH
         from .extract_signatures import extract
 
-        files = []
+        files: list[str] = []
         p = Path(path)
         if p.is_file():
             files = [str(p)]
         elif p.is_dir():
             files = [str(f) for f in p.rglob("*.py")]
 
-        return {"signatures": extract(files), "status": "single_version"}
+        effective_baseline = baseline_path or DEFAULT_BASELINE_PATH
+        if baseline_exists(effective_baseline):
+            return compare_with_baseline(files, effective_baseline)
+
+        # No baseline yet — just return current signatures
+        return {"signatures": extract(files), "status": "no_baseline"}
