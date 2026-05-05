@@ -20,8 +20,11 @@ SEVERITY_SCORES = {
 def _effective_severity_scores() -> dict[str, float]:
     """Return severity scores, preferring any overrides from the config file."""
     try:
-        from .config import get as cfg_get
-        overrides: dict[str, float] = cfg_get("severity_scores", None) or {}  # type: ignore[assignment]
+        from .config import get_config
+        cfg = get_config()
+        overrides: dict[str, float] = (
+            cfg.get("impactguard", {}).get("severity_scores", {})
+        )
         if overrides:
             merged = dict(SEVERITY_SCORES)
             merged.update(overrides)
@@ -33,9 +36,11 @@ def _effective_severity_scores() -> dict[str, float]:
 
 def get_severity(change_type: str) -> float:
     scores = _effective_severity_scores()
-    for key, score in scores.items():
+    # Check longer/more-specific keys first to avoid substring false-matches
+    # e.g. "RETURN TYPE CHANGED" must not match "TYPE CHANGED" prematurely.
+    for key in sorted(scores, key=len, reverse=True):
         if key in change_type:
-            return score
+            return scores[key]
     return 0.5
 
 
