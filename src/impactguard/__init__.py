@@ -6,16 +6,15 @@ ImpactGuard - Lightweight API impact analyzer for Python projects.
 Track function signatures, detect breaking changes, and analyze call-site impact
 using static and runtime techniques.
 """
-from .analyze_module import analyze as analyze_module
+from .analyze_module import analyze as analyze_module, analyze_calls
 from .compare_signatures import compare, load
-from .enforce_gate import enforce
+from .enforce_gate import enforce, enforce_report
 from .extract_signatures import extract, serialize_function
-from .generate_report import generate_html
+from .generate_report import generate_html, generate_html_from_file
 from .impact_analysis import analyze
 from .patch_confidence import (
     classify as classify_patch,
-)
-from .patch_confidence import (
+    classify_with_factors,
     compute_confidence,
     get_complexity_penalty,
     get_semantic_risk,
@@ -44,6 +43,7 @@ from .pipeline import (
     run_pipeline_git,
     ImpactGuard,
 )
+from .runtime_impact import analyze as analyze_runtime_impact
 
 __version__ = "0.1.0"
 __all__ = [
@@ -56,7 +56,9 @@ __all__ = [
     # Impact analysis
     "analyze",
     "analyze_module",
+    "analyze_calls",
     # Risk model
+    "SEVERITY_SCORES",
     "get_severity",
     "exposure",
     "confidence",
@@ -65,10 +67,16 @@ __all__ = [
     # Patch confidence
     "compute_confidence",
     "classify_patch",
+    "classify_with_factors",
     "get_target_certainty",
+    "get_structural_safety",
+    "get_semantic_risk",
+    "get_complexity_penalty",
     # Reporting
     "generate_html",
+    "generate_html_from_file",
     "enforce",
+    "enforce_report",
     # CST patches
     "patch_function",
     "patch_call",
@@ -83,6 +91,8 @@ __all__ = [
     "flush",
     "should_sample",
     "install_tracer_prod",
+    # Runtime impact
+    "analyze_runtime_impact",
     # Pipeline (Recommended)
     "run_pipeline",
     "quick_check",

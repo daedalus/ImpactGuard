@@ -122,21 +122,24 @@ def test_generate_report_with_items():
 
 def test_enforce_gate_import():
     """Test that enforce_gate can be imported."""
-    from impactguard.enforce_gate import enforce
+    from impactguard.enforce_gate import enforce, enforce_report
 
     assert callable(enforce)
+    assert callable(enforce_report)
 
 
-def test_enforce_gate_no_high():
+def test_enforce_gate_no_high(tmp_path):
     """Test enforce_gate with no HIGH risk items."""
-    from impactguard.enforce_gate import enforce
+    from impactguard.enforce_gate import enforce_report
 
     items = [
-        {"risk_level": "LOW", "fqname": "test:foo"},
-        {"risk_level": "MEDIUM", "fqname": "test:bar"},
+        {"risk": "LOW", "function": "test:foo"},
+        {"risk": "MEDIUM", "function": "test:bar"},
     ]
+    report_path = tmp_path / "report.json"
+    report_path.write_text(__import__("json").dumps(items))
 
-    result = enforce(items)
+    result = enforce_report(str(report_path))
     assert result == 0  # Should pass
 
 

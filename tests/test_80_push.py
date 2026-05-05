@@ -135,7 +135,7 @@ def test_impact_analysis_remaining():
     assert total_positional(f) == 2
 
     assert get_severity("REMOVED") == 1.0
-    assert get_severity("REQUIRED") == 0.9
+    assert get_severity("REQUIRED POSITIONAL ADDED") == 0.9
     assert get_severity("unknown") == 0.5
 
     assert exposure(0, 100) == 0

@@ -2,13 +2,49 @@ import json
 import sys
 
 
-def enforce(report_path: str) -> int:
+def enforce(diff_path: str, runtime_path: str, output_path: str | None = None) -> int:
+    """Enforce gate - run risk analysis and block on HIGH risk.
+
+    Args:
+        diff_path: Path to diff text file.
+        runtime_path: Path to runtime data JSON file.
+        output_path: Optional path to write report JSON.
+
+    Returns:
+        1 if HIGH risk detected (blocks build), 0 otherwise.
+    """
+    from .risk_gate import run
+
+    report = run(diff_path, runtime_path, output_path)
+    return _evaluate_report(report)
+
+
+def enforce_report(report_path: str) -> int:
+    """Enforce gate from a pre-generated report JSON (backward-compatible).
+
+    Args:
+        report_path: Path to pre-generated risk report JSON file.
+
+    Returns:
+        1 if HIGH risk detected (blocks build), 0 otherwise.
+    """
     try:
         report = json.load(open(report_path))
     except Exception:
         print("⚠️ Could not read report")
         return 0
+    return _evaluate_report(report)
 
+
+def _evaluate_report(report: list) -> int:
+    """Evaluate a risk report and print status messages.
+
+    Args:
+        report: List of risk report items.
+
+    Returns:
+        1 if HIGH risk detected, 0 otherwise.
+    """
     has_high = False
     has_unknown = False
 
@@ -19,15 +55,10 @@ def enforce(report_path: str) -> int:
         if risk == "HIGH":
             has_high = True
             print(f"🔴 HIGH — {func}")
-            print(f"   change: {item.get('change', '')}")
-            print(f"   exposure: {item.get('exposure', 0):.2%}")
-            print(f"   confidence: {item.get('confidence', 0):.2f}")
-            print()
         elif risk == "UNKNOWN":
             has_unknown = True
 
     if has_high:
-        print("❌ Blocking: HIGH risk API changes detected")
         return 1
 
     if has_unknown:

@@ -53,7 +53,7 @@ def test_patch_generator_import():
 
 def test_enforce_gate_with_high_risk(tmp_path):
     """Test enforce_gate with HIGH risk."""
-    from impactguard.enforce_gate import enforce
+    from impactguard.enforce_gate import enforce_report
 
     items = [
         {"risk": "HIGH", "function": "test:foo"},
@@ -62,13 +62,13 @@ def test_enforce_gate_with_high_risk(tmp_path):
     report_path = tmp_path / "report.json"
     report_path.write_text(json.dumps(items))
 
-    result = enforce(str(report_path))
+    result = enforce_report(str(report_path))
     assert result == 1  # Should fail
 
 
 def test_enforce_gate_with_mixed_risk(tmp_path):
     """Test enforce_gate with mixed risk levels."""
-    from impactguard.enforce_gate import enforce
+    from impactguard.enforce_gate import enforce_report
 
     items = [
         {"risk": "LOW", "function": "test:foo"},
@@ -78,7 +78,7 @@ def test_enforce_gate_with_mixed_risk(tmp_path):
     report_path = tmp_path / "report.json"
     report_path.write_text(json.dumps(items))
 
-    result = enforce(str(report_path))
+    result = enforce_report(str(report_path))
     assert result == 0  # Should pass
 
 

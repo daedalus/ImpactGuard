@@ -4,7 +4,7 @@ import json
 import os
 import tempfile
 
-from impactguard.enforce_gate import enforce
+from impactguard.enforce_gate import enforce_report
 
 
 def test_enforce_no_high_risk():
@@ -21,7 +21,7 @@ def test_enforce_no_high_risk():
         json.dump(report_data, f)
         report_file = f.name
 
-    result = enforce(report_file)
+    result = enforce_report(report_file)
     # No HIGH risk, should return 0
     assert result == 0
     os.unlink(report_file)
@@ -41,7 +41,7 @@ def test_enforce_with_high_risk():
         json.dump(report_data, f)
         report_file = f.name
 
-    result = enforce(report_file)
+    result = enforce_report(report_file)
     # Has HIGH risk, should return 1
     assert result == 1
     os.unlink(report_file)

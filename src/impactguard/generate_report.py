@@ -69,6 +69,25 @@ def generate_html(report_data: list[dict[str, Any]]) -> str:
     return "\n".join(html)
 
 
+def generate_html_from_file(risk_json_path: str, output_path: str | None = None) -> str:
+    """Generate HTML report from JSON file path (matches SPEC file-based API).
+
+    Args:
+        risk_json_path: Path to risk report JSON file.
+        output_path: Optional path to write HTML output.
+
+    Returns:
+        HTML content as string.
+    """
+    import json
+    report = json.load(open(risk_json_path))
+    html = generate_html(report)
+    if output_path:
+        with open(output_path, "w") as f:
+            f.write(html)
+    return html
+
+
 def main(report_path: str, output_path: str | None = None) -> None:
     report = json.load(open(report_path))
     html = generate_html(report)

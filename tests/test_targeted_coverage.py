@@ -65,10 +65,12 @@ def test_main_all_commands(tmp_path):
         assert e.code == 0
 
     # Test enforce command
-    report_path = tmp_path / "report.json"
-    report_path.write_text(json.dumps([{"risk": "LOW", "function": "test:foo"}]))
+    diff_path = tmp_path / "diff.txt"
+    diff_path.write_text("")
+    runtime_path = tmp_path / "runtime.json"
+    runtime_path.write_text("[]")
 
-    sys.argv = ["impactguard", "enforce", str(report_path)]
+    sys.argv = ["impactguard", "enforce", str(diff_path), str(runtime_path)]
     try:
         main()
     except SystemExit as e:

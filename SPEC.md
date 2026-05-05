@@ -289,23 +289,25 @@ Risk score (product of the three inputs)
 
 ### Risk Gate (`risk_gate.py`)
 
+The following functions are re-exported from `risk_model.py` for convenience:
+
 #### `get_severity(change_type: str) -> float`
-Get severity score for a change type (same as `risk_model.get_severity`).
+Get severity score for a change type (re-exported from `risk_model.get_severity`).
 
 ---
 
 #### `exposure(count: int, max_count: int) -> float`
-Calculate exposure score (same as `risk_model.exposure`).
+Calculate exposure score (re-exported from `risk_model.exposure`).
 
 ---
 
 #### `confidence(samples: int, threshold: int = 100) -> float`
-Calculate confidence (same as `risk_model.confidence`).
+Calculate confidence (re-exported from `risk_model.confidence`).
 
 ---
 
 #### `classify(severity: float, count: int, max_count: int, samples: int) -> tuple[str, float, float]`
-Classify risk level (same as `risk_model.classify`).
+Classify risk level (re-exported from `risk_model.classify`).
 
 ---
 
@@ -438,6 +440,34 @@ Tuple of (risk_level, factors_dict) where factors_dict contains:
 
 ---
 
+### Enforce Gate (`enforce_gate.py`)
+
+#### `enforce(diff_path: str, runtime_path: str, output_path: str | None = None) -> int`
+Run risk analysis and enforce gate — blocks build on HIGH risk.
+
+**Args:**
+- `diff_path`: Path to diff text file
+- `runtime_path`: Path to runtime data JSON file
+- `output_path`: Optional path to write report JSON
+
+**Returns:**
+- `1` if any item has `risk == "HIGH"` (blocks build), printing `🔴 HIGH — {func}` for each
+- `0` with warning if any item has `risk == "UNKNOWN"`, printing `⚠️ Warning: Unknown risk areas detected`
+- `0` printing `✅ API risk acceptable` otherwise
+
+---
+
+#### `enforce_report(report_path: str) -> int`
+Enforce gate from a pre-generated report JSON (backward-compatible single-argument form).
+
+**Args:**
+- `report_path`: Path to pre-generated risk report JSON file
+
+**Returns:**
+Same as `enforce()`.
+
+---
+
 ### Report Generation (`generate_report.py`)
 
 #### `color(level: str) -> str`
@@ -456,6 +486,18 @@ Generate static HTML report from risk JSON.
 
 **Args:**
 - `report_data`: List of risk report dictionaries
+
+**Returns:**
+HTML content as string
+
+---
+
+#### `generate_html_from_file(risk_json_path: str, output_path: str | None = None) -> str`
+Generate HTML report from JSON file path (file-based API matching SPEC).
+
+**Args:**
+- `risk_json_path`: Path to risk report JSON file
+- `output_path`: Optional path to write HTML output
 
 **Returns:**
 HTML content as string
@@ -636,6 +678,17 @@ Dictionary with keys: `file`, `calls` (list of call dictionaries)
 
 ---
 
+#### `analyze_calls(files: list[str]) -> list[dict[str, Any]]`
+Analyze call sites across multiple Python files.
+
+**Args:**
+- `files`: List of Python file paths
+
+**Returns:**
+Flat list of call site dictionaries from all files (same keys as above)
+
+---
+
 ### Extract Calls (`extract_calls.py`)
 
 #### `extract(path: Path) -> list[dict[str, Any]]`
@@ -667,6 +720,15 @@ Run risk analysis pipeline.
 
 #### `impactguard report <report> [output]`
 Generate HTML report from risk JSON.
+
+#### `impactguard enforce <diff> <runtime> [-o output]`
+Run risk analysis and enforce gate — blocks on HIGH risk. Returns exit code 1 if HIGH risk detected.
+
+#### `impactguard suggest <report> [-o output]`
+Generate fix suggestions from a risk report JSON file.
+
+#### `impactguard patch <file> <func_name> <param_name> [--type function|call] [-o output]`
+Generate CST-based patches for a source file.
 
 #### `impactguard trace install <module> [--prefix PREFIX]`
 Install runtime tracer for a module.

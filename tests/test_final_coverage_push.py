@@ -73,17 +73,18 @@ def test_patch_generator_if_available(tmp_path):
 
 def test_runtime_impact_if_available(tmp_path):
     """Test runtime_impact if available."""
-    try:
-        from impactguard.runtime_impact import analyze
+    from impactguard.runtime_impact import analyze
 
-        sigs = [{"fqname": "test:foo", "name": "foo"}]
-        calls = [{"fqname": "test:foo", "file": "main.py"}]
+    sigs = [{"fqname": "test:foo", "name": "foo", "positional": []}]
+    calls = {"foo": 5}
 
-        result = analyze(sigs, calls)
-        assert isinstance(result, list)
+    sigs_path = tmp_path / "sigs.json"
+    calls_path = tmp_path / "calls.json"
+    sigs_path.write_text(__import__("json").dumps(sigs))
+    calls_path.write_text(__import__("json").dumps(calls))
 
-    except ImportError:
-        pass
+    result = analyze(str(sigs_path), str(calls_path))
+    assert isinstance(result, list)
 
 
 def test_impact_analysis_with_complex_data(tmp_path):
