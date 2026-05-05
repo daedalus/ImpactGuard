@@ -110,10 +110,28 @@ def cmd_trace(args: argparse.Namespace) -> int:
     """Runtime tracing commands."""
     if args.trace_cmd == "install":
         import importlib
+        import re
 
         from .trace_calls import install_tracer
 
-        module = importlib.import_module(args.module)
+        # Validate module name to prevent arbitrary code execution
+        # Only allow valid Python module names (alphanumeric, dots, underscores)
+        if not re.match(r"^[a-zA-Z_][a-zA-Z0-9._]*$", args.module):
+            print(f"Error: Invalid module name '{args.module}'", file=sys.stderr)
+            return 1
+
+        # Whitelist of allowed modules for tracing (security measure)
+        allowed_prefixes = ("impactguard", "tests")
+        if not any(args.module == prefix or args.module.startswith(prefix + ".") for prefix in allowed_prefixes):
+            print(f"Error: Module '{args.module}' is not allowed for tracing", file=sys.stderr)
+            return 1
+
+        try:
+            module = importlib.import_module(args.module)
+        except ImportError as e:
+            print(f"Error: Cannot import module '{args.module}': {e}", file=sys.stderr)
+            return 1
+
         prefix = args.prefix
         install_tracer(module, prefix)
         print(f"Tracer installed for {args.module}")

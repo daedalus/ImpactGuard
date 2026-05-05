@@ -41,9 +41,13 @@ def trace(func: Callable[..., Any]) -> Callable[..., Any]:
     return wrapper
 
 
-def flush(path: str = "/tmp/runtime_calls.json") -> None:
+def flush(path: str | None = None) -> None:
     import os
     import tempfile
+
+    if path is None:
+        # Use secure temp file in system temp directory
+        path = os.path.join(tempfile.gettempdir(), "impactguard_runtime_calls.json")
 
     data = dict(COUNTS)
 

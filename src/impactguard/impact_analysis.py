@@ -46,8 +46,9 @@ def analyze(
         try:
             rt_data = json.load(open(runtime_path))
             runtime = {item["function"]: item.get("count", 1) for item in rt_data}
-        except Exception:
-            pass
+        except (json.JSONDecodeError, KeyError) as e:
+            print(f"Warning: Failed to parse runtime data: {e}", file=sys.stderr)
+            runtime = {}
 
     # Get max count for exposure calculation
     max_count = max(runtime.values()) if runtime else 1

@@ -126,8 +126,8 @@ def run_pipeline(
                             "has_kwargs": False,
                         }
                     )
-            except Exception:
-                pass
+            except (json.JSONDecodeError, OSError) as e:
+                print(f"Warning: Failed to process runtime data: {e}", file=sys.stderr)
 
         with open(calls_path, "w") as f:
             json.dump(all_calls, f, indent=2)
@@ -231,6 +231,11 @@ def generate_changelog(
         import subprocess
         import tempfile
 
+        # Validate git refs
+        for ref in [old_ref, new_ref]:
+            if not _validate_git_ref(ref):
+                raise ValueError(f"Invalid git reference: '{ref}'")
+
         with tempfile.TemporaryDirectory() as tmpdir:
             old_dir = Path(tmpdir) / "old"
             new_dir = Path(tmpdir) / "new"
@@ -239,19 +244,27 @@ def generate_changelog(
 
             # Extract files from git
             for ref, dest in [(old_ref, old_dir), (new_ref, new_dir)]:
-                result = subprocess.run(
-                    ["git", "ls-tree", "-r", "--name-only", ref],
-                    capture_output=True, text=True,
-                )
-                py_files = [f for f in result.stdout.splitlines() if f.endswith(".py")]
+                try:
+                    result = subprocess.run(
+                        ["git", "ls-tree", "-r", "--name-only", ref],
+                        capture_output=True, text=True, timeout=30,
+                    )
+                except subprocess.TimeoutExpired:
+                    raise RuntimeError(f"Timeout listing files from {ref}")
+
+                py_files = [f for f in result.stdout.splitlines() if f.endswith(".py") and _validate_git_path(f)]
                 for py_file in py_files:
                     dest_path = dest / py_file
                     dest_path.parent.mkdir(parents=True, exist_ok=True)
-                    r = subprocess.run(
-                        ["git", "show", f"{ref}:{py_file}"],
-                        capture_output=True, text=True,
-                    )
-                    if r.returncode == 0:
+                    try:
+                        r = subprocess.run(
+                            ["git", "show", f"{ref}:{py_file}"],
+                            capture_output=True, text=True, timeout=30,
+                        )
+                    except subprocess.TimeoutExpired:
+                        print(f"  Warning: Timeout extracting {py_file} from {ref}")
+                        continue
+                    if r.returncode == 0 and r.stdout:
                         dest_path.write_text(r.stdout)
 
             old_sigs = extract([str(f) for f in old_dir.rglob("*.py")])
@@ -354,22 +367,64 @@ def run_pipeline_git(
     Returns:
         Same as run_pipeline()
     """
+    import re
     import subprocess
     import tempfile
     from pathlib import Path
 
+    def _validate_git_ref(ref: str) -> bool:
+        """Validate git ref format to prevent command injection.
+        
+        Allows: alphanumeric, dots, hyphens, slashes, underscores, ~, ^, @, {, }
+        Disallows: shell metacharacters, path traversal
+        """
+        if not ref or len(ref) > 255:
+            return False
+        # Disallow shell metacharacters
+        if any(c in ref for c in ['|', ';', '&', '$', '`', '!', '(', ')', '<', '>']):
+            return False
+        # Disallow path traversal
+        if '..' in ref or ref.startswith('/'):
+            return False
+        # Allow safe git ref characters
+        if not re.match(r'^[a-zA-Z0-9._\-/~^@{}]+$', ref):
+            return False
+        return True
+
+    def _validate_git_path(path: str) -> bool:
+        """Validate file path from git to prevent path traversal."""
+        if not path or len(path) > 255:
+            return False
+        # Disallow path traversal
+        if '..' in path or path.startswith('/') or path.startswith('\\'):
+            return False
+        # Must be a relative path
+        if Path(path).is_absolute():
+            return False
+        return True
+
     def extract_commit_files(ref: str, dest: str) -> None:
         """Extract Python files from a git commit to a directory."""
+        # Validate git ref
+        if not _validate_git_ref(ref):
+            print(f"  Error: Invalid git reference '{ref}'", file=sys.stderr)
+            return
+
         if files:
             # Extract only specified files
-            py_files = [f for f in files if f.endswith(".py")]
+            py_files = [f for f in files if f.endswith(".py") and _validate_git_path(f)]
         else:
             # Get list of ALL Python files in the commit
-            result = subprocess.run(
-                ["git", "ls-tree", "-r", "--name-only", ref],
-                capture_output=True, text=True, check=True
-            )
-            py_files = [f for f in result.stdout.splitlines() if f.endswith(".py")]
+            try:
+                result = subprocess.run(
+                    ["git", "ls-tree", "-r", "--name-only", ref],
+                    capture_output=True, text=True, check=True, timeout=30
+                )
+            except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:
+                print(f"  Error: Failed to list files from {ref}: {e}", file=sys.stderr)
+                return
+
+            py_files = [f for f in result.stdout.splitlines() if f.endswith(".py") and _validate_git_path(f)]
 
         if not py_files:
             print(f"  Warning: No Python files found in {ref}")
@@ -381,11 +436,16 @@ def run_pipeline_git(
             dest_path = Path(dest) / py_file
             dest_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Extract file content from git
-            result = subprocess.run(
-                ["git", "show", f"{ref}:{py_file}"],
-                capture_output=True, text=True
-            )
+            # Extract file content from git with timeout
+            try:
+                result = subprocess.run(
+                    ["git", "show", f"{ref}:{py_file}"],
+                    capture_output=True, text=True, timeout=30
+                )
+            except subprocess.TimeoutExpired:
+                print(f"  Warning: Timeout extracting {py_file} from {ref}")
+                continue
+
             if result.returncode == 0 and result.stdout:
                 dest_path.write_text(result.stdout)
             else:
