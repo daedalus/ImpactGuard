@@ -169,8 +169,9 @@ def test_impactguard_compare(tmp_path):
 
 
 def test_config_file():
-    """Test that impactguard.toml is created."""
-    config_path = Path("/home/dclavijo/my_code/ImpactGuard/impactguard.toml")
+    """Test that impactguard.toml is present in the repository root."""
+    repo_root = Path(__file__).parent.parent
+    config_path = repo_root / "impactguard.toml"
 
     # Check that config file exists
     assert config_path.exists(), "impactguard.toml not found"
@@ -190,7 +191,6 @@ def test_cli_check_command(tmp_path):
         [sys.executable, "-m", "impactguard", "check", "--help"],
         capture_output=True,
         text=True,
-        cwd="/home/dclavijo/my_code/ImpactGuard",
     )
 
     # Should not crash

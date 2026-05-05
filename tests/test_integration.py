@@ -168,8 +168,9 @@ def test_impactguard_compare(tmp_path):
 
 
 def test_config_file(tmp_path):
-    """Test that impactionguard.toml is created."""
-    config_path = Path("/home/dclavijo/my_code/ImpactGuard/impactguard.toml")
+    """Test that impactionguard.toml is present in the repository root."""
+    repo_root = Path(__file__).parent.parent
+    config_path = repo_root / "impactguard.toml"
 
     # Check that config file exists
     assert config_path.exists(), "impactionguard.toml not found"
@@ -190,7 +191,6 @@ def test_cli_check_command(tmp_path):
         [sys.executable, "-m", "impactguard", "check", "--help"],
         capture_output=True,
         text=True,
-        cwd="/home/dclavijo/my_code/ImpactGuard",
     )
 
     # Should not crash
@@ -289,12 +289,18 @@ def test_pipeline_comparison_breaking(tmp_path):
     """Test that breaking changes are detected."""
     from impactguard.pipeline import run_pipeline
 
+    # Put files in separate subdirs with the same name so fqnames match
+    old_dir = tmp_path / "old"
+    new_dir = tmp_path / "new"
+    old_dir.mkdir()
+    new_dir.mkdir()
+
     # Old: function with 2 required args
-    old_file = tmp_path / "old.py"
+    old_file = old_dir / "module.py"
     old_file.write_text("def process(data, options): return data\n")
 
     # New: removed required arg (breaking!)
-    new_file = tmp_path / "new.py"
+    new_file = new_dir / "module.py"
     new_file.write_text("def process(data): return data\n")
 
     result = run_pipeline(
