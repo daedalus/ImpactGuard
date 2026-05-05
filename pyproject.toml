@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
-    {name = "ImpactGuard Dev", email = "dev@impactguard.local"}
+    {name = "Darío Clavijo", email = "clavijodario@gmail.com"}
 ]
 dependencies = [
     "libcst>=0.4.0",
