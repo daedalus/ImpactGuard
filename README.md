@@ -482,6 +482,52 @@ ImpactGuard follows strict quality gates:
 
 ---
 
+## Direct Competitors (Python API analysis space)
+
+The table below compares ImpactGuard against the tools most commonly used for Python API change management, static analysis, and release automation.
+
+| Feature | **ImpactGuard** | **griffe** | **python-semantic-release** | **commitizen** | **pyright / mypy** |
+|---|---|---|---|---|---|
+| AST-based signature extraction | ✅ Full (positional, kwonly, vararg, return type, decorators, async) | ✅ Full | ❌ | ❌ | ✅ (internal only) |
+| Breaking-change detection | ✅ Semantic diff (added / removed / modified) | ✅ | ❌ Code-unaware | ❌ Code-unaware | ⚠️ Type errors only |
+| Call-site impact analysis | ✅ Static call-site traversal | ❌ | ❌ | ❌ | ❌ |
+| Runtime call tracing | ✅ (test + production sampler) | ❌ | ❌ | ❌ | ❌ |
+| Risk scoring (S × E × C model) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Transitive impact tracking | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Semver bump recommendation | ✅ From code diff | ⚠️ Partial (griffe-diff) | ✅ From commit msgs | ✅ From commit msgs | ❌ |
+| Changelog generation | ✅ From signature diff | ⚠️ Via mkdocs plugin | ✅ From commit msgs | ✅ From commit msgs | ❌ |
+| HTML report | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Patch generation (CST-based) | ✅ Formatting-preserving | ❌ | ❌ | ❌ | ⚠️ Quickfix only |
+| Patch confidence scoring | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Baseline management | ✅ Save / compare / diff | ⚠️ Via snapshots | ❌ | ❌ | ❌ |
+| CI enforcement gate | ✅ Blocks on HIGH / UNKNOWN | ❌ | ✅ (release gate) | ✅ (lint gate) | ✅ (type gate) |
+| Git hook integration | ✅ Pre + post commit | ❌ | ❌ | ✅ | ❌ |
+| Config file (TOML) | ✅ `impactguard.toml` | ✅ | ✅ | ✅ | ✅ |
+| Watch mode (live re-run) | ✅ `--watch` | ❌ | ❌ | ❌ | ✅ |
+| No network required | ✅ | ✅ | ❌ (PyPI / git) | ❌ (git) | ✅ |
+
+### Ecosystem-adjacent tools
+
+| Tool | Domain | Overlap with ImpactGuard | What ImpactGuard adds |
+|---|---|---|---|
+| **griffe** | Python API docs + diff | Closest alternative — extracts signatures, detects breaking changes | Call-site analysis, runtime tracing, risk model, patch generation |
+| **python-semantic-release** | Automated releases + semver | Semver bumps from conventional commits | Code-level proof, not just commit message convention |
+| **commitizen** | Conventional commits + changelog | Changelog generation, git hooks | Actual API-level analysis and enforcement |
+| **bump2version / bumpversion** | Version string management | Version bumping | All analysis features |
+| **mypy / pyright** | Static type checking | Detects type-incompatible changes | Call-site impact, risk scoring, runtime data integration |
+| **japicmp / apidiff (Go/Java)** | API compatibility in Java / Go | Direct conceptual analog in other languages | Python-specific, runtime tracing, patch generation |
+
+### ImpactGuard's unique differentiators
+
+1. **Risk scoring (S × E × C)** — No competitor combines severity, exposure (call count), and confidence into a single risk score.
+2. **Runtime + static fusion** — Merges static call-site analysis with actual runtime call counts from test runs to give empirically grounded risk levels.
+3. **Transitive impact** — Tracks callers of callers, not just direct call sites.
+4. **CST-based patch generation** — Suggests and previews source patches that preserve original formatting; no competitor does this in the API-change domain.
+5. **Patch confidence scoring** — Quantifies how safe an automated fix is before applying it.
+6. **Fully offline** — No network access, no database; embeds entirely in a Python project.
+
+---
+
 ## Further Documentation
 
 For deeper exploration of specific subsystems, refer to the [DeepWiki documentation](https://deepwiki.com/daedalus/ImpactGuard):
