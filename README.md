@@ -484,7 +484,7 @@ ImpactGuard follows strict quality gates:
 
 ## Direct Competitors (Python API analysis space)
 
-The table below compares ImpactGuard against the tools most commonly used for Python API change management, static analysis, and release automation.
+The table below compares ImpactGuard against the tools most commonly used for Python API change management, static analysis, and release automation. As of 2026-05, to our knowledge:
 
 | Feature | **ImpactGuard** | **griffe** | **python-semantic-release** | **commitizen** | **pyright / mypy** |
 |---|---|---|---|---|---|
