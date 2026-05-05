@@ -15,8 +15,8 @@ def _summary_stats(report_data: list[dict[str, Any]]) -> dict[str, int]:
     """Count items by risk level."""
     stats: dict[str, int] = {"HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0}
     for item in report_data:
-        level = item.get("risk", "UNKNOWN")
-        stats[level] = stats.get(level, 0) + 1
+        risk_level = item.get("risk", "UNKNOWN")
+        stats[risk_level] = stats.get(risk_level, 0) + 1
     return stats
 
 
