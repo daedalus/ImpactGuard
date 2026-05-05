@@ -11,7 +11,7 @@ from .compare_signatures import compare, load
 from .enforce_gate import enforce, enforce_report
 from .extract_signatures import extract, serialize_function
 from .generate_report import generate_html, generate_html_from_file
-from .impact_analysis import analyze
+from .impact_analysis import analyze, build_call_graph, find_transitive_callers
 from .patch_confidence import (
     classify as classify_patch,
     classify_with_factors,
@@ -45,6 +45,14 @@ from .pipeline import (
     run_pipeline_git,
     ImpactGuard,
 )
+from .config import get_config, load_config, reload_config, get as get_config_value
+from .semver import suggest_semver, format_semver_recommendation
+from .baseline import (
+    save_baseline,
+    load_baseline,
+    compare_with_baseline,
+    baseline_exists,
+)
 
 __version__ = "0.1.0"
 __all__ = [
@@ -58,6 +66,8 @@ __all__ = [
     "analyze",
     "analyze_module",
     "analyze_calls",
+    "build_call_graph",
+    "find_transitive_callers",
     # Risk model
     "SEVERITY_SCORES",
     "get_severity",
@@ -97,6 +107,19 @@ __all__ = [
     "quick_check",
     "run_pipeline_git",
     "ImpactGuard",
+    # Config
+    "get_config",
+    "load_config",
+    "reload_config",
+    "get_config_value",
+    # Semver
+    "suggest_semver",
+    "format_semver_recommendation",
+    # Baseline
+    "save_baseline",
+    "load_baseline",
+    "compare_with_baseline",
+    "baseline_exists",
 ]
 
 
