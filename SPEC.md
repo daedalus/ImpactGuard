@@ -128,11 +128,33 @@ Install runtime tracer for a module.
 #### `impactguard trace dump [output]`
 Dump collected runtime trace data.
 
-#### `impactguard check <old> <new> [runtime] [output]`
+#### `impactguard check <old> <new> [runtime] [output] [--watch]`
 Run full ImpactGuard pipeline check (default mode).
+- `--watch`: Re-run automatically whenever any `*.py` file in `old` or `new` changes.
 
 #### `impactguard check-commits <old_ref> <new_ref> [--files file1.py file2.py] [runtime] [output]`
 Compare two git commits and run pipeline.
+
+#### `impactguard enforce <diff> <runtime> [-o output] [--block-unknown]`
+Block the CI pipeline on HIGH risk (or UNKNOWN risk when `--block-unknown` is set).
+- `--block-unknown`: Treat UNKNOWN risk as a blocking condition.
+
+#### `impactguard baseline save [files...] [--path PATH]`
+Save current signatures as the new baseline.
+- `files`: Python files to snapshot (default: all `*.py` in cwd recursively).
+- `--path`: Path to the baseline JSON file (default: `.impactguard_baseline.json`).
+
+#### `impactguard baseline status [--path PATH]`
+Show information about the stored baseline.
+
+#### `impactguard baseline compare [files...] [--path PATH] [-o output]`
+Compare current code against the stored baseline.  Exits 1 when breaking changes are found.
+
+#### `impactguard semver <old> <new> [--current-version VERSION] [-o output]`
+Suggest a semver bump (major / minor / patch) from two signature JSON snapshots.
+- `--current-version`: Current version string (e.g. `1.2.3`).  When provided, the
+  recommended *next* version is also printed.
+- `-o`: Write the recommendation as JSON to this file.
 
 #### `impactguard install-hooks [repo_path] [--pre] [--post] [--both]`
 Install git hooks for ImpactGuard.
@@ -165,6 +187,24 @@ Wrapper for `compare_signatures.compare()`.
 #### `analyze_impact(sigs_path: str, calls_path: str, runtime_path: str | None = None) -> list[dict[str, Any]]`
 Wrapper for `impact_analysis.analyze()`.
 
+### New Modules (added in this version)
+
+#### `config.py` — Runtime configuration
+- `load_config(config_path)` — Load and merge `impactguard.toml` with built-in defaults.
+- `get_config()` — Lazy singleton accessor.
+- `reload_config(config_path)` — Force re-read from disk.
+- `get(section, key, default)` — Shortcut for `config["impactguard"][section][key]`.
+
+#### `semver.py` — Semver recommendation
+- `suggest_semver(comparison)` — Returns `"major"`, `"minor"`, or `"patch"`.
+- `format_semver_recommendation(comparison, current_version)` — Returns structured dict.
+
+#### `baseline.py` — Historical baseline storage
+- `save_baseline(files, path, metadata)` — Snapshot signatures to a JSON file.
+- `load_baseline(path)` — Load a previously saved baseline.
+- `compare_with_baseline(new_files, baseline_path)` — Compare new code against stored baseline.
+- `baseline_exists(path)` — Check whether a baseline file is present.
+
 ---
 
 ## Data Formats
@@ -179,13 +219,16 @@ Wrapper for `impact_analysis.analyze()`.
     "lineno": 10,
     "end_lineno": 15,
     "positional": [
-      {"name": "arg1", "has_default": false},
-      {"name": "arg2", "has_default": true}
+      {"name": "arg1", "has_default": false, "type": "int"},
+      {"name": "arg2", "has_default": true,  "type": "str"}
     ],
     "kwonly": [],
     "vararg": false,
     "kwarg": true,
-    "class_name": null
+    "class_name": null,
+    "return_type": "bool",
+    "decorators": ["staticmethod"],
+    "is_async": false
   },
   {
     "fqname": "src/module.py:ClassName.method_name",
@@ -197,9 +240,40 @@ Wrapper for `impact_analysis.analyze()`.
     "kwonly": [],
     "vararg": false,
     "kwarg": false,
-    "class_name": "ClassName"
+    "class_name": "ClassName",
+    "return_type": null,
+    "decorators": [],
+    "is_async": true
   }
 ]
+```
+
+**New fields (added in this version):**
+- `return_type`: Return annotation string (e.g. `"str"`, `"list[int]"`) or `null`
+- `decorators`: List of decorator expression strings (e.g. `["staticmethod", "deprecated"]`)
+- `is_async`: `true` when the function is `async def`
+- `positional[*].type` / `kwonly[*].type`: Type annotation string or `null`
+
+### Baseline JSON
+```json
+{
+  "signatures": [...],
+  "metadata": {
+    "saved_at": "2026-05-05T19:49:38Z",
+    "files_count": 12
+  }
+}
+```
+
+### Semver Recommendation JSON
+```json
+{
+  "bump": "major",
+  "reason": "3 breaking change(s) detected — callers must update",
+  "breaking_count": 3,
+  "nonbreaking_count": 1,
+  "next_version": "2.0.0"
+}
 ```
 
 ### Call Sites JSON
@@ -236,10 +310,15 @@ Wrapper for `impact_analysis.analyze()`.
     "change": "REMOVED",
     "exposure": 0.85,
     "confidence": 0.95,
-    "details": "called 42 times"
+    "details": "called 42 times",
+    "transitive": false
   }
 ]
 ```
+
+**New fields:**
+- `transitive`: `true` when this entry represents an *indirect* caller rather than a
+  directly broken call site.  Transitive entries always have `"risk": "LOW"`.
 
 ---
 
@@ -255,6 +334,12 @@ Wrapper for `impact_analysis.analyze()`.
 9. **Nested functions**: Inner functions are included with their names (no class/function context)
 10. **Class methods**: Now include class context in `fqname` (`ClassName.method`) and `class_name` field
 11. **Files with only classes**: No functions to extract (returns empty list)
+12. **Private symbols**: Functions whose leaf name starts with `_` are excluded from comparison
+    by default (`include_private = false` in config).  Pass `include_private=True` to `compare()`
+    or set `[impactguard.analysis] include_private = true` to include them.
+13. **Missing baseline**: `compare_with_baseline()` raises `FileNotFoundError` when no baseline
+    has been saved yet.
+14. **Non-semver current_version**: `_increment()` appends `-next` instead of failing.
 
 ---
 

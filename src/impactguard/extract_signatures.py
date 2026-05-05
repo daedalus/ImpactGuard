@@ -7,6 +7,27 @@ from typing import Any
 # ImpactGuard signature extractor
 
 
+def _unparse_annotation(node: ast.expr | None) -> str | None:
+    """Safely unparse an AST annotation node to a string.
+
+    Returns *None* when the node is absent or cannot be unparsed.
+    """
+    if node is None:
+        return None
+    try:
+        return ast.unparse(node)
+    except Exception:
+        return None
+
+
+def _decorator_name(node: ast.expr) -> str:
+    """Return the string representation of a decorator expression."""
+    try:
+        return ast.unparse(node)
+    except Exception:
+        return "<decorator>"
+
+
 def serialize_function(
     node: ast.FunctionDef | ast.AsyncFunctionDef,
     file: str,
@@ -20,7 +41,11 @@ def serialize_function(
         class_name: Optional class name if this is a method.
     """
     def arg_info(arg: ast.arg, default: object) -> dict[str, Any]:
-        return {"name": arg.arg, "has_default": default is not None}
+        return {
+            "name": arg.arg,
+            "has_default": default is not None,
+            "type": _unparse_annotation(arg.annotation),
+        }
 
     args = node.args
 
@@ -41,6 +66,9 @@ def serialize_function(
         fqname = f"{file}:{node.name}"
         name = node.name
 
+    decorators = [_decorator_name(d) for d in node.decorator_list]
+    return_type = _unparse_annotation(node.returns)
+
     return {
         "fqname": fqname,
         "name": name,
@@ -52,6 +80,9 @@ def serialize_function(
         "vararg": args.vararg is not None,
         "kwarg": args.kwarg is not None,
         "class_name": class_name,
+        "return_type": return_type,
+        "decorators": decorators,
+        "is_async": isinstance(node, ast.AsyncFunctionDef),
     }
 
 

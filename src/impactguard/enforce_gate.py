@@ -4,7 +4,10 @@ from typing import Any
 
 
 def enforce(
-    diff_path: str, runtime_path: str, output_path: str | None = None
+    diff_path: str,
+    runtime_path: str,
+    output_path: str | None = None,
+    block_unknown: bool | None = None,
 ) -> int:
     """Enforce gate - block on HIGH risk.
 
@@ -12,11 +15,18 @@ def enforce(
         diff_path: Path to diff text file.
         runtime_path: Path to runtime data JSON.
         output_path: Optional output path for report JSON.
+        block_unknown: When *True*, treat UNKNOWN risk as blocking just like
+            HIGH.  When *None* (default) the value is read from the config
+            file (``[impactguard.risk] block_unknown``).
 
     Returns:
-        1 if HIGH risk detected, 0 otherwise.
+        1 if HIGH risk detected (or UNKNOWN when blocking), 0 otherwise.
     """
     from .risk_gate import run
+    from .config import get as cfg_get
+
+    if block_unknown is None:
+        block_unknown = bool(cfg_get("risk", "block_unknown", False))
 
     report: list[dict[str, Any]] = run(diff_path, runtime_path, output_path)
 
@@ -36,9 +46,17 @@ def enforce(
             print()
         elif risk == "UNKNOWN":
             has_unknown = True
+            if block_unknown:
+                print(f"🟡 UNKNOWN — {func}")
+                print(f"   change: {item.get('change', '')}")
+                print()
 
     if has_high:
         print("❌ Blocking: HIGH risk API changes detected")
+        return 1
+
+    if has_unknown and block_unknown:
+        print("❌ Blocking: UNKNOWN risk API changes detected (block_unknown=true)")
         return 1
 
     if has_unknown:
@@ -48,8 +66,19 @@ def enforce(
     return 0
 
 
-def enforce_report(report_path: str) -> int:
-    """Backward-compatible: enforce from pre-generated report JSON."""
+def enforce_report(report_path: str, block_unknown: bool | None = None) -> int:
+    """Backward-compatible: enforce from pre-generated report JSON.
+
+    Args:
+        report_path: Path to the risk report JSON.
+        block_unknown: When *True*, UNKNOWN risk is treated as blocking.
+            Defaults to the config value.
+    """
+    from .config import get as cfg_get
+
+    if block_unknown is None:
+        block_unknown = bool(cfg_get("risk", "block_unknown", False))
+
     try:
         report = json.load(open(report_path))
     except Exception:
@@ -68,9 +97,15 @@ def enforce_report(report_path: str) -> int:
             print(f"🔴 HIGH — {func}")
         elif risk == "UNKNOWN":
             has_unknown = True
+            if block_unknown:
+                print(f"🟡 UNKNOWN — {func}")
 
     if has_high:
         print("❌ Blocking: HIGH risk API changes detected")
+        return 1
+
+    if has_unknown and block_unknown:
+        print("❌ Blocking: UNKNOWN risk API changes detected (block_unknown=true)")
         return 1
 
     if has_unknown:
