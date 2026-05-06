@@ -118,7 +118,7 @@ def cmd_risk(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        return risk_main(diff_path, args.runtime, args.output)
+        return risk_main(diff_path, args.runtime, args.output, lambda_=getattr(args, "lam", 1.0))
     finally:
         if _tmp_path is not None:
             try:
@@ -164,8 +164,9 @@ def cmd_enforce(args: argparse.Namespace) -> int:
         return 1
 
     block_unknown: bool | None = getattr(args, "block_unknown", None) or None
+    lam: float = getattr(args, "lam", 1.0)
     try:
-        return enforce(diff_path, args.runtime, getattr(args, "output", None), block_unknown=block_unknown)
+        return enforce(diff_path, args.runtime, getattr(args, "output", None), block_unknown=block_unknown, lambda_=lam)
     finally:
         if _tmp_path is not None:
             try:
@@ -983,6 +984,10 @@ def main() -> int:
         "--pipe", action="store_true",
         help="Read diff from stdin instead of a file (e.g. diff A B | impactguard risk --pipe ...)",
     )
+    risk_parser.add_argument(
+        "--lambda", dest="lam", type=float, default=1.0, metavar="LAMBDA",
+        help="Sensitivity multiplier (default: 1.0). >1 increases sensitivity; <1 decreases it.",
+    )
     risk_parser.set_defaults(func=cmd_risk)
 
     # report subcommand
@@ -1006,6 +1011,10 @@ def main() -> int:
     enforce_parser.add_argument(
         "--pipe", action="store_true",
         help="Read diff from stdin instead of a file (e.g. diff A B | impactguard enforce --pipe ...)",
+    )
+    enforce_parser.add_argument(
+        "--lambda", dest="lam", type=float, default=1.0, metavar="LAMBDA",
+        help="Sensitivity multiplier (default: 1.0). >1 increases sensitivity; <1 decreases it.",
     )
     enforce_parser.set_defaults(func=cmd_enforce)
 

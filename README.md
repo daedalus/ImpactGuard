@@ -19,7 +19,7 @@ It provides a quantitative risk framework to help developers understand the cons
 - **Multi-language Extraction**: Automatically extracts function signatures from Python (`ast`), TypeScript, Java, Go, Rust, C, C++, and Ruby via tree-sitter grammars (with regex fallback)
 - **Semantic API Diffing**: Classifies changes into a taxonomy of breaking (e.g., removing positional arguments) vs. non-breaking (e.g., adding optional keyword-only arguments)
 - **Impact Analysis**: Correlates signature changes with static call-site extraction and optional runtime tracing to identify affected downstream code
-- **Risk Assessment**: Quantifies the danger of a change using the **S × E × C** (Severity × Exposure × Confidence) model
+- **Risk Assessment**: Quantifies the danger of a change using the **S × E × C × λ** (Severity × Exposure × Confidence × Lambda) model
 - **Automated Remediation**: Generates format-preserving patches using LibCST to fix broken call sites
 
 ### System Components
@@ -30,7 +30,7 @@ It provides a quantitative risk framework to help developers understand the cons
 | Signature Comparison | `compare_signatures.py` | Semantic diffing of API changes |
 | Call-Site Analysis | `extract_calls.py`, `analyze_module.py` | Static call-site extraction and resolution |
 | Impact Analysis | `impact_analysis.py` | Correlates changes with call sites |
-| Risk Model | `risk_model.py` | S × E × C risk scoring |
+| Risk Model | `risk_model.py` | S × E × C × λ risk scoring |
 | Risk Gate | `risk_gate.py`, `enforce_gate.py` | CI enforcement engine |
 | Runtime Tracing | `trace_calls.py`, `trace_calls_prod.py` | Development and production tracers |
 | Patch Generation | `cst_patch.py`, `patch_generator.py` | Format-preserving automated fixes |
@@ -196,18 +196,23 @@ These changes WILL break existing callers:
 
 The **Risk Model and Enforcement** subsystem is the decision-making engine of ImpactGuard. It transforms raw signature changes and runtime telemetry into actionable risk levels (`HIGH`, `MEDIUM`, `LOW`, or `UNKNOWN`). These levels are then used to automatically block or permit CI/CD pipelines based on the potential impact on consumers.
 
-### The S × E × C Risk Framework
+### The S × E × C × λ Risk Framework
 
-The core logic resides in `risk_model.py`. It quantifies risk by evaluating three distinct dimensions:
+The core logic resides in `risk_model.py`. It quantifies risk by evaluating three distinct dimensions, scaled by a tuneable sensitivity multiplier λ:
 
 | Component | Code Entity | Description |
 |-----------|-------------|-------------|
 | **Severity (S)** | `get_severity()` | Score (0.1 to 1.0) based on change type (e.g., `REMOVED` = 1.0, `ADDED` = 0.1) |
 | **Exposure (E)** | `exposure()` | Logarithmic scale mapping call counts to a 0.0-1.0 range |
 | **Confidence (C)** | `confidence()` | Measures data reliability based on sample size against a threshold |
+| **Lambda (λ)** | `--lambda` / `lambda_` | Sensitivity multiplier (default 1.0). Values >1 increase sensitivity; values <1 decrease it |
 | **Classification** | `classify()` | Uses a decision tree to assign the final risk label |
 
 **Exposure Calculation:** `min(1.0, log(1 + count) / log(1 + max_count))`
+
+**Sensitivity Tuning:**
+- `--lambda=2` — doubles effective severity, making ImpactGuard more sensitive (more changes flagged HIGH/MEDIUM)
+- `--lambda=0.5` — halves effective severity, making ImpactGuard less sensitive (fewer changes flagged HIGH/MEDIUM)
 
 ### CI Enforcement
 
@@ -507,11 +512,12 @@ ImpactGuard follows strict quality gates:
 - **FQName (Fully Qualified Name)**: A unique identifier in `file_path:function_name` format (e.g., `src/auth.py:login`)
 - **Breaking Change**: A modification that prevents existing callers from executing correctly (e.g., `REMOVED`, `REQUIRED_POSITIONAL_ADDED`, `POSITIONAL_REORDER`)
 
-### Risk Framework (S × E × C)
+### Risk Framework (S × E × C × λ)
 
 - **Severity (S)**: The technical impact of the change type (0.1 to 1.0)
 - **Exposure (E)**: How often the function is called, calculated logarithmically
 - **Confidence (C)**: The reliability of runtime data based on sample size
+- **Lambda (λ)**: Sensitivity multiplier (default 1.0); tune via `--lambda`
 
 ### Patching
 
@@ -530,7 +536,7 @@ The table below compares ImpactGuard against the tools most commonly used for Py
 | Breaking-change detection | ✅ Semantic diff (added / removed / modified) | ✅ | ❌ Code-unaware | ❌ Code-unaware | ⚠️ Type errors only |
 | Call-site impact analysis | ✅ Static call-site traversal | ❌ | ❌ | ❌ | ❌ |
 | Runtime call tracing | ✅ (test + production sampler) | ❌ | ❌ | ❌ | ❌ |
-| Risk scoring (S × E × C model) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Risk scoring (S × E × C × λ model) | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Transitive impact tracking | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Semver bump recommendation | ✅ From code diff | ⚠️ Partial (griffe-diff) | ✅ From commit msgs | ✅ From commit msgs | ❌ |
 | Changelog generation | ✅ From signature diff | ⚠️ Via mkdocs plugin | ✅ From commit msgs | ✅ From commit msgs | ❌ |
@@ -557,7 +563,7 @@ The table below compares ImpactGuard against the tools most commonly used for Py
 
 ### ImpactGuard's unique differentiators
 
-1. **Risk scoring (S × E × C)** — No competitor combines severity, exposure (call count), and confidence into a single risk score.
+1. **Risk scoring (S × E × C × λ)** — No competitor combines severity, exposure (call count), and confidence into a single risk score.
 2. **Runtime + static fusion** — Merges static call-site analysis with actual runtime call counts from test runs to give empirically grounded risk levels.
 3. **Transitive impact** — Tracks callers of callers, not just direct call sites.
 4. **CST-based patch generation** — Suggests and previews source patches that preserve original formatting; no competitor does this in the API-change domain.
