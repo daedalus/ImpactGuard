@@ -59,6 +59,7 @@ A `post-commit` hook runs signature extraction after each commit.
 
 ### 1. Rebases / Merges
 Hooks run during history rewriting, which can:
+
 - introduce unexpected behavior
 - require manual cleanup
 
@@ -72,6 +73,7 @@ Git hooks are not executed in most CI environments.
 ## Alternative (Not Currently Used)
 
 A `pre-commit` hook could:
+
 - extract signatures
 - include them in the *same* commit
 
@@ -91,16 +93,19 @@ This avoids extra commits but couples working tree mutation with commit creation
 ## Additional Tools
 
 ### Runtime Tracing
+
 - `trace_calls.py` — low-overhead runtime call tracer
 - `trace_calls_prod.py` — production sampler with configurable `SAMPLE_RATE`
 - Aggregates call counts across test/prod runs
 
 ### Risk Analysis
+
 - `risk_model.py` — computes risk as `S × E × C` (severity × exposure × confidence)
 - `risk_gate.py` — combines diff + runtime data into structured JSON report
 - `enforce_gate.py` — CI gate: blocks on HIGH, warns on UNKNOWN
 
 ### Reporting & Fixes
+
 - `generate_report.py` — static HTML report from risk JSON
 - `suggest_fixes.py` — generates fix suggestions with call-site locations
 - `patch_generator.py` — diff-based patch previews using `difflib`
@@ -108,6 +113,7 @@ This avoids extra commits but couples working tree mutation with commit creation
 - `patch_confidence.py` — scores patch confidence per-multiplying target × structural × semantic × complexity
 
 ### CI Integration
+
 - `.github/workflows/ci.yml` — GitHub Actions workflow with:
   - Signature extraction + comparison
   - Runtime data aggregation

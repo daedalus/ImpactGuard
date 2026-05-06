@@ -44,6 +44,7 @@ It provides a quantitative risk framework to help developers understand the cons
 ### Installation
 
 **Prerequisites:**
+
 - Python 3.11 or higher
 - Dependencies: `libcst` for concrete syntax tree manipulations
 
@@ -146,6 +147,7 @@ The final stage of the core pipeline, `analyze`, correlates the detected API cha
 
 #### Non-Breaking Changes
 These changes do NOT break existing callers:
+
 - **Adding optional parameters**: `def foo(a, b=1)` → `def foo(a, b=1, c=0)` (no callers need to change)
 - **Adding keyword-only arguments**: `def foo(a)` → `def foo(a, *, debug=False)` (existing callers unaffected)
 - **Adding new functions/classes**: Entirely new APIs that don't affect existing code
@@ -153,6 +155,7 @@ These changes do NOT break existing callers:
 
 #### Breaking Changes
 These changes WILL break existing callers:
+
 - **Removing required parameters**: `def foo(a, b)` → `def foo(a)` (callers passing `b` will fail)
 - **Reordering positional arguments**: `def foo(a, b)` → `def foo(b, a)` (callers' positional args swap)
 - **Removing functions/methods**: Any callable that's removed entirely
@@ -376,6 +379,7 @@ ImpactGuard uses modern Python packaging standards with `hatchling` as the build
 | `lint` | Static analysis | `ruff`, `mypy`, `semgrep` |
 
 **Release Automation:**
+
 - **Version Management:** Uses `bumpversion` to maintain consistency across `pyproject.toml` and `src/impactguard/__init__.py`
 - **Automated Publishing:** The `pypi-publish.yml` workflow triggers on GitHub Release events to build and publish to PyPI using Trusted Publishers (OIDC)
 
@@ -452,6 +456,7 @@ $ impactguard check-commits HEAD~5 HEAD
 ## Quality Standards
 
 ImpactGuard follows strict quality gates:
+
 - **Ruff** — 0 issues (formatting + linting)
 - **MyPy** — 0 errors (strict mode)
 - **Prospector** — 0 warnings
