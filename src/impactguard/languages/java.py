@@ -130,6 +130,15 @@ def _extract_class_methods(
             _process_type_decl(child, source, fq_file, funcs)
 
 
+def _is_public_method(node: Any, source: bytes) -> bool:
+    """Check if a method declaration has the 'public' modifier."""
+    for child in node.children:
+        if child.type == "modifiers":
+            text = _node_text(child, source)
+            return "public" in text.split()
+    return False
+
+
 def _process_method(
     node: Any,
     source: bytes,
@@ -142,6 +151,9 @@ def _process_method(
     params_node = None
     return_type_node = None
     is_constructor = node.type == "constructor_declaration"
+
+    # Check if method is public
+    is_public = _is_public_method(node, source)
 
     for child in node.children:
         if child.type == "identifier" and name is None:
@@ -198,7 +210,7 @@ def _process_method(
             "decorators": [],
             "is_async": False,
             "ignored": _has_ignore_comment(source, node.start_point[0]),
-            "exported": False,
+            "exported": is_public,
         }
     )
 
@@ -385,6 +397,10 @@ def _extract_with_regex(
             positional, has_vararg = _parse_java_params_regex(params_str)
             fqname = f"{fq_file}:{name}"
 
+            # Check if function has public modifier
+            modifiers = m.group(0).split()
+            is_public = "public" in modifiers
+
             all_funcs.append(
                 {
                     "fqname": fqname,
@@ -401,7 +417,7 @@ def _extract_with_regex(
                     "decorators": [],
                     "is_async": False,
                     "ignored": _has_ignore_comment_fallback(lines, lineno),
-                    "exported": False,
+                    "exported": is_public,
                 }
             )
 
