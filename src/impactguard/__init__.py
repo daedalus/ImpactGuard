@@ -26,7 +26,7 @@ from .class_hierarchy import (
 )
 from .compare_signatures import compare, load
 from .config import get as get_config_value
-from .config import get_config, load_config, reload_config
+from .config import get_config, load_config, reload_config, validate_config
 from .cst_patch import patch_call, patch_function
 from .enforce_gate import enforce, enforce_report
 from .extract_signatures import extract, extract_reexports, serialize_function
