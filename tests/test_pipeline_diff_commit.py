@@ -109,7 +109,7 @@ class TestParseUnifiedDiff:
         result = _parse_unified_diff(diff)
         assert len(result) == 0
 
-    def test_unsupported_files_excluded_makefile(self):
+    def test_unsupported_files_excluded(self):
         """Makefile, HTML, and other unsupported types are always excluded."""
         from impactguard.pipeline import _parse_unified_diff
 
@@ -592,6 +592,17 @@ class TestMultiLanguageDiff:
         sigs = _extract_by_language([str(py_file)])
         assert len(sigs) == 1
         assert sigs[0]["name"] == "foo"
+
+    def test_extract_by_language_dispatches_typescript(self, tmp_path):
+        """_extract_by_language calls the TypeScript extractor for .ts files."""
+        from impactguard.pipeline import _extract_by_language
+
+        ts_file = tmp_path / "api.ts"
+        ts_file.write_text("function greet(name: string): string { return name; }\n")
+
+        sigs = _extract_by_language([str(ts_file)])
+        # The TypeScript extractor (tree-sitter or regex fallback) should find greet
+        assert any(s["name"] == "greet" for s in sigs)
 
     def test_extract_by_language_skips_unsupported(self, tmp_path):
         """_extract_by_language silently skips files with no extractor."""

@@ -186,8 +186,11 @@ def run_pipeline(
                 else:
                     try:
                         all_calls.extend(extractor.extract_calls(Path(file_path)))
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        print(
+                            f"Warning: call extraction failed for {file_path}: {exc}",
+                            file=sys.stderr,
+                        )
 
         # Also include runtime data if available
         if runtime_path and Path(runtime_path).exists():
