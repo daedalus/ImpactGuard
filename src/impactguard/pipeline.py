@@ -42,6 +42,39 @@ def _validate_git_path(path: str) -> bool:
     return True
 
 
+def _extract_by_language(
+    files: list[str],
+    base_path: str | None = None,
+) -> list[dict[str, Any]]:
+    """Extract signatures from *files* using the registry extractor for each file.
+
+    Files whose extension has no registered extractor are silently skipped.
+
+    Args:
+        files: Source file paths (any mix of languages).
+        base_path: Optional base path passed through to each extractor.
+
+    Returns:
+        Combined list of signature dicts from all supported files.
+    """
+    from .languages.registry import get_extractor as _get_extractor
+
+    groups: dict[str, tuple[Any, list[str]]] = {}
+    for f in files:
+        extractor = _get_extractor(f)
+        if extractor is None:
+            continue
+        lang = extractor.language
+        if lang not in groups:
+            groups[lang] = (extractor, [])
+        groups[lang][1].append(f)
+
+    all_sigs: list[dict[str, Any]] = []
+    for extractor, lang_files in groups.values():
+        all_sigs.extend(extractor.extract_signatures(lang_files, base_path=base_path))
+    return all_sigs
+
+
 def run_pipeline(
     old_files: list[str] | None = None,
     new_files: list[str] | None = None,
@@ -82,7 +115,6 @@ def run_pipeline(
         - report_html: str  # HTML report content
         - fixes: [...]  # suggested fixes
     """
-    from .extract_signatures import extract
     from .compare_signatures import compare, load
     from .analyze_module import analyze as analyze_module
     from .impact_analysis import analyze
@@ -90,6 +122,7 @@ def run_pipeline(
     from .generate_report import generate_html
     from .suggest_fixes import suggest, enrich_with_fixes
     from .patch_confidence import classify_with_factors
+    from .languages.registry import get_extractor as _get_extractor
 
     result: dict[str, Any] = {}
 
@@ -100,7 +133,7 @@ def run_pipeline(
 
     # Step 1: Extract or load signatures
     if old_files:
-        old_sigs = extract(old_files)
+        old_sigs = _extract_by_language(old_files)
         old_sigs_path = str(Path(output_dir) / "old_signatures.json")
         with open(old_sigs_path, "w") as f:
             json.dump(old_sigs, f, indent=2)
@@ -110,7 +143,7 @@ def run_pipeline(
         old_sigs_path = None
 
     if new_files:
-        new_sigs = extract(new_files)
+        new_sigs = _extract_by_language(new_files)
         new_sigs_path = str(Path(output_dir) / "new_signatures.json")
         with open(new_sigs_path, "w") as f:
             json.dump(new_sigs, f, indent=2)
@@ -134,18 +167,30 @@ def run_pipeline(
         calls_path = str(Path(output_dir) / "calls.json")
         all_calls: list[dict[str, Any]] = []
 
-        # Use analyze_module for better call analysis with type information
+        # Use analyze_module for Python files; language extractor for others
         if new_files:
             for file_path in new_files:
-                try:
-                    mod_result = analyze_module(file_path)
-                    if mod_result and "calls" in mod_result:
-                        all_calls.extend(mod_result["calls"])
-                except Exception:
-                    # Fall back to basic extraction
-                    from .extract_calls import extract
+                extractor = _get_extractor(file_path)
+                if extractor is None:
+                    continue
+                if extractor.language == "python":
+                    try:
+                        mod_result = analyze_module(file_path)
+                        if mod_result and "calls" in mod_result:
+                            all_calls.extend(mod_result["calls"])
+                    except Exception:
+                        # Fall back to basic extraction
+                        from .extract_calls import extract as _extract_calls
 
-                    all_calls.extend(extract(Path(file_path)))
+                        all_calls.extend(_extract_calls(Path(file_path)))
+                else:
+                    try:
+                        all_calls.extend(extractor.extract_calls(Path(file_path)))
+                    except Exception as exc:
+                        print(
+                            f"Warning: call extraction failed for {file_path}: {exc}",
+                            file=sys.stderr,
+                        )
 
         # Also include runtime data if available
         if runtime_path and Path(runtime_path).exists():
@@ -227,13 +272,19 @@ def quick_check(
     """
     from .extract_signatures import extract
 
-    # Collect Python files
+    # Collect files with a registered language extractor
     def collect_files(path: str) -> list[str]:
+        from .languages.registry import get_extractor as _get_extractor
+
         p = Path(path)
-        if p.is_file() and p.suffix == ".py":
-            return [str(p)]
+        if p.is_file():
+            return [str(p)] if _get_extractor(str(p)) is not None else []
         elif p.is_dir():
-            return [str(f) for f in p.rglob("*.py")]
+            return [
+                str(f)
+                for f in p.rglob("*")
+                if f.is_file() and _get_extractor(str(f)) is not None
+            ]
         return []
 
     old_files = collect_files(old_path)
@@ -266,12 +317,12 @@ def generate_changelog(
         Changelog markdown string.
     """
     from .compare_signatures import compare
-    from .extract_signatures import extract
 
     # Get signatures
     if old_ref and new_ref:
         import subprocess
         import tempfile
+        from .languages.registry import get_extractor as _get_extractor
 
         # Validate git refs
         for ref in [old_ref, new_ref]:
@@ -294,26 +345,29 @@ def generate_changelog(
                 except subprocess.TimeoutExpired:
                     raise RuntimeError(f"Timeout listing files from {ref}")
 
-                py_files = [f for f in result.stdout.splitlines() if f.endswith(".py") and _validate_git_path(f)]
-                for py_file in py_files:
-                    dest_path = dest / py_file
+                src_files = [
+                    f for f in result.stdout.splitlines()
+                    if _get_extractor(f) is not None and _validate_git_path(f)
+                ]
+                for src_file in src_files:
+                    dest_path = dest / src_file
                     dest_path.parent.mkdir(parents=True, exist_ok=True)
                     try:
                         r = subprocess.run(
-                            ["git", "show", f"{ref}:{py_file}"],
+                            ["git", "show", f"{ref}:{src_file}"],
                             capture_output=True, text=True, timeout=30,
                         )
                     except subprocess.TimeoutExpired:
-                        print(f"  Warning: Timeout extracting {py_file} from {ref}")
+                        print(f"  Warning: Timeout extracting {src_file} from {ref}")
                         continue
                     if r.returncode == 0 and r.stdout:
                         dest_path.write_text(r.stdout)
 
-            old_sigs = extract([str(f) for f in old_dir.rglob("*.py")])
-            new_sigs = extract([str(f) for f in new_dir.rglob("*.py")])
+            old_sigs = _extract_by_language([str(f) for f in old_dir.rglob("*") if f.is_file()])
+            new_sigs = _extract_by_language([str(f) for f in new_dir.rglob("*") if f.is_file()])
     elif old_files and new_files:
-        old_sigs = extract(old_files)
-        new_sigs = extract(new_files)
+        old_sigs = _extract_by_language(old_files)
+        new_sigs = _extract_by_language(new_files)
     else:
         raise ValueError("Must provide either git refs or file lists")
 
@@ -410,19 +464,20 @@ def run_pipeline_git(
         Same as run_pipeline()
     """
     import subprocess
+    from .languages.registry import get_extractor as _get_extractor
 
     def extract_commit_files(ref: str, dest: str) -> None:
-        """Extract Python files from a git commit to a directory."""
+        """Extract supported source files from a git commit to a directory."""
         # Validate git ref
         if not _validate_git_ref(ref):
             print(f"  Error: Invalid git reference '{ref}'", file=sys.stderr)
             return
 
         if files:
-            # Extract only specified files
-            py_files = [f for f in files if f.endswith(".py") and _validate_git_path(f)]
+            # Extract only specified files that have a known extractor
+            src_files = [f for f in files if _get_extractor(f) is not None and _validate_git_path(f)]
         else:
-            # Get list of ALL Python files in the commit
+            # Get list of ALL supported source files in the commit
             try:
                 result = subprocess.run(
                     ["git", "ls-tree", "-r", "--name-only", ref],
@@ -432,32 +487,35 @@ def run_pipeline_git(
                 print(f"  Error: Failed to list files from {ref}: {e}", file=sys.stderr)
                 return
 
-            py_files = [f for f in result.stdout.splitlines() if f.endswith(".py") and _validate_git_path(f)]
+            src_files = [
+                f for f in result.stdout.splitlines()
+                if _get_extractor(f) is not None and _validate_git_path(f)
+            ]
 
-        if not py_files:
-            print(f"  Warning: No Python files found in {ref}")
+        if not src_files:
+            print(f"  Warning: No supported source files found in {ref}")
             return
 
         # Extract each file
-        for py_file in py_files:
+        for src_file in src_files:
             # Create subdirectory structure
-            dest_path = Path(dest) / py_file
+            dest_path = Path(dest) / src_file
             dest_path.parent.mkdir(parents=True, exist_ok=True)
 
             # Extract file content from git with timeout
             try:
                 result = subprocess.run(
-                    ["git", "show", f"{ref}:{py_file}"],
+                    ["git", "show", f"{ref}:{src_file}"],
                     capture_output=True, text=True, timeout=30
                 )
             except subprocess.TimeoutExpired:
-                print(f"  Warning: Timeout extracting {py_file} from {ref}")
+                print(f"  Warning: Timeout extracting {src_file} from {ref}")
                 continue
 
             if result.returncode == 0 and result.stdout:
                 dest_path.write_text(result.stdout)
             else:
-                print(f"  Warning: Could not extract {py_file} from {ref}")
+                print(f"  Warning: Could not extract {src_file} from {ref}")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         old_dir = f"{tmpdir}/old"
@@ -471,8 +529,8 @@ def run_pipeline_git(
         extract_commit_files(new_ref, new_dir)
 
         return run_pipeline(
-            old_files=[str(p) for p in Path(old_dir).rglob("*.py")] or None,
-            new_files=[str(p) for p in Path(new_dir).rglob("*.py")] or None,
+            old_files=[str(p) for p in Path(old_dir).rglob("*") if p.is_file()] or None,
+            new_files=[str(p) for p in Path(new_dir).rglob("*") if p.is_file()] or None,
             runtime_path=runtime_path,
             output_dir=output_path or tmpdir,
             config=config,
@@ -480,14 +538,18 @@ def run_pipeline_git(
 
 
 def _parse_unified_diff(diff_text: str) -> dict[str, tuple[str, str]]:
-    """Parse a unified diff and return old/new content per Python file.
+    """Parse a unified diff and return old/new content per supported source file.
 
     For each changed file the returned tuple contains:
       - old_content: context lines + removed lines (as they appeared before)
       - new_content: context lines + added lines (as they appear after)
 
-    Only ``.py`` files are included in the result.
+    Only files whose extension is registered in the language registry are
+    included in the result.  Unsupported files (Makefile, HTML, etc.) are
+    silently skipped.
     """
+    from .languages.registry import get_extractor as _get_extractor
+
     files: dict[str, tuple[str, str]] = {}
     old_lines: list[str] = []
     new_lines: list[str] = []
@@ -497,7 +559,7 @@ def _parse_unified_diff(diff_text: str) -> dict[str, tuple[str, str]]:
     def _save_current() -> None:
         # For renamed files, prefer new_name as the canonical key.
         name = new_name if new_name is not None else old_name
-        if name and name.endswith(".py"):
+        if name and _get_extractor(name) is not None:
             files[name] = ("\n".join(old_lines), "\n".join(new_lines))
 
     for line in diff_text.splitlines():
@@ -544,6 +606,9 @@ def run_pipeline_diff_content(
     instead of a file path.  Useful when the diff is read from stdin or
     produced in-memory (e.g. ``diff A B | impactguard check-diff --pipe``).
 
+    Files in the diff whose extension has no registered language extractor
+    (Makefile, HTML, README, etc.) are silently skipped.
+
     Args:
         diff_text: Unified diff / patch content as a string.
         runtime_path: Optional path to runtime data JSON.
@@ -554,12 +619,12 @@ def run_pipeline_diff_content(
         Same dictionary as :func:`run_pipeline`.
 
     Raises:
-        ValueError: If the diff contains no Python files.
+        ValueError: If the diff contains no files with a supported language.
     """
     file_contents = _parse_unified_diff(diff_text)
 
     if not file_contents:
-        raise ValueError("No Python file changes found in diff")
+        raise ValueError("No supported file changes found in diff")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         old_dir = Path(tmpdir) / "old"
@@ -604,9 +669,10 @@ def run_pipeline_diff(
 ) -> dict[str, Any]:
     """Run the full ImpactGuard pipeline on a unified diff / patch file.
 
-    The diff is parsed to reconstruct the old and new Python source
-    content for every changed file, and then the standard pipeline is
-    executed on those reconstructed versions.
+    The diff is parsed to reconstruct the old and new source content for every
+    changed file in a supported language, and then the standard pipeline is
+    executed on those reconstructed versions.  Files in the diff with
+    unsupported extensions (Makefile, HTML, README, etc.) are silently skipped.
 
     Args:
         diff_path: Path to a unified diff / patch file.
@@ -619,7 +685,7 @@ def run_pipeline_diff(
 
     Raises:
         FileNotFoundError: If *diff_path* does not exist.
-        ValueError: If the diff contains no Python files.
+        ValueError: If the diff contains no files with a supported language.
     """
     diff_text = Path(diff_path).read_text()
     try:

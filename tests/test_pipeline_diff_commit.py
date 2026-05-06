@@ -109,6 +109,76 @@ class TestParseUnifiedDiff:
         result = _parse_unified_diff(diff)
         assert len(result) == 0
 
+    def test_unsupported_files_excluded(self):
+        """Makefile, HTML, and other unsupported types are always excluded."""
+        from impactguard.pipeline import _parse_unified_diff
+
+        diff = textwrap.dedent("""\
+            --- a/Makefile
+            +++ b/Makefile
+            @@ -1 +1 @@
+            -all:
+            +all: build
+            --- a/index.html
+            +++ b/index.html
+            @@ -1 +1 @@
+            -<html>
+            +<html lang="en">
+        """)
+        result = _parse_unified_diff(diff)
+        assert len(result) == 0
+
+    def test_typescript_file_included(self):
+        """TypeScript files with a registered extractor are captured."""
+        from impactguard.pipeline import _parse_unified_diff
+
+        diff = textwrap.dedent("""\
+            --- a/api.ts
+            +++ b/api.ts
+            @@ -1,3 +1,3 @@
+            -function greet(name: string): string {
+            +function greet(name: string, greeting: string = 'Hello'): string {
+                 return name;
+             }
+        """)
+        result = _parse_unified_diff(diff)
+        assert "api.ts" in result
+        old_content, new_content = result["api.ts"]
+        assert "greet(name: string)" in old_content
+        assert "greeting: string" in new_content
+
+    def test_mixed_diff_captures_supported_only(self):
+        """A diff touching Python, TypeScript, Makefile, and HTML captures only supported files."""
+        from impactguard.pipeline import _parse_unified_diff
+
+        py_diff = _make_unified_diff("def foo(): pass\n", "def foo(x): pass\n", "mod.py")
+        ts_diff = textwrap.dedent("""\
+            --- a/lib.ts
+            +++ b/lib.ts
+            @@ -1 +1 @@
+            -export function bar() {}
+            +export function bar(x: number) {}
+        """)
+        make_diff = textwrap.dedent("""\
+            --- a/Makefile
+            +++ b/Makefile
+            @@ -1 +1 @@
+            -build:
+            +build: test
+        """)
+        html_diff = textwrap.dedent("""\
+            --- a/index.html
+            +++ b/index.html
+            @@ -1 +1 @@
+            -<title>old</title>
+            +<title>new</title>
+        """)
+        result = _parse_unified_diff(py_diff + ts_diff + make_diff + html_diff)
+        assert "mod.py" in result
+        assert "lib.ts" in result
+        assert "Makefile" not in result
+        assert "index.html" not in result
+
     def test_multiple_files(self):
         from impactguard.pipeline import _parse_unified_diff
 
@@ -179,7 +249,7 @@ class TestRunPipelineDiff:
         diff_file = tmp_path / "doc.patch"
         diff_file.write_text(diff_content)
 
-        with pytest.raises(ValueError, match="No Python file changes found"):
+        with pytest.raises(ValueError, match="No supported file changes found"):
             run_pipeline_diff(str(diff_file))
 
     def test_only_deletions_diff_raises(self, tmp_path):
@@ -359,7 +429,7 @@ class TestRunPipelineDiffContent:
             -old
             +new
         """)
-        with pytest.raises(ValueError, match="No Python file changes found"):
+        with pytest.raises(ValueError, match="No supported file changes found"):
             run_pipeline_diff_content(diff_text)
 
     def test_only_deletions_raises(self):
@@ -378,7 +448,7 @@ class TestRunPipelineDiffContent:
     def test_empty_diff_raises(self):
         from impactguard.pipeline import run_pipeline_diff_content
 
-        with pytest.raises(ValueError, match="No Python file changes found"):
+        with pytest.raises(ValueError, match="No supported file changes found"):
             run_pipeline_diff_content("")
 
     def test_output_dir_is_respected(self, tmp_path):
@@ -419,6 +489,132 @@ class TestRunPipelineDiffContent:
         nonbreaking_content = len(result_content.get("comparison", {}).get("nonbreaking", []))
         assert breaking_file == breaking_content
         assert nonbreaking_file == nonbreaking_content
+
+
+
+# ---------------------------------------------------------------------------
+# Multi-language diff support
+# ---------------------------------------------------------------------------
+
+class TestMultiLanguageDiff:
+    """Verify that non-Python supported files in a diff are processed."""
+
+    def test_mixed_diff_does_not_raise(self, tmp_path):
+        """A diff touching Python + Makefile + C + README runs without error."""
+        from impactguard.pipeline import run_pipeline_diff
+
+        py_diff = _make_unified_diff(
+            "def foo(x):\n    return x\n",
+            "def foo(x, y=0):\n    return x + y\n",
+            "module.py",
+        )
+        # Unsupported files appended — they should be silently skipped
+        extra = textwrap.dedent("""\
+            --- a/Makefile
+            +++ b/Makefile
+            @@ -1 +1 @@
+            -build:
+            +build: test
+            --- a/lib.c
+            +++ b/lib.c
+            @@ -1,3 +1,3 @@
+            -int add(int a, int b) {
+            +int add(int a, int b, int c) {
+                 return a + b;
+             }
+            --- a/README.md
+            +++ b/README.md
+            @@ -1 +1 @@
+            -old
+            +new
+            --- a/index.html
+            +++ b/index.html
+            @@ -1 +1 @@
+            -<p>old</p>
+            +<p>new</p>
+        """)
+        diff_file = tmp_path / "mixed.patch"
+        diff_file.write_text(py_diff + extra)
+
+        result = run_pipeline_diff(str(diff_file))
+        assert isinstance(result, dict)
+        # The Python change should still be analysed
+        assert "comparison" in result or "signatures" in result
+
+    def test_only_unsupported_files_raises(self, tmp_path):
+        """A diff with only Makefile/README raises ValueError."""
+        from impactguard.pipeline import run_pipeline_diff
+
+        diff_content = textwrap.dedent("""\
+            --- a/Makefile
+            +++ b/Makefile
+            @@ -1 +1 @@
+            -build:
+            +build: test
+            --- a/README.md
+            +++ b/README.md
+            @@ -1 +1 @@
+            -old
+            +new
+        """)
+        diff_file = tmp_path / "unsupported.patch"
+        diff_file.write_text(diff_content)
+
+        with pytest.raises(ValueError, match="No supported file changes found"):
+            run_pipeline_diff(str(diff_file))
+
+    def test_typescript_only_diff_does_not_raise(self, tmp_path):
+        """A diff with only TypeScript changes runs without error."""
+        from impactguard.pipeline import run_pipeline_diff
+
+        ts_diff = textwrap.dedent("""\
+            --- a/api.ts
+            +++ b/api.ts
+            @@ -1,3 +1,3 @@
+            -function greet(name: string): string {
+            +function greet(name: string, greeting: string = 'Hello'): string {
+                 return name;
+             }
+        """)
+        diff_file = tmp_path / "ts.patch"
+        diff_file.write_text(ts_diff)
+
+        result = run_pipeline_diff(str(diff_file))
+        assert isinstance(result, dict)
+
+    def test_extract_by_language_dispatches_correctly(self, tmp_path):
+        """_extract_by_language groups files and calls the right extractor."""
+        from impactguard.pipeline import _extract_by_language
+
+        py_file = tmp_path / "mod.py"
+        py_file.write_text("def foo(x):\n    return x\n")
+
+        sigs = _extract_by_language([str(py_file)])
+        assert len(sigs) == 1
+        assert sigs[0]["name"] == "foo"
+
+    def test_extract_by_language_dispatches_typescript(self, tmp_path):
+        """_extract_by_language calls the TypeScript extractor for .ts files."""
+        from impactguard.pipeline import _extract_by_language
+
+        ts_file = tmp_path / "api.ts"
+        ts_file.write_text("function greet(name: string): string { return name; }\n")
+
+        sigs = _extract_by_language([str(ts_file)])
+        # The TypeScript extractor (tree-sitter or regex fallback) should find greet
+        assert any(s["name"] == "greet" for s in sigs)
+
+    def test_extract_by_language_skips_unsupported(self, tmp_path):
+        """_extract_by_language silently skips files with no extractor."""
+        from impactguard.pipeline import _extract_by_language
+
+        md_file = tmp_path / "README.md"
+        md_file.write_text("# title\n")
+        make_file = tmp_path / "Makefile"
+        make_file.write_text("build:\n\techo ok\n")
+
+        sigs = _extract_by_language([str(md_file), str(make_file)])
+        assert sigs == []
 
 
 # ---------------------------------------------------------------------------
