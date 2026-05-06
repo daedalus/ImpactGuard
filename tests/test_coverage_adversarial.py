@@ -1103,7 +1103,7 @@ class TestImpactAnalysis:
         sigs = self._sigs([self._sig("mod.fn", positional=[self._param("x")])])
         calls = self._calls([
             {"name": "fn", "fqname": "mod.fn", "args": 0, "file": "caller.py",
-             "lineno": 1, "has_starargs": False, "has_kwargs": False, "fqname": "mod.fn"}
+             "lineno": 1, "has_starargs": False, "has_kwargs": False}
         ])
         issues = analyze(sigs, calls)
         _rm(sigs, calls)
