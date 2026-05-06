@@ -309,9 +309,12 @@ def _format_report(result: RobustnessResult) -> str:
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
+def format_report(result: RobustnessResult) -> str:
+    """Return a human-readable robustness evaluation report string."""
+    return _format_report(result)
+
+
+
 
 
 def _build_parser() -> argparse.ArgumentParser:
