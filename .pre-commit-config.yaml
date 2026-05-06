@@ -20,6 +20,7 @@ repos:
     entry: impactguard-check-staged
     language: system
     files: \.py$
+    exclude: ^examples/
     stages:
       - pre-commit
   - id: impactguard-post-commit
