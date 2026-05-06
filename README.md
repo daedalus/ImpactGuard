@@ -69,6 +69,7 @@ It provides a quantitative risk framework to help developers understand the cons
 
 - Python 3.11 or higher
 - Dependencies: `libcst` for concrete syntax tree manipulations
+- For git hooks: `pre-commit>=4.6.0`, `pyyaml>=6.0`
 
 ```bash
 # Install from PyPI
@@ -313,6 +314,8 @@ impactguard install-hooks . --both  # Install git hooks
 
 ### Git Hooks Installation
 
+ImpactGuard uses the `pre-commit` framework to manage git hooks with proper YAML configuration.
+
 ```bash
 # Install both pre-commit and post-commit hooks
 impactguard install-hooks .
@@ -320,9 +323,21 @@ impactguard install-hooks .
 # Install only pre-commit hook
 impactguard install-hooks . --pre
 
-# Install only post-commit hook (updates signature tracking)
+# Install only post-commit hook
 impactguard install-hooks . --post
+
+# Install hooks + GitHub Actions workflow
+impactguard install-hooks . --install-github-workflow
 ```
+
+The `install-hooks` command:
+1. Creates/updates `.pre-commit-config.yaml` with ImpactGuard hooks (using PyYAML for proper formatting)
+2. Runs `pre-commit install` and `pre-commit install --hook-type post-commit`
+3. Optionally generates `.github/workflows/impactguard.yml` for CI/CD
+
+**Hook behavior:**
+- **Pre-commit**: Runs full ImpactGuard pipeline (`check-diff --pipe`) on staged changes
+- **Post-commit**: Runs `check-commit HEAD` + updates signature tracking
 
 ---
 
@@ -383,15 +398,43 @@ issues = analyze_impact("signatures.json", "calls.json", "runtime.json")
 
 ## Git Hooks and Workflow Integration
 
-ImpactGuard is designed to be deeply integrated into the standard Git development workflow.
+ImpactGuard integrates deeply into the standard Git development workflow using the `pre-commit` framework.
 
-### Post-Commit Hook
+### Pre-Commit Hook (Full Pipeline Check)
 
-This hook ensures that every commit is accompanied by updated signature tracking. It includes a `SKIP_SIGNATURE_HOOK` environment variable check to prevent infinite recursion when the hook itself creates a new commit.
+Runs the complete ImpactGuard pipeline on staged changes before allowing a commit:
 
-### Pre-Push Hook
+```bash
+impactguard check-diff --pipe --runtime .runtime_calls.json
+```
 
-This acts as the final safety gate. It typically runs `compare_signatures.py` to evaluate the delta between the local branch and `origin/master`. If the risk gate detects high-risk breaking changes without appropriate mitigations, the push is blocked.
+This catches breaking changes early, before they enter the commit history.
+
+### Post-Commit Hook (Signature Tracking)
+
+After each commit, the post-commit hook:
+1. Runs `check-commit HEAD` to analyze the committed changes
+2. Updates `.signatures.txt` with current function signatures
+
+### GitHub Actions Workflow
+
+Generate a ready-to-use CI workflow with:
+
+```bash
+impactguard install-hooks . --install-github-workflow
+```
+
+This creates `.github/workflows/impactguard.yml` that:
+- Triggers on push/PR to `main`/`master`
+- Runs `check-commits` for pull requests
+- Runs `check-commit` for direct pushes
+- Uses `impactguard[all]` for full language support
+
+### Console Scripts
+
+The hooks use these entry points (automatically configured):
+- `impactguard-check-staged` → runs pipeline on staged diff
+- `impactguard-post-commit-hook` → runs post-commit analysis
 
 ---
 

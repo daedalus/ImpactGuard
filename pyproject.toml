@@ -14,6 +14,8 @@ authors = [
 ]
 dependencies = [
     "libcst>=0.4.0",
+    "pre-commit>=4.6.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
@@ -50,6 +52,8 @@ all = ["impactguard[dev,test,lint,languages]"]
 
 [project.scripts]
 impactguard = "impactguard.__main__:main"
+impactguard-check-staged = "impactguard.__main__:check_staged"
+impactguard-post-commit-hook = "impactguard.__main__:post_commit_hook"
 
 [project.urls]
 Homepage = "https://github.com/daedalus/ImpactGuard"
