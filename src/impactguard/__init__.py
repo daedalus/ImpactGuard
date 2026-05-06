@@ -9,8 +9,8 @@ using static and runtime techniques.
 from .analyze_module import analyze as analyze_module, analyze_calls
 from .compare_signatures import compare, load
 from .enforce_gate import enforce, enforce_report
-from .extract_signatures import extract, serialize_function
-from .generate_report import generate_html, generate_html_from_file
+from .extract_signatures import extract, serialize_function, extract_reexports
+from .generate_report import generate_html, generate_html_from_file, generate_markdown, generate_markdown_from_file
 from .impact_analysis import analyze, build_call_graph, find_transitive_callers
 from .patch_confidence import (
     classify as classify_patch,
@@ -52,6 +52,30 @@ from .baseline import (
     load_baseline,
     compare_with_baseline,
     baseline_exists,
+    save_tagged_baseline,
+    load_tagged_baseline,
+    list_baselines,
+    compare_with_tagged_baseline,
+    delete_tagged_baseline,
+)
+from .schema import (
+    validate_signatures as validate_signatures_data,
+    validate_calls as validate_calls_data,
+    validate_runtime,
+    validate_risk_report,
+    validate,
+)
+from .class_hierarchy import (
+    extract_class_hierarchy,
+    find_implementations,
+    get_cascade_changes,
+)
+from .feedback import (
+    record_outcome,
+    load_outcomes,
+    get_stats as get_feedback_stats,
+    compute_calibrated_weights,
+    apply_weights_to_config,
 )
 
 __version__ = "0.1.0"
@@ -59,6 +83,7 @@ __all__ = [
     # Signature extraction
     "extract",
     "serialize_function",
+    "extract_reexports",
     # Comparison
     "compare",
     "load",
@@ -86,6 +111,8 @@ __all__ = [
     # Reporting
     "generate_html",
     "generate_html_from_file",
+    "generate_markdown",
+    "generate_markdown_from_file",
     "enforce",
     "enforce_report",
     # CST patches
@@ -115,11 +142,33 @@ __all__ = [
     # Semver
     "suggest_semver",
     "format_semver_recommendation",
-    # Baseline
+    # Baseline (single)
     "save_baseline",
     "load_baseline",
     "compare_with_baseline",
     "baseline_exists",
+    # Baseline (multi / history)
+    "save_tagged_baseline",
+    "load_tagged_baseline",
+    "list_baselines",
+    "compare_with_tagged_baseline",
+    "delete_tagged_baseline",
+    # Schema validation
+    "validate_signatures_data",
+    "validate_calls_data",
+    "validate_runtime",
+    "validate_risk_report",
+    "validate",
+    # Class hierarchy / Protocol cascade
+    "extract_class_hierarchy",
+    "find_implementations",
+    "get_cascade_changes",
+    # Feedback loop
+    "record_outcome",
+    "load_outcomes",
+    "get_feedback_stats",
+    "compute_calibrated_weights",
+    "apply_weights_to_config",
 ]
 
 

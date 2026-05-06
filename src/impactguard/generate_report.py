@@ -191,6 +191,113 @@ def generate_html(report_data: list[dict[str, Any]]) -> str:
 
     return "\n".join(html)
 
+def generate_markdown(
+    report_data: list[dict[str, Any]],
+    semver_rec: dict[str, Any] | None = None,
+    max_rows: int = 20,
+) -> str:
+    """Generate a compact markdown summary for PR comments.
+
+    Produces a short risk table suitable for posting as a GitHub PR comment
+    (where HTML is not rendered).
+
+    Args:
+        report_data: List of risk-report dicts (same format as
+            :func:`generate_html`).
+        semver_rec: Optional semver recommendation dict from
+            :func:`~impactguard.semver.format_semver_recommendation`.
+        max_rows: Maximum number of table rows to include (default 20).
+            Only the highest-risk entries are shown.
+
+    Returns:
+        Markdown string.
+    """
+    stats = _summary_stats(report_data)
+    total = len(report_data)
+
+    lines: list[str] = []
+    lines.append("## 🛡️ ImpactGuard API Risk Report\n")
+
+    # Summary badges row
+    badge_parts: list[str] = [f"**Total:** {total}"]
+    for level, emoji in [("HIGH", "🔴"), ("MEDIUM", "🟡"), ("LOW", "🟢"), ("UNKNOWN", "⚪")]:
+        count = stats.get(level, 0)
+        if count:
+            badge_parts.append(f"{emoji} **{level}:** {count}")
+    lines.append("  ".join(badge_parts) + "\n")
+
+    # Semver recommendation
+    if semver_rec:
+        bump = semver_rec.get("bump", "patch").upper()
+        reason = semver_rec.get("reason", "")
+        next_ver = semver_rec.get("next_version")
+        bump_emoji = {"MAJOR": "🚨", "MINOR": "⚠️", "PATCH": "✅"}.get(bump, "ℹ️")
+        ver_hint = f" → `{next_ver}`" if next_ver else ""
+        lines.append(f"**Semver:** {bump_emoji} `{bump}`{ver_hint} — {reason}\n")
+
+    # Risk table — highest-risk entries first, capped at max_rows
+    risk_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2, "UNKNOWN": 3}
+    sorted_items = sorted(
+        report_data, key=lambda x: risk_order.get(str(x.get("risk", "UNKNOWN")), 4)
+    )
+    table_items = sorted_items[:max_rows]
+
+    if table_items:
+        lines.append("| Risk | Function | Change | Exposure |")
+        lines.append("|------|----------|--------|----------|")
+        level_icons = {
+            "HIGH": "🔴 HIGH",
+            "MEDIUM": "🟡 MED",
+            "LOW": "🟢 LOW",
+            "UNKNOWN": "⚪ UNK",
+        }
+        for item in table_items:
+            lvl = str(item.get("risk", "UNKNOWN"))
+            func = str(item.get("function", ""))
+            change = str(item.get("change", ""))
+            exp = item.get("exposure", 0)
+            transitive = item.get("transitive", False)
+            func_cell = f"`{func}`" + (" *(indirect)*" if transitive else "")
+            lines.append(
+                f"| {level_icons.get(lvl, lvl)} | {func_cell} | {change} | {exp:.0%} |"
+            )
+
+        if len(sorted_items) > max_rows:
+            lines.append(
+                f"\n*… and {len(sorted_items) - max_rows} more entries not shown.*"
+            )
+
+    if not report_data:
+        lines.append("✅ No risk items detected.")
+
+    return "\n".join(lines) + "\n"
+
+
+def generate_markdown_from_file(
+    risk_json_path: str,
+    output_path: str | None = None,
+    semver_rec: dict[str, Any] | None = None,
+) -> str:
+    """Generate markdown PR comment from JSON file path.
+
+    Args:
+        risk_json_path: Path to risk report JSON file.
+        output_path: Optional path to write markdown output.
+        semver_rec: Optional semver recommendation dict.
+
+    Returns:
+        Markdown content as string.
+    """
+    with open(risk_json_path) as f:
+        report = json.load(f)
+    md = generate_markdown(report, semver_rec=semver_rec)
+
+    if output_path:
+        with open(output_path, "w") as f:
+            f.write(md)
+
+    return md
+
 
 def generate_html_from_file(
     risk_json_path: str, output_path: str | None = None
@@ -204,8 +311,6 @@ def generate_html_from_file(
     Returns:
         HTML content as string.
     """
-    import json
-
     with open(risk_json_path) as f:
         report = json.load(f)
     html = generate_html(report)
@@ -228,3 +333,4 @@ def main(report_path: str, output_path: str | None = None) -> None:
         f.write(html)
 
     print(f"Report written to {output_path}")
+
