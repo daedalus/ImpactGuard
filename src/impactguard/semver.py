@@ -26,6 +26,8 @@ _BREAKING_PREFIXES = (
     "RETURN TYPE CHANGED:",
     "DECORATOR REMOVED:",
     "DECORATOR ADDED:",
+    # NOTE: "DEPRECATED REMOVED:" is intentionally excluded — it is non-breaking.
+    # NOTE: "TYPE WIDENED:" and "RETURN TYPE WIDENED:" are non-breaking.
 )
 
 

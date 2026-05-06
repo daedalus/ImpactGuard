@@ -7,6 +7,87 @@ from typing import Any
 # ImpactGuard signature extractor
 
 
+def _has_ignore_comment(source_lines: list[str], lineno: int) -> bool:
+    """Return *True* if a ``# impactguard: ignore`` comment appears on the
+    function definition line or on the line immediately preceding it.
+
+    Args:
+        source_lines: All lines of the source file (0-indexed list).
+        lineno: 1-based line number of the ``def`` keyword.
+    """
+    tag = "impactguard: ignore"
+    def_line_idx = lineno - 1
+    for idx in (def_line_idx - 1, def_line_idx):
+        if 0 <= idx < len(source_lines) and tag in source_lines[idx]:
+            return True
+    return False
+
+
+def _extract_all_names(tree: ast.Module) -> set[str] | None:
+    """Return the names listed in ``__all__``, or *None* when not defined.
+
+    Handles only the simple ``__all__ = [...]`` / ``__all__ = (...)`` form.
+    """
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name) and target.id == "__all__":
+                val = node.value
+                if isinstance(val, (ast.List, ast.Tuple)):
+                    names: set[str] = set()
+                    for elt in val.elts:
+                        if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                            names.add(elt.value)
+                    return names
+    return None
+
+
+def extract_reexports(files: list[str]) -> dict[str, str]:
+    """Parse ``__init__.py`` files and collect explicit re-exports.
+
+    Recognises ``from .<module> import <name>`` and
+    ``from .<module> import <name> as <alias>`` statements.
+
+    Args:
+        files: List of Python file paths.  Only ``__init__.py`` files are
+            processed; all others are ignored.
+
+    Returns:
+        Mapping ``{public_fqname: source_fqname}`` where *public_fqname* is
+        ``<init_basename>:<exported_name>`` and *source_fqname* is the
+        inferred ``<source_module_basename>:<original_name>``.
+    """
+    reexports: dict[str, str] = {}
+    for file_path in files:
+        path = Path(file_path)
+        if path.name != "__init__.py":
+            continue
+        try:
+            tree = ast.parse(path.read_text())
+        except Exception:
+            continue
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            if not node.module:
+                continue
+            # Only relative imports (from .module import ...)
+            if node.level == 0:
+                continue
+            # Source module base name (last segment)
+            source_module = node.module.split(".")[-1] + ".py"
+            for alias in node.names:
+                original = alias.name
+                exported = alias.asname or alias.name
+                public_fq = f"{path.name}:{exported}"
+                source_fq = f"{source_module}:{original}"
+                reexports[public_fq] = source_fq
+
+    return reexports
+
+
 def _unparse_annotation(node: ast.expr | None) -> str | None:
     """Safely unparse an AST annotation node to a string.
 
@@ -86,56 +167,95 @@ def serialize_function(
     }
 
 
-def extract(files: list[str], base_path: str | None = None) -> list[dict[str, Any]]:
+def extract(
+    files: list[str],
+    base_path: str | None = None,
+    include_reexports: bool = False,
+) -> list[dict[str, Any]]:
     """Extract function signatures from Python files.
 
     Args:
         files: List of file paths (strings or Path objects).
         base_path: Optional base path to make fqnames relative to.
+        include_reexports: When *True*, alias signatures are appended for
+            names that are re-exported from ``__init__.py`` via relative
+            imports.
 
     Returns:
-        List of signature dictionaries with class context.
+        List of signature dictionaries with class context.  Each dict includes:
+
+        * ``ignored`` (*bool*) – *True* when a ``# impactguard: ignore``
+          comment appears on or immediately before the function definition.
+        * ``exported`` (*bool* | *None*) – *True* when the function appears
+          in the module's ``__all__`` list, *False* when ``__all__`` is
+          defined but does not include this function, *None* when no
+          ``__all__`` is defined.
     """
     all_funcs: list[dict[str, Any]] = []
 
     for f in files:
         path = Path(f)
         try:
-            tree = ast.parse(path.read_text())
+            source_text = path.read_text()
+            tree = ast.parse(source_text)
         except Exception:
             continue
 
         # Always use just the filename for fqname to ensure matching
         # This allows comparing files across different directories
         fq_file = path.name
+        source_lines = source_text.splitlines()
+        all_names: set[str] | None = _extract_all_names(tree)
 
         # Use a proper visitor to track class context
         class ContextVisitor(ast.NodeVisitor):
-            def __init__(self):
+            def __init__(self) -> None:
                 self.current_class: str | None = None
                 self.functions: list[dict[str, Any]] = []
 
-            def visit_ClassDef(self, node: ast.ClassDef):
+            def visit_ClassDef(self, node: ast.ClassDef) -> None:
                 old_class = self.current_class
                 self.current_class = node.name
                 self.generic_visit(node)
                 self.current_class = old_class
 
-            def visit_FunctionDef(self, node: ast.FunctionDef):
-                self.functions.append(
-                    serialize_function(node, fq_file, self.current_class)
-                )
+            def _add(
+                self, node: ast.FunctionDef | ast.AsyncFunctionDef
+            ) -> None:
+                sig = serialize_function(node, fq_file, self.current_class)
+                sig["ignored"] = _has_ignore_comment(source_lines, node.lineno)
+                if all_names is not None:
+                    leaf = sig["name"].split(".")[-1]
+                    sig["exported"] = leaf in all_names
+                else:
+                    sig["exported"] = None
+                self.functions.append(sig)
+
+            def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+                self._add(node)
                 self.generic_visit(node)
 
-            def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef):
-                self.functions.append(
-                    serialize_function(node, fq_file, self.current_class)
-                )
+            def visit_AsyncFunctionDef(
+                self, node: ast.AsyncFunctionDef
+            ) -> None:
+                self._add(node)
                 self.generic_visit(node)
 
         visitor = ContextVisitor()
         visitor.visit(tree)
         all_funcs.extend(visitor.functions)
+
+    # Append re-export alias signatures when requested
+    if include_reexports:
+        reexports = extract_reexports(files)
+        by_fqname: dict[str, dict[str, Any]] = {s["fqname"]: s for s in all_funcs}
+        for public_fq, source_fq in reexports.items():
+            if source_fq in by_fqname and public_fq not in by_fqname:
+                alias = dict(by_fqname[source_fq])
+                alias["fqname"] = public_fq
+                alias["name"] = public_fq.split(":")[-1]
+                alias["reexported_from"] = source_fq
+                all_funcs.append(alias)
 
     # stable ordering
     all_funcs.sort(key=lambda x: x["fqname"])
