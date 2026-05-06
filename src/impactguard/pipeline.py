@@ -2,6 +2,7 @@
 
 import json
 import re
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -494,14 +495,15 @@ def _parse_unified_diff(diff_text: str) -> dict[str, tuple[str, str]]:
     new_name: str | None = None
 
     def _save_current() -> None:
-        name = new_name or old_name
+        # For renamed files, prefer new_name as the canonical key.
+        name = new_name if new_name is not None else old_name
         if name and name.endswith(".py"):
             files[name] = ("\n".join(old_lines), "\n".join(new_lines))
 
-    for raw in diff_text.splitlines():
-        if raw.startswith("--- "):
+    for line in diff_text.splitlines():
+        if line.startswith("--- "):
             _save_current()
-            old_name = raw[4:].split("\t")[0].strip()
+            old_name = line[4:].split("\t")[0].strip()
             if old_name.startswith("a/"):
                 old_name = old_name[2:]
             if old_name == "/dev/null":
@@ -509,22 +511,22 @@ def _parse_unified_diff(diff_text: str) -> dict[str, tuple[str, str]]:
             new_name = None
             old_lines = []
             new_lines = []
-        elif raw.startswith("+++ "):
-            new_name = raw[4:].split("\t")[0].strip()
+        elif line.startswith("+++ "):
+            new_name = line[4:].split("\t")[0].strip()
             if new_name.startswith("b/"):
                 new_name = new_name[2:]
             if new_name == "/dev/null":
                 new_name = None
-        elif raw.startswith("@@"):
+        elif line.startswith("@@"):
             pass  # hunk header – no content to collect
-        elif raw.startswith("-") and not raw.startswith("---"):
-            old_lines.append(raw[1:])
-        elif raw.startswith("+") and not raw.startswith("+++"):
-            new_lines.append(raw[1:])
-        elif raw.startswith(" "):
+        elif line.startswith("-") and not line.startswith("---"):
+            old_lines.append(line[1:])
+        elif line.startswith("+") and not line.startswith("+++"):
+            new_lines.append(line[1:])
+        elif line.startswith(" "):
             # context line – present in both versions
-            old_lines.append(raw[1:])
-            new_lines.append(raw[1:])
+            old_lines.append(line[1:])
+            new_lines.append(line[1:])
 
     _save_current()
     return files
@@ -623,8 +625,6 @@ def run_pipeline_commit(
     Raises:
         ValueError: If *commit_ref* is not a valid git reference or has no parent.
     """
-    import subprocess
-
     if not _validate_git_ref(commit_ref):
         raise ValueError(f"Invalid git reference: '{commit_ref}'")
 

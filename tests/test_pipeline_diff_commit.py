@@ -1,5 +1,6 @@
 """Tests for run_pipeline_diff and run_pipeline_commit."""
 
+import difflib
 import json
 import subprocess
 import sys
@@ -16,8 +17,6 @@ import pytest
 
 def _make_unified_diff(old_src: str, new_src: str, filename: str = "module.py") -> str:
     """Create a minimal unified diff string from two source strings."""
-    import difflib
-
     old_lines = old_src.splitlines(keepends=True)
     new_lines = new_src.splitlines(keepends=True)
     diff = list(
