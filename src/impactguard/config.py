@@ -181,3 +181,117 @@ def get(section: str, key: str, default: Any = None) -> Any:
     """
     cfg = get_config()
     return cfg.get("impactguard", {}).get(section, {}).get(key, default)
+
+
+def validate_config(config_path: str | None = None) -> list[str]:
+    """Validate an ``impactguard.toml`` configuration file.
+
+    Checks that:
+
+    * The file can be parsed as valid TOML.
+    * All top-level sections under ``[impactguard]`` are recognised.
+    * All keys within each section are recognised.
+    * Numeric values fall within sensible bounds (0.0–1.0 for weights and
+      fractions; positive integers for ``flush_interval``).
+
+    Args:
+        config_path: Explicit path to a TOML config file.  When *None*, the
+            function searches for ``impactguard.toml`` from the current
+            working directory upward, just like :func:`load_config`.
+
+    Returns:
+        A list of human-readable warning/error strings.  An empty list means
+        the configuration is valid.  The caller decides whether to treat the
+        return value as warnings or fatal errors.
+    """
+    issues: list[str] = []
+
+    # Locate the file
+    if config_path:
+        path: Path | None = Path(config_path)
+    else:
+        path = _find_config_file()
+
+    if path is None or not path.is_file():
+        issues.append("No impactguard.toml found; all defaults will be used.")
+        return issues
+
+    # Parse TOML
+    try:
+        with open(path, "rb") as f:
+            raw: dict[str, Any] = tomllib.load(f)
+    except Exception as exc:
+        issues.append(f"TOML parse error in '{path}': {exc}")
+        return issues
+
+    # Warn about extra top-level keys (not fatal — other tools may share the file)
+    for top_key in raw:
+        if top_key != "impactguard":
+            issues.append(
+                f"INFO: top-level key '{top_key}' is not used by ImpactGuard "
+                "(only 'impactguard' is read)."
+            )
+
+    ig_raw = raw.get("impactguard", {})
+    if not isinstance(ig_raw, dict):
+        issues.append("ERROR: '[impactguard]' must be a TOML table.")
+        return issues
+
+    _KNOWN_SECTIONS = set(_DEFAULTS["impactguard"].keys())
+    for section_name in ig_raw:
+        if section_name not in _KNOWN_SECTIONS:
+            issues.append(
+                f"WARN: Unknown section '[impactguard.{section_name}]' — "
+                f"known sections are: {', '.join(sorted(_KNOWN_SECTIONS))}."
+            )
+            continue
+
+        default_section = _DEFAULTS["impactguard"][section_name]
+        user_section = ig_raw[section_name]
+
+        if not isinstance(user_section, dict):
+            issues.append(
+                f"ERROR: '[impactguard.{section_name}]' must be a TOML table."
+            )
+            continue
+
+        known_keys = set(default_section.keys()) if isinstance(default_section, dict) else set()
+        for key_name, value in user_section.items():
+            if known_keys and key_name not in known_keys:
+                issues.append(
+                    f"WARN: Unknown key '[impactguard.{section_name}].{key_name}' — "
+                    f"known keys are: {', '.join(sorted(known_keys))}."
+                )
+                continue
+
+            # Type / range checks
+            default_val = default_section.get(key_name) if isinstance(default_section, dict) else None
+            if isinstance(default_val, float) and isinstance(value, (int, float)):
+                if not (0.0 <= float(value) <= 10.0):
+                    issues.append(
+                        f"ERROR: [impactguard.{section_name}].{key_name} = {value!r} "
+                        "is outside the expected range [0.0, 10.0]."
+                    )
+            elif isinstance(default_val, bool) and not isinstance(value, bool):
+                issues.append(
+                    f"ERROR: [impactguard.{section_name}].{key_name} should be a "
+                    f"boolean (true/false), got {type(value).__name__!r}."
+                )
+            elif isinstance(default_val, int) and not isinstance(default_val, bool):
+                if not isinstance(value, int) or isinstance(value, bool):
+                    issues.append(
+                        f"ERROR: [impactguard.{section_name}].{key_name} should be "
+                        f"an integer, got {type(value).__name__!r}."
+                    )
+                elif value <= 0:
+                    issues.append(
+                        f"ERROR: [impactguard.{section_name}].{key_name} = {value!r} "
+                        "must be a positive integer."
+                    )
+            elif isinstance(default_val, list) and not isinstance(value, list):
+                issues.append(
+                    f"ERROR: [impactguard.{section_name}].{key_name} should be a "
+                    f"TOML array, got {type(value).__name__!r}."
+                )
+
+    return issues

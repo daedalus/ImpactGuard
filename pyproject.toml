@@ -61,6 +61,14 @@ impactguard = "impactguard.__main__:main"
 impactguard-check-staged = "impactguard.__main__:check_staged"
 impactguard-post-commit-hook = "impactguard.__main__:post_commit_hook"
 
+# Third-party packages can contribute additional language extractors by
+# declaring entry points in this group.  Each entry point must reference a
+# class (not an instance) that satisfies the LanguageExtractor protocol.
+# Example (in your package's pyproject.toml):
+#   [project.entry-points."impactguard.languages"]
+#   mylang = "mypkg.mylang_extractor:MyLangExtractor"
+[project.entry-points."impactguard.languages"]
+
 [project.urls]
 Homepage = "https://github.com/daedalus/ImpactGuard"
 Repository = "https://github.com/daedalus/ImpactGuard"
