@@ -58,7 +58,7 @@ def confidence(samples: int, threshold: int = 100) -> float:
 
 
 def classify(
-    severity: float, count: int, max_count: int, samples: int
+    severity: float, count: int, max_count: int, samples: int, lambda_: float = 1.0
 ) -> tuple[str, float, float]:
     try:
         from .config import get as cfg_get
@@ -76,14 +76,18 @@ def classify(
     if confidence_val < conf_threshold:
         return "UNKNOWN", exposure_val, confidence_val
 
-    if severity > 0.8 and exposure_val > high_exp_min:
+    effective_severity = severity * lambda_
+
+    if effective_severity > 0.8 and exposure_val > high_exp_min:
         return "HIGH", exposure_val, confidence_val
 
-    if severity > 0.5 and exposure_val > med_exp_min:
+    if effective_severity > 0.5 and exposure_val > med_exp_min:
         return "MEDIUM", exposure_val, confidence_val
 
     return "LOW", exposure_val, confidence_val
 
 
-def compute_risk(severity: float, exposure_val: float, confidence_val: float) -> float:
-    return severity * exposure_val * confidence_val
+def compute_risk(
+    severity: float, exposure_val: float, confidence_val: float, lambda_: float = 1.0
+) -> float:
+    return severity * exposure_val * confidence_val * lambda_
