@@ -1,0 +1,10 @@
+[
+  {
+    "function": "test.py:foo",
+    "risk": "HIGH",
+    "change": "REMOVED",
+    "exposure": 1.0,
+    "confidence": 1.0,
+    "details": "called 100 times"
+  }
+]
