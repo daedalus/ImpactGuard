@@ -31,16 +31,27 @@ def cmd_extract(args: argparse.Namespace) -> int:
 
     from .languages.registry import get_extractor, get_extractor_by_language
 
+    def _sig_extract(extractor: object, file_list: list[str]) -> list[dict[str, Any]]:
+        """Call extract_signatures, forwarding strict= when supported."""
+        import inspect
+
+        method = getattr(extractor, "extract_signatures", None)
+        if method is None:
+            print(
+                f"Warning: extractor {extractor!r} has no extract_signatures method; skipping",
+                file=sys.stderr,
+            )
+            return []
+        if strict and "strict" in inspect.signature(method).parameters:
+            return method(file_list, strict=strict)
+        return method(file_list)
+
     if language:
         extractor = get_extractor_by_language(language)
         if extractor is None:
             print(f"Error: Unknown language '{language}'", file=sys.stderr)
             return 1
-        # Pass strict only to Python extractor (others don't support it yet)
-        if language == "python" and strict:
-            result = extractor.extract_signatures(files, strict=strict)  # type: ignore[call-arg]
-        else:
-            result = extractor.extract_signatures(files)
+        result = _sig_extract(extractor, files)
     else:
         # Group files by language extractor, fall back to Python for .py
         from collections import defaultdict
@@ -65,10 +76,7 @@ def cmd_extract(args: argparse.Namespace) -> int:
         for lang, lang_files in by_extractor.items():
             lang_ext = get_extractor_by_language(lang)
             if lang_ext is not None:
-                if lang == "python" and strict:
-                    result.extend(lang_ext.extract_signatures(lang_files, strict=strict))  # type: ignore[call-arg]
-                else:
-                    result.extend(lang_ext.extract_signatures(lang_files))
+                result.extend(_sig_extract(lang_ext, lang_files))
         result.sort(key=lambda x: x.get("fqname", ""))
 
     print(json.dumps(result, indent=2))

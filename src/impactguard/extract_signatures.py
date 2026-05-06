@@ -208,9 +208,9 @@ def extract(
             tree = ast.parse(source_text)
         except Exception as exc:
             if strict:
-                raise SyntaxError(f"ImpactGuard: failed to parse {f}: {exc}") from exc
+                raise RuntimeError(f"ImpactGuard: failed to parse {path}: {exc}") from exc
             warnings.warn(
-                f"ImpactGuard: skipping {f} due to parse error: {exc}",
+                f"ImpactGuard: skipping {path} due to parse error: {exc}",
                 SyntaxWarning,
                 stacklevel=2,
             )
