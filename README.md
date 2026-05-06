@@ -45,8 +45,17 @@ It provides a quantitative risk framework to help developers understand the cons
 |----------|------------|--------------------|:--------------------:|:--------------------:|:----------------:|---------------------|--------|
 | **Python** | `.py` | `ast` (stdlib) | Yes | Yes | Yes | — | Stable |
 | **TypeScript** | `.ts`, `.tsx` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **Java** | `.java` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **Go** | `.go` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **Rust** | `.rs` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **C** | `.c`, `.h` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **C++** | `.cpp`, `.hpp`, `.cc`, `.cxx`, `.hxx` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **Ruby** | `.rb` | tree-sitter (preferred) / regex fallback | Yes | Yes | No (no native annotations) | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
 
-> **Note:** The TypeScript tree-sitter backend requires `tree-sitter>=0.23` and `tree-sitter-typescript>=0.23`, installed via `pip install "impactguard[languages]"`. When those packages are absent, ImpactGuard automatically falls back to regex-based extraction and emits a `UserWarning`.
+> **Note:** All tree-sitter backends require `tree-sitter>=0.23` plus the corresponding grammar package
+> (e.g. `tree-sitter-java>=0.23`), installed together via `pip install "impactguard[languages]"`.
+> When those packages are absent, ImpactGuard automatically falls back to regex-based extraction and
+> emits a `UserWarning`.
 >
 > To add support for a new language, implement the [`LanguageExtractor`](src/impactguard/languages/base.py) protocol and register the extractor with [`register()`](src/impactguard/languages/registry.py).
 
