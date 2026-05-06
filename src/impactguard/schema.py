@@ -62,8 +62,8 @@ def validate_signatures(data: object) -> tuple[bool, list[str]]:
     if not _check_list(data, "signatures", errors):
         return False, errors
 
-    assert isinstance(data, list)
-    for i, item in enumerate(data):
+    data_list = list(data)  # type: ignore[arg-type]  # _check_list verified isinstance
+    for i, item in enumerate(data_list):
         if not isinstance(item, dict):
             errors.append(f"signatures[{i}]: expected an object, got {type(item).__name__}")
             continue
@@ -89,8 +89,8 @@ def validate_calls(data: object) -> tuple[bool, list[str]]:
     if not _check_list(data, "calls", errors):
         return False, errors
 
-    assert isinstance(data, list)
-    for i, item in enumerate(data):
+    data_list = list(data)  # type: ignore[arg-type]  # _check_list verified isinstance
+    for i, item in enumerate(data_list):
         if not isinstance(item, dict):
             errors.append(f"calls[{i}]: expected an object, got {type(item).__name__}")
             continue
@@ -112,8 +112,8 @@ def validate_runtime(data: object) -> tuple[bool, list[str]]:
     if not _check_list(data, "runtime", errors):
         return False, errors
 
-    assert isinstance(data, list)
-    for i, item in enumerate(data):
+    data_list = list(data)  # type: ignore[arg-type]  # _check_list verified isinstance
+    for i, item in enumerate(data_list):
         if not isinstance(item, dict):
             errors.append(f"runtime[{i}]: expected an object, got {type(item).__name__}")
             continue
@@ -139,8 +139,8 @@ def validate_risk_report(data: object) -> tuple[bool, list[str]]:
     if not _check_list(data, "risk_report", errors):
         return False, errors
 
-    assert isinstance(data, list)
-    for i, item in enumerate(data):
+    data_list = list(data)  # type: ignore[arg-type]  # _check_list verified isinstance
+    for i, item in enumerate(data_list):
         if not isinstance(item, dict):
             errors.append(
                 f"risk_report[{i}]: expected an object, got {type(item).__name__}"

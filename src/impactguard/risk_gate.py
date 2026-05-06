@@ -23,8 +23,8 @@ def run(
     try:
         with open(diff_path) as f:
             diff_text = f.read()
-    except Exception:
-        diff_text = ""
+    except OSError as exc:
+        raise OSError(f"Cannot read diff file '{diff_path}': {exc}") from exc
 
     # Load runtime data
     try:
