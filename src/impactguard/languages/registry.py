@@ -4,6 +4,19 @@ Maps file extensions and language names to :class:`LanguageExtractor`
 instances.  Language modules register themselves by calling
 :func:`register` at import time.
 
+Third-party packages can contribute additional extractors by declaring an
+entry point in the ``impactguard.languages`` group in their
+``pyproject.toml``::
+
+    [project.entry-points."impactguard.languages"]
+    mylang = "mypkg.mylang_extractor:MyLangExtractor"
+
+The class referenced by the entry point must satisfy the
+:class:`~base.LanguageExtractor` protocol (i.e. have ``language``,
+``extensions``, ``extract_signatures``, ``extract_calls``, and
+``parse_union_members``).  It is instantiated with no arguments and
+registered automatically the first time any registry function is called.
+
 Usage::
 
     from impactguard.languages.registry import get_extractor, detect_language
@@ -31,6 +44,9 @@ _BY_LANGUAGE: dict[str, LanguageExtractor] = {}
 
 _T = TypeVar("_T")
 
+# Tracks whether third-party entry-point plugins have been loaded yet.
+_PLUGINS_LOADED: bool = False
+
 
 def _auto_populate(fn: Callable[..., _T]) -> Callable[..., _T]:
     """Decorator: ensure built-in extractors are registered before calling *fn*."""
@@ -52,9 +68,51 @@ def _auto_populate(fn: Callable[..., _T]) -> Callable[..., _T]:
             from . import swift as _swift_mod  # noqa: F401
             from . import typescript as _ts_mod  # noqa: F401
             from . import zig as _zig_mod  # noqa: F401
+        _load_plugins()
         return fn(*args, **kwargs)
 
     return wrapper
+
+
+def _load_plugins() -> None:
+    """Discover and register third-party language extractors via entry points.
+
+    Scans the ``impactguard.languages`` entry-point group for any installed
+    packages that register additional extractors.  Each entry point must
+    resolve to a class (not an instance) that satisfies the
+    :class:`~base.LanguageExtractor` protocol.  The class is instantiated
+    with no arguments.
+
+    This function is idempotent — it only runs once per interpreter session.
+    """
+    global _PLUGINS_LOADED
+    if _PLUGINS_LOADED:
+        return
+    _PLUGINS_LOADED = True
+
+    try:
+        from importlib.metadata import entry_points
+    except ImportError:
+        return  # Python < 3.9 — no-op
+
+    try:
+        eps = entry_points(group="impactguard.languages")
+    except Exception:
+        return
+
+    for ep in eps:
+        try:
+            extractor_cls = ep.load()
+            extractor_instance = extractor_cls()
+            register(extractor_instance)
+        except Exception as exc:  # pragma: no cover
+            import warnings
+
+            warnings.warn(
+                f"ImpactGuard: failed to load language plugin '{ep.name}': {exc}",
+                UserWarning,
+                stacklevel=2,
+            )
 
 
 def register(extractor: LanguageExtractor) -> None:
