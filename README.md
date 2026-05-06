@@ -699,17 +699,17 @@ The tool enforces a **minimum 25% adversarial coverage** requirement (exits with
 from tools.robustness_evaluator import evaluate_robustness, CategoryStats
 
 result = evaluate_robustness(
-    n_total=100,
-    n_adversarial=30,
-    passing_adv=18,
-    passing_norm=63,
-    coverage=0.80,
+    n_total=1054,
+    n_adversarial=425,
+    passing_adv=424,
+    passing_norm=629,
+    coverage=0.57,
     alpha=0.65,            # security context
     categories=[
-        CategoryStats("boundary",       9, 6),
-        CategoryStats("semantic",       8, 5),
-        CategoryStats("evasion",        8, 4),
-        CategoryStats("compositional",  5, 3),
+        CategoryStats("boundary",       28, 28),
+        CategoryStats("semantic",       22, 22),
+        CategoryStats("evasion",        24, 24),
+        CategoryStats("compositional",  19, 19),
     ],
 )
 
@@ -718,30 +718,30 @@ print(f"F  = {result.fragility_index:.4f}  [{result.fragility_label}]")
 print(f"R_d = {result.robustness_score_with_diversity:.4f}  (with diversity)")
 ```
 
-**CLI (human-readable report):**
+**CLI (human-readable report) — empirical run from current test suite:**
 
 ```bash
 python tools/robustness_evaluator.py \
-  --n-total 100 \
-  --n-adversarial 30 \
-  --passing-adv 18 \
-  --passing-norm 63 \
-  --coverage 0.80 \
+  --n-total 1054 \
+  --n-adversarial 425 \
+  --passing-adv 424 \
+  --passing-norm 629 \
+  --coverage 0.57 \
   --alpha 0.65 \
-  --categories '[{"name":"boundary","total":9,"passing":6},
-                 {"name":"semantic","total":8,"passing":5},
-                 {"name":"evasion","total":8,"passing":4},
-                 {"name":"compositional","total":5,"passing":3}]'
+  --categories '[{"name":"boundary","total":28,"passing":28},
+                 {"name":"semantic","total":22,"passing":22},
+                 {"name":"evasion","total":24,"passing":24},
+                 {"name":"compositional","total":19,"passing":19}]'
 ```
 
 **CLI (JSON output for CI pipelines):**
 
 ```bash
-python tools/robustness_evaluator.py --n-total 100 --n-adversarial 30 \
-  --passing-adv 18 --passing-norm 63 --coverage 0.80 --json
+python tools/robustness_evaluator.py --n-total 1054 --n-adversarial 425 \
+  --passing-adv 424 --passing-norm 629 --coverage 0.57 --json
 ```
 
-**Example output:**
+**Empirical output (measured from actual test runs):**
 
 ```
 ============================================================
@@ -749,28 +749,28 @@ python tools/robustness_evaluator.py --n-total 100 --n-adversarial 30 \
 ============================================================
 
 ── Test Composition ──────────────────────────────────────
-  Total tests        : 100
-  Adversarial tests  : 30
-  Normal tests       : 70
-  Adversarial ratio  : 30.0%  ✓
+  Total tests        : 1054
+  Adversarial tests  : 425
+  Normal tests       : 629
+  Adversarial ratio  : 40.3%  ✓
 
 ── Pass Rates ────────────────────────────────────────────
-  P_adversarial (P_a): 0.600
-  P_normal      (P_n): 0.900
-  Coverage      (C)  : 0.800
+  P_adversarial (P_a): 0.998
+  P_normal      (P_n): 1.000
+  Coverage      (C)  : 0.570
   Alpha         (α)  : 0.65
   Diversity     (D)  : 1.000
 
 ── Primary Metrics ───────────────────────────────────────
-  Robustness Score (R)          : 0.5640  [FAIR]
-  Robustness + Diversity (R_d)  : 0.5640
-  Fragility Index (F)           : 0.3333  [BRITTLE]
+  Robustness Score (R)          : 0.5691  [FAIR]
+  Robustness + Diversity (R_d)  : 0.5691
+  Fragility Index (F)           : 0.0024  [ROBUST]
 
 ── Category Breakdown ────────────────────────────────────
-  boundary               6/9   (67%)  ●●●●●●○○○
-  semantic               5/8   (62%)  ●●●●●○○○
-  evasion                4/8   (50%)  ●●●●○○○○
-  compositional          3/5   (60%)  ●●●○○
+  boundary              28/28  (100%)  ●●●●●●●●●●●●●●●●●●●●●●●●●●●●
+  semantic              22/22  (100%)  ●●●●●●●●●●●●●●●●●●●●●●
+  evasion               24/24  (100%)  ●●●●●●●●●●●●●●●●●●●●●●●●
+  compositional         19/19  (100%)  ●●●●●●●●●●●●●●●●●●●
 
 ============================================================
 ```
