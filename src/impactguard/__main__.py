@@ -505,84 +505,176 @@ def cmd_check_commit(args: argparse.Namespace) -> int:
 
 
 def cmd_install_hooks(args: argparse.Namespace) -> int:
-    """Install git hooks for ImpactGuard."""
+    """Install git hooks for ImpactGuard using pre-commit package."""
     import os
-    import stat
+    import subprocess
+    from pathlib import Path
 
-    repo_path = Path(args.repo_path)
+    repo_path = Path(args.repo_path).resolve()
     git_dir = repo_path / ".git"
 
     if not git_dir.exists():
         print(f"Error: Not a git repository: {repo_path}")
         return 1
 
-    hooks_dir = git_dir / "hooks"
-    hooks_dir.mkdir(exist_ok=True)
-
     # Determine which hooks to install
     install_pre = args.pre or args.both or (not args.pre and not args.post and not args.both)
     install_post = args.post or args.both or (not args.pre and not args.post and not args.both)
+    install_workflow = getattr(args, "install_github_workflow", False)
 
-    # Get the impactguard command path
-    impactguard_cmd = "impactguard"  # Assume it's in PATH
+    # Ensure .pre-commit-config.yaml exists with full pipeline (use YAML formatter)
+    config_path = repo_path / ".pre-commit-config.yaml"
+    try:
+        import yaml
+        yaml_available = True
+    except ImportError:
+        print("Warning: pyyaml not installed, using basic YAML generation")
+        yaml_available = False
 
-    # Install pre-commit hook
+    impactguard_hooks = []
     if install_pre:
-        pre_commit_path = hooks_dir / "pre-commit"
-        pre_commit_content = rf"""#!/bin/sh>
-# Pre-commit hook for ImpactGuard>
-# Runs signature extraction before commit>
-
-# Extract signatures from staged Python files>
-files=$(git diff --cached --name-only --diff-filter=ACM | grep '\.py$')>
-if [ -n "$files" ]; then>
-    echo "ImpactGuard: Extracting signatures...">
-    $impactguard_cmd extract $files > /tmp/staged_sigs.json>
-fi>
-
-exit 0>
-"""
-        pre_commit_path.write_text(pre_commit_content)
-        os.chmod(pre_commit_path, os.stat(pre_commit_path).st_mode | stat.S_IEXEC)
-        print(f"Installed pre-commit hook: {pre_commit_path}")
-
-    # Install post-commit hook
+        impactguard_hooks.append({
+            "id": "impactguard-check",
+            "name": "ImpactGuard - Full Pipeline Check",
+            "entry": "impactguard-check-staged",
+            "language": "system",
+            "files": r'\.py$',
+            "stages": ["pre-commit"],
+        })
     if install_post:
-        post_commit_path = hooks_dir / "post-commit"
-        post_commit_path.write_text(rf"""#!/bin/sh>
+        impactguard_hooks.append({
+            "id": "impactguard-post-commit",
+            "name": "ImpactGuard - Post-Commit Analysis",
+            "entry": "impactguard-post-commit-hook",
+            "language": "system",
+            "always_run": True,
+            "stages": ["post-commit"],
+        })
 
-# Post-commit hook for ImpactGuard>
-# Ensures signature tracking is up to date>
+    if yaml_available:
+        # Read existing config
+        if config_path.exists():
+            with open(config_path, "r") as f:
+                config = yaml.safe_load(f) or {}
+        else:
+            config = {}
 
-# Skip if called from hook itself>
-if [ "$SKIP_SIGNATURE_HOOK" = "1" ]; then>
-    exit 0>
-fi>
+        # Ensure repos key exists
+        if "repos" not in config:
+            config["repos"] = []
 
-# Check if Python files changed>
-changed=$(git diff-tree --no-commit-id --name-only -r HEAD | grep '\.py$' || echo "")>
+        # Find or create local repo entry
+        local_repo = None
+        for repo in config.get("repos", []):
+            if repo.get("repo") == "local":
+                local_repo = repo
+                break
 
-if [ -n "$changed" ]; then>
-    echo "ImpactGuard: Updating signature tracking...">
-    
-    # Extract signatures from all Python files>
-    $impactguard_cmd extract $(git ls-files | grep '\.py$') > /tmp/impactguard_sigs_$$.json>
-    
-    # You can optionally commit the signatures or just keep them local>
-    # For now, we just ensure the extraction runs successfully>
-    if [ $? -eq 0 ]; then>
-        echo "ImpactGuard: Signatures extracted successfully">
-    else>
-        echo "ImpactGuard: Warning - signature extraction failed">
-    fi>
-fi>
+        if local_repo is None:
+            local_repo = {"repo": "local", "hooks": []}
+            config["repos"].append(local_repo)
 
-exit 0>
-""")
-        os.chmod(post_commit_path, os.stat(post_commit_path).st_mode | stat.S_IEXEC)
-        print(f"Installed post-commit hook: {post_commit_path}")
+        # Remove existing impactguard hooks
+        existing_hooks = local_repo.get("hooks", [])
+        local_repo["hooks"] = [
+            h for h in existing_hooks
+            if h.get("id") not in ["impactguard-check", "impactguard-post-commit"]
+        ]
 
-    print(f"\nHooks installed successfully to {hooks_dir}")
+        # Add new impactguard hooks
+        local_repo["hooks"].extend(impactguard_hooks)
+
+        # Write back with proper YAML formatting
+        with open(config_path, "w") as f:
+            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+        print(f"Updated .pre-commit-config.yaml: {config_path}")
+    else:
+        # Fallback to text mode (original behavior)
+        config_content = "repos:\n  - repo: local\n    hooks:\n"
+        for hook in impactguard_hooks:
+            config_content += f"      - id: {hook['id']}\n"
+            config_content += f"        name: \"{hook['name']}\"\n"
+            config_content += f"        entry: {hook['entry']}\n"
+            config_content += f"        language: {hook['language']}\n"
+            if "files" in hook:
+                config_content += f"        files: '{hook['files']}'\n"
+            if "always_run" in hook:
+                config_content += f"        always_run: {hook['always_run']}\n"
+            config_content += f"        stages: {hook['stages']}\n"
+        config_path.write_text(config_content)
+        print(f"Created .pre-commit-config.yaml: {config_path}")
+
+    # Install hooks using pre-commit package
+    try:
+        if install_pre:
+            result = subprocess.run(
+                ["pre-commit", "install"],
+                cwd=str(repo_path),
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0:
+                print(f"Installed pre-commit hook via pre-commit package")
+            else:
+                print(f"Warning: pre-commit install failed: {result.stderr}")
+
+        if install_post:
+            result = subprocess.run(
+                ["pre-commit", "install", "--hook-type", "post-commit"],
+                cwd=str(repo_path),
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0:
+                print(f"Installed post-commit hook via pre-commit package")
+            else:
+                print(f"Warning: pre-commit install --hook-type post-commit failed: {result.stderr}")
+
+    except FileNotFoundError:
+        print("Error: pre-commit package not found. Install it with: pip install pre-commit")
+        return 1
+    except Exception as e:
+        print(f"Error installing hooks: {e}")
+        return 1
+
+    # Install GitHub workflow if requested
+    if install_workflow:
+        workflow_dir = repo_path / ".github" / "workflows"
+        workflow_dir.mkdir(parents=True, exist_ok=True)
+        workflow_path = workflow_dir / "impactguard.yml"
+
+        workflow_content = """name: ImpactGuard
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  impactguard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install ImpactGuard
+        run: pip install impactguard[all]
+      - name: Run ImpactGuard
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            impactguard check-commits ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }}
+          else
+            impactguard check-commit HEAD
+          fi
+"""
+        workflow_path.write_text(workflow_content)
+        print(f"Created GitHub workflow: {workflow_path}")
+
+    print(f"\nHooks installed successfully using pre-commit package")
     return 0
 
 
@@ -1163,6 +1255,11 @@ def main() -> int:
         action="store_true",
         help="Install both hooks (default)",
     )
+    hooks_parser.add_argument(
+        "--install-github-workflow",
+        action="store_true",
+        help="Also create .github/workflows/impactguard.yml for CI/CD",
+    )
     hooks_parser.set_defaults(func=cmd_install_hooks)
 
     # generate-changelog subcommand
@@ -1319,6 +1416,76 @@ def main() -> int:
     else:
         parser.print_help()
         return 1
+
+
+def check_staged() -> int:
+    """Run full ImpactGuard pipeline on staged changes (for pre-commit hook)."""
+    import subprocess
+    import sys
+
+    # Get staged diff
+    result = subprocess.run(
+        ["git", "diff", "--cached"],
+        capture_output=True,
+        text=True,
+    )
+
+    if not result.stdout.strip():
+        print("No staged changes, skipping ImpactGuard check.")
+        return 0
+
+    # Run check-diff with piped diff
+    cmd = ["impactguard", "check-diff", "--pipe", "--runtime", ".runtime_calls.json"]
+    proc = subprocess.run(
+        cmd,
+        input=result.stdout,
+        capture_output=True,
+        text=True,
+    )
+
+    print(proc.stdout)
+    if proc.stderr:
+        print(proc.stderr, file=sys.stderr)
+
+    return proc.returncode
+
+
+def post_commit_hook() -> int:
+    """Run full ImpactGuard pipeline post-commit (for post-commit hook)."""
+    import subprocess
+    import sys
+
+    print("ImpactGuard: Running post-commit analysis...")
+
+    # Run check-commit on HEAD
+    cmd = ["impactguard", "check-commit", "HEAD", "--runtime", ".runtime_calls.json"]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+
+    print(proc.stdout)
+    if proc.stderr:
+        print(proc.stderr, file=sys.stderr)
+
+    if proc.returncode != 0:
+        print("ImpactGuard: Warning - check-commit failed", file=sys.stderr)
+
+    # Update signature tracking
+    print("ImpactGuard: Updating signature tracking...")
+    result = subprocess.run(
+        ["impactguard", "extract"] + subprocess.run(
+            ["git", "ls-files", "|", "grep", r"'\\.py$'"],
+            capture_output=True,
+            text=True,
+        ).stdout.split(),
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode == 0:
+        print("ImpactGuard: Signatures updated successfully")
+    else:
+        print(f"ImpactGuard: Warning - signature extraction failed: {result.stderr}", file=sys.stderr)
+
+    return 0
 
 
 if __name__ == "__main__":
