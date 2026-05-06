@@ -4,7 +4,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/impactguard.svg)](https://pypi.org/project/impactguard/)
 [![Python](https://img.shields.io/pypi/pyversions/impactguard.svg)](https://pypi.org/project/impactguard/)
-[![Coverage](https://codecov.io/gh/daedalus/ImpactGuard/branch/master/graph/badge.svg)](https://codecov.io/gh/daedalus/ImpactGuard)
+[![Actions status](https://github.com/daedalus/impactguard /workflows/CI/badge.svg)](https://github.com/astral-sh/ruff/actions)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/daedalus/ImpactGuard)
 
