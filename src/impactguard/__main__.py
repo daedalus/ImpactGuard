@@ -944,10 +944,11 @@ def main() -> int:
 
     fb_record = feedback_sub.add_parser("record", help="Record a patch acceptance/rejection")
     fb_record.add_argument("patch_id", help="Patch identifier")
-    fb_record.add_argument(
-        "--accepted", action="store_true", default=True, help="Mark patch as accepted (default)"
+    _fb_outcome = fb_record.add_mutually_exclusive_group()
+    _fb_outcome.add_argument(
+        "--accepted", action="store_true", default=False, help="Mark patch as accepted"
     )
-    fb_record.add_argument(
+    _fb_outcome.add_argument(
         "--rejected", action="store_true", default=False, help="Mark patch as rejected"
     )
     fb_record.add_argument("--change-type", dest="change_type", help="Change category")

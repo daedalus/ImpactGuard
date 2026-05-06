@@ -252,7 +252,7 @@ def compare(  # noqa: MC0001
         # ── Type annotation changes ────────────────────────────────────────
 
         # Per-argument type changes
-        for _i, (o_arg, n_arg) in enumerate(zip(o_pos, n_pos)):
+        for o_arg, n_arg in zip(o_pos, n_pos):
             o_type = o_arg.get("type")
             n_type = n_arg.get("type")
             if o_type is not None and n_type is not None and o_type != n_type:

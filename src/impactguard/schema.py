@@ -69,9 +69,9 @@ def validate_signatures(data: object) -> tuple[bool, list[str]]:
             continue
         _check_fields(item, _SIGNATURE_REQUIRED, "signatures", i, errors)
         for arg in item.get("positional", []):
-            _check_arg(arg, "signatures[{i}].positional", i, errors)
+            _check_arg(arg, f"signatures[{i}].positional", i, errors)
         for arg in item.get("kwonly", []):
-            _check_arg(arg, "signatures[{i}].kwonly", i, errors)
+            _check_arg(arg, f"signatures[{i}].kwonly", i, errors)
 
     return len(errors) == 0, errors
 
