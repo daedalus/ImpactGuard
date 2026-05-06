@@ -7,6 +7,7 @@ ImpactGuard is a lightweight API impact analyzer for Python projects. It tracks 
 ## Scope
 
 ### In Scope
+
 - AST-based function signature extraction from Python source files
 - Semantic comparison between signature snapshots (breaking vs non-breaking changes)
 - Call-site extraction and impact analysis
@@ -23,6 +24,7 @@ ImpactGuard is a lightweight API impact analyzer for Python projects. It tracks 
 - **CI integration for enforcement**
 
 ### Out of Scope
+
 - Full type inference engine (relies on annotations and simple constructor inference)
 - Dynamic dispatch resolution
 - Higher-order function analysis
@@ -36,10 +38,12 @@ ImpactGuard is a lightweight API impact analyzer for Python projects. It tracks 
 Extract function signatures from Python files using AST parsing.
 
 **Args:**
+
 - `files`: List of Python file paths (strings or Path objects)
 
 **Returns:**
 List of signature dictionaries with keys:
+
 - `fqname`: Fully qualified name (`file:function` or `file:ClassName.method`)
 - `name`: Function name (or `ClassName.method` for methods)
 - `file`: Source file path
@@ -57,6 +61,7 @@ List of signature dictionaries with keys:
 Convert an AST function node to a signature dictionary.
 
 **Args:**
+
 - `node`: AST node (FunctionDef or AsyncFunctionDef)
 - `file`: Source file path
 
@@ -71,6 +76,7 @@ Signature dictionary (see `extract` return format)
 Load signatures from a JSON file into a dictionary keyed by fqname.
 
 **Args:**
+
 - `path`: Path to signatures JSON file
 
 **Returns:**
@@ -82,6 +88,7 @@ Dictionary with keys: `file`, `calls` (list of call dictionaries)
 Analyze call sites across multiple Python files.
 
 **Args:**
+
 - `files`: List of Python file paths.
 
 **Returns:**
@@ -96,6 +103,7 @@ Flat list of call site dictionaries from all files, each with keys:
 Extract function calls from Python file.
 
 **Args:**
+
 - `path`: Path to Python file
 
 **Returns:**
@@ -130,6 +138,7 @@ Dump collected runtime trace data.
 
 #### `impactguard check <old> <new> [runtime] [output] [--watch]`
 Run full ImpactGuard pipeline check (default mode).
+
 - `--watch`: Re-run automatically whenever any `*.py` file in `old` or `new` changes.
 
 #### `impactguard check-commits <old_ref> <new_ref> [--files file1.py file2.py] [runtime] [output]`
@@ -137,10 +146,12 @@ Compare two git commits and run pipeline.
 
 #### `impactguard enforce <diff> <runtime> [-o output] [--block-unknown]`
 Block the CI pipeline on HIGH risk (or UNKNOWN risk when `--block-unknown` is set).
+
 - `--block-unknown`: Treat UNKNOWN risk as a blocking condition.
 
 #### `impactguard baseline save [files...] [--path PATH]`
 Save current signatures as the new baseline.
+
 - `files`: Python files to snapshot (default: all `*.py` in cwd recursively).
 - `--path`: Path to the baseline JSON file (default: `.impactguard_baseline.json`).
 
@@ -152,12 +163,14 @@ Compare current code against the stored baseline.  Exits 1 when breaking changes
 
 #### `impactguard semver <old> <new> [--current-version VERSION] [-o output]`
 Suggest a semver bump (major / minor / patch) from two signature JSON snapshots.
+
 - `--current-version`: Current version string (e.g. `1.2.3`).  When provided, the
   recommended *next* version is also printed.
 - `-o`: Write the recommendation as JSON to this file.
 
 #### `impactguard install-hooks [repo_path] [--pre] [--post] [--both]`
 Install git hooks for ImpactGuard.
+
 - `repo_path`: Path to git repository (default: current directory)
 - `--pre`: Install pre-commit hook only
 - `--post`: Install post-commit hook only  
@@ -167,6 +180,7 @@ Install git hooks for ImpactGuard.
 
 #### `impactguard generate-changelog [--old-files file1.py file2.py] [--new-files file3.py file4.py] [--old-ref REF] [--new-ref REF] [output]`
 Generate changelog from signature diffs.
+
 - `--old-files`: Old Python files (alternative to --old-ref)
 - `--new-files`: New Python files (alternative to --new-ref)
 - `--old-ref`: Old git reference (commit, branch, tag)
@@ -190,16 +204,19 @@ Wrapper for `impact_analysis.analyze()`.
 ### New Modules (added in this version)
 
 #### `config.py` — Runtime configuration
+
 - `load_config(config_path)` — Load and merge `impactguard.toml` with built-in defaults.
 - `get_config()` — Lazy singleton accessor.
 - `reload_config(config_path)` — Force re-read from disk.
 - `get(section, key, default)` — Shortcut for `config["impactguard"][section][key]`.
 
 #### `semver.py` — Semver recommendation
+
 - `suggest_semver(comparison)` — Returns `"major"`, `"minor"`, or `"patch"`.
 - `format_semver_recommendation(comparison, current_version)` — Returns structured dict.
 
 #### `baseline.py` — Historical baseline storage
+
 - `save_baseline(files, path, metadata)` — Snapshot signatures to a JSON file.
 - `load_baseline(path)` — Load a previously saved baseline.
 - `compare_with_baseline(new_files, baseline_path)` — Compare new code against stored baseline.
@@ -249,6 +266,7 @@ Wrapper for `impact_analysis.analyze()`.
 ```
 
 **New fields (added in this version):**
+
 - `return_type`: Return annotation string (e.g. `"str"`, `"list[int]"`) or `null`
 - `decorators`: List of decorator expression strings (e.g. `["staticmethod", "deprecated"]`)
 - `is_async`: `true` when the function is `async def`

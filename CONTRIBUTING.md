@@ -19,6 +19,7 @@ pytest tests/ -v
 ## Code Quality
 
 All PRs must pass:
+
 - **Ruff** (formatting + linting): `ruff check src/`
 - **MyPy** (strict mode): `mypy --strict src/`
 - **Tests**: `pytest tests/`
