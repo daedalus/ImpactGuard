@@ -161,7 +161,7 @@ class TestSeeding:
                 break
         assert differs, (
             "All strategies produced identical pairs for seed=0 and seed=999 — "
-            "randomisation is not working."
+            "randomization is not working."
         )
 
     def test_generate_all_same_seed_is_reproducible(self):
@@ -183,7 +183,7 @@ class TestSeeding:
         )
         assert differs, (
             "generate_all produced identical results for seed=1 and seed=2 — "
-            "randomisation is not working."
+            "randomization is not working."
         )
 
     def test_no_seed_returns_valid_pair(self):
@@ -202,7 +202,7 @@ class TestSeeding:
         assert p1.new_signatures == p2.new_signatures
 
     def test_seeded_fqnames_vary_across_seeds(self):
-        """The randomised fqname must differ for at least two distinct seeds."""
+        """The randomized fqname must differ for at least two distinct seeds."""
         seen_fqnames: set[str] = set()
         strategy = list_strategies()[0]
         for s in range(20):
@@ -211,7 +211,7 @@ class TestSeeding:
             seen_fqnames.add(fqname)
         assert len(seen_fqnames) > 1, (
             "All 20 different seeds produced the same fqname — "
-            "names are not being randomised."
+            "names are not being randomized."
         )
 
 

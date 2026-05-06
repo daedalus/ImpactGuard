@@ -39,7 +39,7 @@ from typing import Any
 
 
 # ---------------------------------------------------------------------------
-# Name pools used by randomised strategy factories
+# Name pools used by randomized strategy factories
 # ---------------------------------------------------------------------------
 
 _MODULES: list[str] = [
@@ -65,7 +65,7 @@ _PARAM_NAMES: list[str] = [
 
 _SCALAR_TYPES: list[str] = ["str", "int", "float", "bool", "bytes"]
 
-#: Parameter names that *sound* optional but can carry no default in strategy 8.
+#: Parameter names that *sound* optional but can carry no default in ``required_kwonly_added_with_misleading_name``.
 _MISLEADING_KWONLY_NAMES: list[str] = [
     "optional_context", "extra_info", "maybe_config",
     "optional_hints", "supplemental_data", "optional_meta",
