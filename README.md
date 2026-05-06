@@ -286,6 +286,44 @@ Every generated patch is assigned a confidence score (0.0 to 1.0) to determine i
 
 The `impactguard` command-line tool is the primary entry point for developers and automation scripts.
 
+### Usage
+
+```
+impactguard [-h] [--version]
+            {extract,compare,analyze,risk,report,enforce,suggest,patch,extract-calls,trace,check,check-diff,check-commit,check-commits,install-hooks,generate-changelog,baseline,semver,report-markdown,feedback,history} ...
+
+ImpactGuard - API impact analyzer for Python
+
+positional arguments:
+  {extract,compare,analyze,risk,report,enforce,suggest,patch,extract-calls,trace,check,check-diff,check-commit,check-commits,install-hooks,generate-changelog,baseline,semver,report-markdown,feedback,history}
+                        Available commands
+    extract             Extract function signatures from source files
+    compare             Compare signature snapshots
+    analyze             Analyze impact on call sites
+    risk                Run risk analysis
+    report              Generate HTML report
+    enforce             Enforce gate - block on HIGH risk
+    suggest             Generate fix suggestions from risk report
+    patch               Generate CST-based patches
+    extract-calls       Extract call sites from source files
+    trace               Runtime tracing
+    check               Run full ImpactGuard pipeline check
+    check-diff          Run full pipeline on a unified diff / patch file
+    check-commit        Run full pipeline on a single git commit vs its parent
+    check-commits       Compare two git commits
+    install-hooks       Install git hooks for ImpactGuard
+    generate-changelog  Generate changelog from signature diffs
+    baseline            Manage ImpactGuard signature baselines
+    semver              Suggest semver bump from two signature snapshots
+    report-markdown     Generate markdown PR comment from risk report JSON
+    feedback            Manage patch-outcome feedback for confidence calibration
+    history             Manage tagged release-history baselines
+
+options:
+  -h, --help            show this help message and exit
+  --version             show program's version number and exit
+```
+
 ### Pipeline Mode (Recommended)
 
 ```bash
