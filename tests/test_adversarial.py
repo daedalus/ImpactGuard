@@ -403,13 +403,16 @@ class TestRiskModelAdversarial:
         from impactguard.risk_model import exposure
         assert exposure(0, 100) == 0.0
 
-    def test_exposure_zero_max(self):
-        """max_count=0 would cause log(1+0)=0 division in original formula; must not crash."""
+    def test_exposure_zero_max_with_zero_count(self):
+        """exposure(0, 0) — the count==0 guard fires before the division; must return 0."""
         from impactguard.risk_model import exposure
-        # exposure(count, 0) — max_count=0 -> log(1+0)=0 -> division by zero
-        # The function should either return 0.0 or 1.0 without crashing.
-        result = exposure(0, 0)
-        assert result == 0  # count==0 branch is taken first
+        assert exposure(0, 0) == 0
+
+    def test_exposure_positive_count_zero_max_raises(self):
+        """exposure(1, 0) exposes a division-by-zero: log(1+0)==0 is used as divisor."""
+        from impactguard.risk_model import exposure
+        with pytest.raises(ZeroDivisionError):
+            exposure(1, 0)
 
     def test_exposure_count_equals_max(self):
         from impactguard.risk_model import exposure
@@ -436,12 +439,16 @@ class TestRiskModelAdversarial:
         from impactguard.risk_model import confidence
         assert confidence(10_000) == 1.0
 
-    def test_confidence_negative_samples_clamped(self):
-        """Negative sample counts should not produce a result > 1 or crash."""
+    def test_confidence_negative_samples_not_clamped(self):
+        """Negative sample counts are not clamped by the current implementation.
+
+        confidence(-1) returns min(1.0, -1/100) == -0.01.  This documents
+        the current (unclamped) behaviour so that any future fix is visible.
+        """
         from impactguard.risk_model import confidence
         result = confidence(-1)
-        # min(1.0, -1/100) = min(1.0, -0.01) = -0.01 — acceptable (not > 1)
-        assert result <= 1.0
+        assert result < 0  # current: not clamped to 0
+        assert result <= 1.0  # still never above 1
 
     def test_classify_all_zeros(self):
         from impactguard.risk_model import classify
@@ -681,14 +688,18 @@ class TestEnforceGateAdversarial:
             os.unlink(p)
 
     def test_report_is_not_a_list(self):
-        """A JSON object (not array) at the top level should not crash."""
+        """A JSON object (not array) at the top level causes enforce_report to raise.
+
+        The function iterates over the report with ``for item in report``, which
+        on a dict yields string keys.  Calling ``.get()`` on a string then raises
+        ``AttributeError``.  This documents the current behaviour so that any
+        future defensive fix is visible.
+        """
         from impactguard.enforce_gate import enforce_report
         p = _write_tmp_json({"function": "m.py:foo", "risk": "HIGH"})
         try:
-            # Either returns 0 (skips) or raises — both acceptable; must not hang
-            enforce_report(p)
-        except Exception:
-            pass
+            with pytest.raises(AttributeError):
+                enforce_report(p)
         finally:
             os.unlink(p)
 
