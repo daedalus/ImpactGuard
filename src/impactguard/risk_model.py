@@ -108,7 +108,8 @@ def classify(
         med_exp_min = 0.01
     
     # REMOVED and REQUIRED changes are unconditionally HIGH - confidence check is bypassed
-    if change_type in ("REMOVED", "REQUIRED"):
+    # This covers: "REMOVED", "KWONLY REMOVED", "REQUIRED POSITIONAL ADDED", etc.
+    if "REMOVED" in change_type or "REQUIRED" in change_type:
         exposure_val = exposure(count, max_count)
         return "HIGH", exposure_val, 1.0
     

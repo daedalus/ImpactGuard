@@ -90,6 +90,22 @@ def find_transitive_callers(
 # ── Core analysis ─────────────────────────────────────────────────────────────
 
 
+def _fqname_to_runtime_key(fqname: str) -> str:
+    """Convert signature fqname to runtime key format.
+
+    Signature fqnames look like "module.py:func" or "path/to/file.py:Class.method".
+    Runtime keys (from trace_calls.py) look like "module.func" or "path.to.module.Class.method".
+
+    Converts "module.py:func" → "module.func" by removing .py extension and replacing : with .
+    """
+    if ":" in fqname:
+        file_part, func_part = fqname.split(":", 1)
+        # Convert file path to module path: remove .py, replace / with .
+        module_part = file_part.replace(".py", "").replace("/", ".")
+        return f"{module_part}.{func_part}"
+    return fqname
+
+
 def analyze(
     sigs_path: str, calls_path: str, runtime_path: str | None = None
 ) -> list[dict[str, Any]]:
@@ -150,12 +166,13 @@ def analyze(
         argc = call.get("args", 0)
 
         if argc < min_args or argc > max_args:
-            # Try multiple key formats to match runtime data:
-            # 1. target (fqname like "module:func" or "file:Class.method")
-            # 2. func_name (bare name)
-            # 3. normalized module.func_name form
             func_name = f.get("name", target)
-            count = runtime.get(target, runtime.get(func_name, runtime.get(f"{func_name}", 1)))
+            # Try multiple key formats to match runtime data:
+            # 1. target (fqname like "module.py:func")
+            # 2. func_name (bare name like "func")
+            # 3. Converted runtime key (like "module.func")
+            runtime_key = _fqname_to_runtime_key(target)
+            count = runtime.get(target, runtime.get(func_name, runtime.get(runtime_key, 1)))
             exp = exposure(count, max_count)
             
             # Determine change type for proper risk classification
