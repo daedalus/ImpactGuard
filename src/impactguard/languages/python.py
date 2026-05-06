@@ -31,12 +31,13 @@ class PythonExtractor:
         self,
         files: list[str],
         _base_path: str | None = None,
+        strict: bool = False,
     ) -> list[dict[str, Any]]:
         """Extract signatures from Python files.
 
         Delegates to :func:`extract_signatures.extract`.
         """
-        return _extract_sigs_impl(files, _base_path=_base_path)
+        return _extract_sigs_impl(files, _base_path=_base_path, strict=strict)
 
     def extract_calls(self, path: Path) -> list[dict[str, Any]]:
         """Extract call sites from a single Python file.

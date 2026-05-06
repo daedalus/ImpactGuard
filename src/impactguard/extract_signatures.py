@@ -1,4 +1,5 @@
 import ast
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -171,6 +172,7 @@ def extract(
     _base_path: str | None = None,
     include_reexports: bool = False,
     base_path: str | None = None,
+    strict: bool = False,
 ) -> list[dict[str, Any]]:
     """Extract function signatures from Python files.
 
@@ -180,6 +182,9 @@ def extract(
         include_reexports: When *True*, alias signatures are appended for
             names that are re-exported from ``__init__.py`` via relative
             imports.
+        strict: When *True*, raise ``SyntaxError`` instead of skipping files
+            that fail to parse.  Use this in CI to ensure a broken file is
+            never silently ignored.
 
     Returns:
         List of signature dictionaries with class context.  Each dict includes:
@@ -201,11 +206,25 @@ def extract(
         try:
             source_text = path.read_text()
             tree = ast.parse(source_text)
-        except Exception:
+        except Exception as exc:
+            if strict:
+                raise SyntaxError(f"ImpactGuard: failed to parse {f}: {exc}") from exc
+            warnings.warn(
+                f"ImpactGuard: skipping {f} due to parse error: {exc}",
+                SyntaxWarning,
+                stacklevel=2,
+            )
             continue
 
         # Compute fqname file key: relative to base_path when provided,
         # otherwise fall back to just the filename for cross-directory matching.
+        #
+        # NOTE — FQN collision risk: two files with the same basename (e.g.
+        # a/utils.py and b/utils.py) will produce identical fqnames when no
+        # base_path is supplied.  The collision is benign for single-repo use
+        # where callers already pass project-relative paths, but can cause
+        # ambiguity in monorepos.  Pass ``base_path=<project_root>`` to get
+        # stable, collision-free fqnames regardless of working directory.
         if effective_base is not None:
             try:
                 fq_file = str(path.relative_to(effective_base))

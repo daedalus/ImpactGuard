@@ -58,6 +58,18 @@ Change detection lives in `compare_signatures.py`. To add a new change type:
 See `SPEC.md` for the full technical specification and public API documentation.
 See `AGENTS.md` for guidelines when using AI agents to contribute.
 
+## AI-Assisted Contributions
+
+Some commits in this repository have been scaffolded or authored with the
+assistance of AI coding agents (see `AGENTS.md`).  The project policy is:
+
+- Every AI-generated commit must be reviewed and approved by a human
+  maintainer before merging.
+- The human reviewer is responsible for correctness, security, and design
+  fit — AI output is treated as a first draft, not a finished patch.
+- AI-generated code is held to the same quality bar as human-written code
+  (type annotations, tests, linting, coverage).
+
 ## Project Layout
 
 | Path | Description |

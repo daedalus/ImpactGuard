@@ -27,6 +27,7 @@ def cmd_extract(args: argparse.Namespace) -> int:
         return 1
 
     language: str | None = getattr(args, "language", None)
+    strict: bool = getattr(args, "strict", False)
 
     from .languages.registry import get_extractor, get_extractor_by_language
 
@@ -35,7 +36,11 @@ def cmd_extract(args: argparse.Namespace) -> int:
         if extractor is None:
             print(f"Error: Unknown language '{language}'", file=sys.stderr)
             return 1
-        result = extractor.extract_signatures(files)
+        # Pass strict only to Python extractor (others don't support it yet)
+        if language == "python" and strict:
+            result = extractor.extract_signatures(files, strict=strict)  # type: ignore[call-arg]
+        else:
+            result = extractor.extract_signatures(files)
     else:
         # Group files by language extractor, fall back to Python for .py
         from collections import defaultdict
@@ -60,7 +65,10 @@ def cmd_extract(args: argparse.Namespace) -> int:
         for lang, lang_files in by_extractor.items():
             lang_ext = get_extractor_by_language(lang)
             if lang_ext is not None:
-                result.extend(lang_ext.extract_signatures(lang_files))
+                if lang == "python" and strict:
+                    result.extend(lang_ext.extract_signatures(lang_files, strict=strict))  # type: ignore[call-arg]
+                else:
+                    result.extend(lang_ext.extract_signatures(lang_files))
         result.sort(key=lambda x: x.get("fqname", ""))
 
     print(json.dumps(result, indent=2))
@@ -1100,6 +1108,13 @@ def main() -> int:
         "-l",
         help="Force a specific language (e.g. python, typescript); "
         "auto-detected from extension when omitted",
+    )
+    extract_parser.add_argument(
+        "--strict",
+        action="store_true",
+        default=False,
+        help="Treat parse errors as fatal instead of skipping the file. "
+        "Recommended for CI to ensure broken files are never silently ignored.",
     )
     extract_parser.set_defaults(func=cmd_extract)
 
