@@ -82,9 +82,12 @@ def enforce_report(report_path: str, block_unknown: bool | None = None) -> int:
     try:
         with open(report_path) as f:
             report = json.load(f)
-    except Exception:
-        print("⚠️ Could not read report")
-        return 0
+    except OSError as exc:
+        print(f"⚠️ Could not read report: {exc}", file=sys.stderr)
+        return 2
+    except json.JSONDecodeError as exc:
+        print(f"⚠️ Could not parse report (invalid JSON): {exc}", file=sys.stderr)
+        return 2
 
     has_high = False
     has_unknown = False

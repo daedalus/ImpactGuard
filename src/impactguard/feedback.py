@@ -52,6 +52,39 @@ def _resolve_path(feedback_path: str | None) -> str:
     return os.environ.get("IMPACTGUARD_FEEDBACK", DEFAULT_FEEDBACK_PATH)
 
 
+def _is_safe_feedback_path(path: str) -> bool:
+    """Return False and warn when *path* targets a system-sensitive location.
+
+    Writes to well-known system directories (``/etc``, ``/usr``, ``/bin``,
+    ``/sbin``, ``/lib``, ``/sys``, ``/proc``, ``/boot``, ``/dev``) are
+    rejected to prevent accidental or injection-driven overwrites of system
+    files.  All relative paths, temp-directory paths, and user home paths
+    are allowed.
+    """
+    import sys as _sys
+
+    p = Path(path)
+    if not p.is_absolute():
+        return True
+
+    _SYSTEM_PREFIXES = (
+        "/etc/", "/usr/", "/bin/", "/sbin/", "/lib/", "/lib64/",
+        "/sys/", "/proc/", "/boot/", "/dev/",
+    )
+    norm = str(p)
+    if any(norm.startswith(prefix) for prefix in _SYSTEM_PREFIXES) or norm in (
+        "/etc", "/usr", "/bin", "/sbin", "/lib", "/lib64",
+        "/sys", "/proc", "/boot", "/dev",
+    ):
+        print(
+            f"Warning: impactguard: feedback path '{path}' targets a system "
+            "directory; write rejected for safety.",
+            file=_sys.stderr,
+        )
+        return False
+    return True
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def record_outcome(
@@ -247,6 +280,8 @@ def _load_raw(path: str) -> list[dict[str, Any]]:
 
 
 def _save_raw(path: str, outcomes: list[dict[str, Any]]) -> None:
+    if not _is_safe_feedback_path(path):
+        return
     Path(path).write_text(json.dumps(outcomes, indent=2))
 
 

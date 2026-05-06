@@ -6,6 +6,7 @@ All public API reads values through :func:`get`, so the rest of the package
 never needs to hard-code thresholds.
 """
 
+import sys
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -119,7 +120,12 @@ def load_config(config_path: str | None = None) -> dict[str, Any]:
     try:
         with open(path, "rb") as f:
             raw: dict[str, Any] = tomllib.load(f)
-    except Exception:
+    except Exception as exc:
+        print(
+            f"Warning: impactguard: could not parse config file '{path}': {exc}; "
+            "using built-in defaults.",
+            file=sys.stderr,
+        )
         return _DEFAULTS
 
     return _deep_merge(_DEFAULTS, raw)

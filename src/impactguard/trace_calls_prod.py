@@ -1,5 +1,6 @@
 import json
 import random
+import threading
 import time
 from collections import defaultdict
 from collections.abc import Callable
@@ -9,6 +10,7 @@ from typing import Any
 SAMPLE_RATE = 0.01  # 1% of calls
 FLUSH_INTERVAL = 10  # seconds
 
+_lock = threading.Lock()
 COUNTS: dict[str, int] = defaultdict(int)
 LAST_FLUSH = time.time()
 
@@ -25,7 +27,8 @@ def trace(func: Callable[..., Any]) -> Callable[..., Any]:
         global LAST_FLUSH
 
         if should_sample():
-            COUNTS[name] += 1
+            with _lock:
+                COUNTS[name] += 1
 
         # periodic flush (non-blocking-ish)
         now = time.time()
@@ -46,10 +49,12 @@ def flush(path: str | None = None) -> None:
     import tempfile
 
     if path is None:
-        # Use secure temp file in system temp directory
-        path = os.path.join(tempfile.gettempdir(), "impactguard_runtime_calls.json")
+        # Default to a project-relative path (like trace_calls.py) to avoid
+        # world-writable temp-directory symlink attacks.
+        path = ".runtime_calls.json"
 
-    data = dict(COUNTS)
+    with _lock:
+        data = dict(COUNTS)
 
     dir_name = os.path.dirname(os.path.abspath(path)) or "."
     with tempfile.NamedTemporaryFile(

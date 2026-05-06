@@ -558,12 +558,12 @@ class TestRiskGateAdversarial:
         assert 0.0 <= result[0]["exposure"] <= 1.0
 
     def test_nonexistent_diff_path(self):
-        """Missing diff file should return empty report, not crash."""
+        """Missing diff file must raise OSError so CI fails loudly."""
         from impactguard.risk_gate import run
         rt_p = _write_tmp_json([])
         try:
-            result = run("/no/such/diff.txt", rt_p)
-            assert result == []
+            with pytest.raises(OSError, match="Cannot read diff file"):
+                run("/no/such/diff.txt", rt_p)
         finally:
             os.unlink(rt_p)
 
@@ -674,16 +674,18 @@ class TestEnforceGateAdversarial:
         assert result == 1
 
     def test_nonexistent_report_path(self):
+        """Missing report file must return non-zero so CI fails loudly."""
         from impactguard.enforce_gate import enforce_report
         result = enforce_report("/no/such/report.json")
-        assert result == 0  # graceful fallback
+        assert result == 2  # fail loudly, not silently pass
 
     def test_corrupt_report_json(self):
+        """Corrupt report JSON must return non-zero so CI fails loudly."""
         from impactguard.enforce_gate import enforce_report
         p = _write_tmp("{not: valid}", suffix=".json")
         try:
             result = enforce_report(p)
-            assert result == 0
+            assert result == 2
         finally:
             os.unlink(p)
 
