@@ -1,11 +1,10 @@
-from typing import Any
-
 """
 ImpactGuard CLI - Command-line interface for the ImpactGuard library.
 """
 
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
 
@@ -39,6 +38,7 @@ def cmd_extract(args: argparse.Namespace) -> int:
     else:
         # Group files by language extractor, fall back to Python for .py
         from collections import defaultdict
+
         by_extractor: dict[str, list[str]] = defaultdict(list)
         unknown: list[str] = []
         for f in files:
@@ -94,6 +94,7 @@ def cmd_risk(args: argparse.Namespace) -> int:
     """Run risk analysis pipeline."""
     import os
     import tempfile as _tmpmod
+
     from .risk_gate import run as risk_main
 
     pipe: bool = getattr(args, "pipe", False)
@@ -118,7 +119,9 @@ def cmd_risk(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        return risk_main(diff_path, args.runtime, args.output, lambda_=getattr(args, "lam", 1.0))
+        return risk_main(
+            diff_path, args.runtime, args.output, lambda_=getattr(args, "lam", 1.0)
+        )
     finally:
         if _tmp_path is not None:
             try:
@@ -139,6 +142,7 @@ def cmd_enforce(args: argparse.Namespace) -> int:
     """Enforce gate - block on HIGH risk."""
     import os
     import tempfile as _tmpmod
+
     from .enforce_gate import enforce
 
     pipe: bool = getattr(args, "pipe", False)
@@ -166,7 +170,13 @@ def cmd_enforce(args: argparse.Namespace) -> int:
     block_unknown: bool | None = getattr(args, "block_unknown", None) or None
     lam: float = getattr(args, "lam", 1.0)
     try:
-        return enforce(diff_path, args.runtime, getattr(args, "output", None), block_unknown=block_unknown, lambda_=lam)
+        return enforce(
+            diff_path,
+            args.runtime,
+            getattr(args, "output", None),
+            block_unknown=block_unknown,
+            lambda_=lam,
+        )
     finally:
         if _tmp_path is not None:
             try:
@@ -256,7 +266,10 @@ def cmd_trace(args: argparse.Namespace) -> int:
 
         # Only allow modules in the whitelist (prevents arbitrary code execution)
         if args.module not in _ALLOWED_TRACE_MODULES:
-            print(f"Error: Module '{args.module}' is not allowed for tracing", file=sys.stderr)
+            print(
+                f"Error: Module '{args.module}' is not allowed for tracing",
+                file=sys.stderr,
+            )
             return 1
 
         try:
@@ -289,7 +302,7 @@ def cmd_check(args: argparse.Namespace) -> int:
         print(f"Checking impact: {args.old} → {args.new}")
         try:
             result = quick_check(args.old, args.new, args.runtime)
-            print(f"\n=== Comparison ===")
+            print("\n=== Comparison ===")
             print(
                 f"Breaking changes: {len(result.get('comparison', {}).get('breaking', []))}"
             )
@@ -299,13 +312,15 @@ def cmd_check(args: argparse.Namespace) -> int:
 
             if "semver" in result:
                 sv = result["semver"]
-                print(f"\n=== Semver Recommendation ===")
-                print(f"Bump: {sv.get('bump', 'patch').upper()}  — {sv.get('reason', '')}")
+                print("\n=== Semver Recommendation ===")
+                print(
+                    f"Bump: {sv.get('bump', 'patch').upper()}  — {sv.get('reason', '')}"
+                )
 
             if "risk" in result:
                 risk_items = result["risk"]
                 high = sum(1 for r in risk_items if r.get("risk") == "HIGH")
-                print(f"\n=== Risk Analysis ===")
+                print("\n=== Risk Analysis ===")
                 print(f"HIGH risk: {high}")
 
             if "report_html" in result:
@@ -330,15 +345,19 @@ def cmd_check(args: argparse.Namespace) -> int:
         return _run_once()
 
     # ── Watch mode — re-run whenever any *.py file in old/new dirs changes ──
-    import time
     import glob as _glob
+    import time
 
-    print(f"Watch mode enabled. Press Ctrl-C to stop.")
+    print("Watch mode enabled. Press Ctrl-C to stop.")
 
     def _mtimes() -> dict[str, float]:
         times: dict[str, float] = {}
-        for pattern in [f"{args.old}/**/*.py", f"{args.new}/**/*.py",
-                         f"{args.old}/*.py", f"{args.new}/*.py"]:
+        for pattern in [
+            f"{args.old}/**/*.py",
+            f"{args.new}/**/*.py",
+            f"{args.old}/*.py",
+            f"{args.new}/*.py",
+        ]:
             for p in _glob.glob(pattern, recursive=True):
                 try:
                     times[p] = Path(p).stat().st_mtime
@@ -361,7 +380,6 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 0
 
 
-
 def cmd_check_commits(args: argparse.Namespace) -> int:
     """Run ImpactGuard pipeline comparing two git commits."""
     from .pipeline import run_pipeline_git
@@ -377,7 +395,7 @@ def cmd_check_commits(args: argparse.Namespace) -> int:
             output_path=args.output,
         )
 
-        print(f"\n=== Comparison ===")
+        print("\n=== Comparison ===")
         comparison = result.get("comparison", {})
         print(f"Breaking changes: {len(comparison.get('breaking', []))}")
         print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
@@ -385,7 +403,7 @@ def cmd_check_commits(args: argparse.Namespace) -> int:
         if "risk" in result:
             risk_items = result["risk"]
             high = sum(1 for r in risk_items if r.get("risk") == "HIGH")
-            print(f"\n=== Risk Analysis ===")
+            print("\n=== Risk Analysis ===")
             print(f"HIGH risk: {high}")
 
         if "report_html" in result and args.output:
@@ -455,8 +473,11 @@ def cmd_check_diff(args: argparse.Namespace) -> int:
     output = getattr(args, "output", None)
     if output and "report_html" in result:
         from pathlib import Path as _Path
+
         output_path = _Path(output)
-        report_path = str(output_path / "impact_report.html") if output_path.is_dir() else output
+        report_path = (
+            str(output_path / "impact_report.html") if output_path.is_dir() else output
+        )
         with open(report_path, "w") as f:
             f.write(result["report_html"])
         print(f"\nReport written to {report_path}")
@@ -506,7 +527,6 @@ def cmd_check_commit(args: argparse.Namespace) -> int:
 
 def cmd_install_hooks(args: argparse.Namespace) -> int:
     """Install git hooks for ImpactGuard using pre-commit package."""
-    import os
     import subprocess
     from pathlib import Path
 
@@ -518,14 +538,19 @@ def cmd_install_hooks(args: argparse.Namespace) -> int:
         return 1
 
     # Determine which hooks to install
-    install_pre = args.pre or args.both or (not args.pre and not args.post and not args.both)
-    install_post = args.post or args.both or (not args.pre and not args.post and not args.both)
+    install_pre = (
+        args.pre or args.both or (not args.pre and not args.post and not args.both)
+    )
+    install_post = (
+        args.post or args.both or (not args.pre and not args.post and not args.both)
+    )
     install_workflow = getattr(args, "install_github_workflow", False)
 
     # Ensure .pre-commit-config.yaml exists with full pipeline (use YAML formatter)
     config_path = repo_path / ".pre-commit-config.yaml"
     try:
         import yaml
+
         yaml_available = True
     except ImportError:
         print("Warning: pyyaml not installed, using basic YAML generation")
@@ -533,28 +558,32 @@ def cmd_install_hooks(args: argparse.Namespace) -> int:
 
     impactguard_hooks = []
     if install_pre:
-        impactguard_hooks.append({
-            "id": "impactguard-check",
-            "name": "ImpactGuard - Full Pipeline Check",
-            "entry": "impactguard-check-staged",
-            "language": "system",
-            "files": r'\.py$',
-            "stages": ["pre-commit"],
-        })
+        impactguard_hooks.append(
+            {
+                "id": "impactguard-check",
+                "name": "ImpactGuard - Full Pipeline Check",
+                "entry": "impactguard-check-staged",
+                "language": "system",
+                "files": r"\.py$",
+                "stages": ["pre-commit"],
+            }
+        )
     if install_post:
-        impactguard_hooks.append({
-            "id": "impactguard-post-commit",
-            "name": "ImpactGuard - Post-Commit Analysis",
-            "entry": "impactguard-post-commit-hook",
-            "language": "system",
-            "always_run": True,
-            "stages": ["post-commit"],
-        })
+        impactguard_hooks.append(
+            {
+                "id": "impactguard-post-commit",
+                "name": "ImpactGuard - Post-Commit Analysis",
+                "entry": "impactguard-post-commit-hook",
+                "language": "system",
+                "always_run": True,
+                "stages": ["post-commit"],
+            }
+        )
 
     if yaml_available:
         # Read existing config
         if config_path.exists():
-            with open(config_path, "r") as f:
+            with open(config_path) as f:
                 config = yaml.safe_load(f) or {}
         else:
             config = {}
@@ -577,7 +606,8 @@ def cmd_install_hooks(args: argparse.Namespace) -> int:
         # Remove existing impactguard hooks
         existing_hooks = local_repo.get("hooks", [])
         local_repo["hooks"] = [
-            h for h in existing_hooks
+            h
+            for h in existing_hooks
             if h.get("id") not in ["impactguard-check", "impactguard-post-commit"]
         ]
 
@@ -593,7 +623,7 @@ def cmd_install_hooks(args: argparse.Namespace) -> int:
         config_content = "repos:\n  - repo: local\n    hooks:\n"
         for hook in impactguard_hooks:
             config_content += f"      - id: {hook['id']}\n"
-            config_content += f"        name: \"{hook['name']}\"\n"
+            config_content += f'        name: "{hook["name"]}"\n'
             config_content += f"        entry: {hook['entry']}\n"
             config_content += f"        language: {hook['language']}\n"
             if "files" in hook:
@@ -614,7 +644,7 @@ def cmd_install_hooks(args: argparse.Namespace) -> int:
                 text=True,
             )
             if result.returncode == 0:
-                print(f"Installed pre-commit hook via pre-commit package")
+                print("Installed pre-commit hook via pre-commit package")
             else:
                 print(f"Warning: pre-commit install failed: {result.stderr}")
 
@@ -626,12 +656,16 @@ def cmd_install_hooks(args: argparse.Namespace) -> int:
                 text=True,
             )
             if result.returncode == 0:
-                print(f"Installed post-commit hook via pre-commit package")
+                print("Installed post-commit hook via pre-commit package")
             else:
-                print(f"Warning: pre-commit install --hook-type post-commit failed: {result.stderr}")
+                print(
+                    f"Warning: pre-commit install --hook-type post-commit failed: {result.stderr}"
+                )
 
     except FileNotFoundError:
-        print("Error: pre-commit package not found. Install it with: pip install pre-commit")
+        print(
+            "Error: pre-commit package not found. Install it with: pip install pre-commit"
+        )
         return 1
     except Exception as e:
         print(f"Error installing hooks: {e}")
@@ -674,7 +708,7 @@ jobs:
         workflow_path.write_text(workflow_content)
         print(f"Created GitHub workflow: {workflow_path}")
 
-    print(f"\nHooks installed successfully using pre-commit package")
+    print("\nHooks installed successfully using pre-commit package")
     return 0
 
 
@@ -700,6 +734,7 @@ def cmd_generate_changelog(args: argparse.Namespace) -> int:
 def cmd_suggest(args: argparse.Namespace) -> int:
     """Generate fix suggestions for a risk report."""
     import json
+
     from .suggest_fixes import suggest
 
     try:
@@ -726,7 +761,8 @@ def cmd_suggest(args: argparse.Namespace) -> int:
 def cmd_patch(args: argparse.Namespace) -> int:
     """Generate CST-based patches for a source file."""
     from pathlib import Path
-    from .cst_patch import patch_function, patch_call
+
+    from .cst_patch import patch_call, patch_function
 
     try:
         source = Path(args.file).read_text()
@@ -754,11 +790,11 @@ def cmd_patch(args: argparse.Namespace) -> int:
 def cmd_baseline(args: argparse.Namespace) -> int:
     """Manage ImpactGuard baselines."""
     from .baseline import (
-        save_baseline,
-        load_baseline,
-        compare_with_baseline,
-        baseline_exists,
         DEFAULT_BASELINE_PATH,
+        baseline_exists,
+        compare_with_baseline,
+        load_baseline,
+        save_baseline,
     )
 
     subcommand: str = args.baseline_cmd or "status"
@@ -769,14 +805,16 @@ def cmd_baseline(args: argparse.Namespace) -> int:
         if not files:
             # Collect all tracked Python files
             import glob as _glob
+
             files = list(_glob.glob("**/*.py", recursive=True))
             if not files:
                 print("Error: No Python files found", file=sys.stderr)
                 return 1
 
         import datetime
+
         metadata = {
-            "saved_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "saved_at": datetime.datetime.now(datetime.UTC).isoformat(),
             "files_count": len(files),
         }
         saved = save_baseline(files, baseline_path, metadata)
@@ -802,6 +840,7 @@ def cmd_baseline(args: argparse.Namespace) -> int:
         files = getattr(args, "files", None) or []
         if not files:
             import glob as _glob
+
             files = list(_glob.glob("**/*.py", recursive=True))
             if not files:
                 print("Error: No Python files found", file=sys.stderr)
@@ -817,7 +856,9 @@ def cmd_baseline(args: argparse.Namespace) -> int:
         semver = result["semver"]
         print(f"Breaking changes:     {len(comparison.get('breaking', []))}")
         print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
-        print(f"Semver recommendation: {semver.get('bump', 'patch').upper()} — {semver.get('reason', '')}")
+        print(
+            f"Semver recommendation: {semver.get('bump', 'patch').upper()} — {semver.get('reason', '')}"
+        )
 
         for item in comparison.get("breaking", []):
             print(f"  ⚠ {item}")
@@ -825,6 +866,7 @@ def cmd_baseline(args: argparse.Namespace) -> int:
         output = getattr(args, "output", None)
         if output:
             import json
+
             with open(output, "w") as f:
                 json.dump(result, f, indent=2)
             print(f"\nResult written to {output}")
@@ -853,11 +895,11 @@ def cmd_semver(args: argparse.Namespace) -> int:
     output = getattr(args, "output", None)
     if output:
         import json
+
         with open(output, "w") as f:
             json.dump(rec, f, indent=2)
 
     return 0
-
 
 
 def cmd_report_markdown(args: argparse.Namespace) -> int:
@@ -876,11 +918,11 @@ def cmd_report_markdown(args: argparse.Namespace) -> int:
 def cmd_feedback(args: argparse.Namespace) -> int:
     """Manage patch-outcome feedback for confidence calibration."""
     from .feedback import (
-        record_outcome,
+        apply_weights_to_config,
+        compute_calibrated_weights,
         get_stats,
         load_outcomes,
-        compute_calibrated_weights,
-        apply_weights_to_config,
+        record_outcome,
     )
 
     subcmd: str = getattr(args, "feedback_cmd", "") or "stats"
@@ -934,10 +976,10 @@ def cmd_feedback(args: argparse.Namespace) -> int:
 def cmd_baseline_tagged(args: argparse.Namespace) -> int:
     """Handle tagged baseline sub-subcommands: save --tag, list, compare --from."""
     from .baseline import (
-        save_tagged_baseline,
-        list_baselines,
         compare_with_tagged_baseline,
         delete_tagged_baseline,
+        list_baselines,
+        save_tagged_baseline,
     )
 
     subcmd: str = getattr(args, "tagged_cmd", "") or "list"
@@ -966,7 +1008,7 @@ def cmd_baseline_tagged(args: argparse.Namespace) -> int:
                 return 1
 
         metadata = {
-            "saved_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "saved_at": datetime.datetime.now(datetime.UTC).isoformat(),
             "files_count": len(files),
         }
         try:
@@ -1032,7 +1074,14 @@ def main() -> int:
         description="ImpactGuard - API impact analyzer for Python",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {__version__}"
+    )
+    parser.add_argument(
+        "--log-file",
+        default="/tmp/impactguard.log",
+        help="Log file path (default: /tmp/impactguard.log, appended)",
+    )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
@@ -1041,43 +1090,54 @@ def main() -> int:
         "extract", help="Extract function signatures from source files"
     )
     extract_parser.add_argument(
-        "files", nargs="*",
+        "files",
+        nargs="*",
         help="Source files to analyze (Python, TypeScript, …)",
     )
     extract_parser.add_argument(
-        "--language", "-l",
+        "--language",
+        "-l",
         help="Force a specific language (e.g. python, typescript); "
-             "auto-detected from extension when omitted",
+        "auto-detected from extension when omitted",
     )
     extract_parser.set_defaults(func=cmd_extract)
 
     # compare subcommand
-    compare_parser = subparsers.add_parser("compare", help="Compare signature snapshots")
+    compare_parser = subparsers.add_parser(
+        "compare", help="Compare signature snapshots"
+    )
     compare_parser.add_argument("old", help="Old signatures JSON file")
     compare_parser.add_argument("new", help="New signatures JSON file")
     compare_parser.add_argument("-o", "--output", help="Output file for results")
     compare_parser.set_defaults(func=cmd_compare)
 
     # analyze subcommand
-    analyze_parser = subparsers.add_parser("analyze", help="Analyze impact on call sites")
+    analyze_parser = subparsers.add_parser(
+        "analyze", help="Analyze impact on call sites"
+    )
     analyze_parser.add_argument("signatures", help="Signatures JSON file")
     analyze_parser.add_argument("calls", help="Call sites JSON file")
-    analyze_parser.add_argument(
-        "runtime", nargs="?", help="Runtime data JSON file"
-    )
+    analyze_parser.add_argument("runtime", nargs="?", help="Runtime data JSON file")
     analyze_parser.set_defaults(func=cmd_analyze)
 
     # risk subcommand
     risk_parser = subparsers.add_parser("risk", help="Run risk analysis")
-    risk_parser.add_argument("diff", nargs="?", help="Diff text file (omit with --pipe)")
+    risk_parser.add_argument(
+        "diff", nargs="?", help="Diff text file (omit with --pipe)"
+    )
     risk_parser.add_argument("runtime", help="Runtime data JSON file")
     risk_parser.add_argument("output", help="Output report JSON file")
     risk_parser.add_argument(
-        "--pipe", action="store_true",
+        "--pipe",
+        action="store_true",
         help="Read diff from stdin instead of a file (e.g. diff A B | impactguard risk --pipe ...)",
     )
     risk_parser.add_argument(
-        "--lambda", dest="lam", type=float, default=1.0, metavar="LAMBDA",
+        "--lambda",
+        dest="lam",
+        type=float,
+        default=1.0,
+        metavar="LAMBDA",
         help="Sensitivity multiplier (default: 1.0). >1 increases sensitivity; <1 decreases it.",
     )
     risk_parser.set_defaults(func=cmd_risk)
@@ -1091,8 +1151,12 @@ def main() -> int:
     report_parser.set_defaults(func=cmd_report)
 
     # enforce subcommand
-    enforce_parser = subparsers.add_parser("enforce", help="Enforce gate - block on HIGH risk")
-    enforce_parser.add_argument("diff", nargs="?", help="Diff text file (omit with --pipe)")
+    enforce_parser = subparsers.add_parser(
+        "enforce", help="Enforce gate - block on HIGH risk"
+    )
+    enforce_parser.add_argument(
+        "diff", nargs="?", help="Diff text file (omit with --pipe)"
+    )
     enforce_parser.add_argument("runtime", help="Runtime data JSON file")
     enforce_parser.add_argument("-o", "--output", help="Output report JSON file")
     enforce_parser.add_argument(
@@ -1101,19 +1165,28 @@ def main() -> int:
         help="Treat UNKNOWN risk as a blocking condition (same as HIGH)",
     )
     enforce_parser.add_argument(
-        "--pipe", action="store_true",
+        "--pipe",
+        action="store_true",
         help="Read diff from stdin instead of a file (e.g. diff A B | impactguard enforce --pipe ...)",
     )
     enforce_parser.add_argument(
-        "--lambda", dest="lam", type=float, default=1.0, metavar="LAMBDA",
+        "--lambda",
+        dest="lam",
+        type=float,
+        default=1.0,
+        metavar="LAMBDA",
         help="Sensitivity multiplier (default: 1.0). >1 increases sensitivity; <1 decreases it.",
     )
     enforce_parser.set_defaults(func=cmd_enforce)
 
     # suggest subcommand
-    suggest_parser = subparsers.add_parser("suggest", help="Generate fix suggestions from risk report")
+    suggest_parser = subparsers.add_parser(
+        "suggest", help="Generate fix suggestions from risk report"
+    )
     suggest_parser.add_argument("report", help="Risk report JSON file")
-    suggest_parser.add_argument("-o", "--output", help="Output JSON file for suggestions")
+    suggest_parser.add_argument(
+        "-o", "--output", help="Output JSON file for suggestions"
+    )
     suggest_parser.set_defaults(func=cmd_suggest)
 
     # patch subcommand
@@ -1122,8 +1195,11 @@ def main() -> int:
     patch_parser.add_argument("func_name", help="Function name to patch")
     patch_parser.add_argument("param_name", help="Parameter name to patch")
     patch_parser.add_argument(
-        "--type", dest="patch_type", choices=["function", "call"], default="function",
-        help="Patch type: 'function' adds default, 'call' fixes call site"
+        "--type",
+        dest="patch_type",
+        choices=["function", "call"],
+        default="function",
+        help="Patch type: 'function' adds default, 'call' fixes call site",
     )
     patch_parser.add_argument("-o", "--output", help="Output file (default: stdout)")
     patch_parser.set_defaults(func=cmd_patch)
@@ -1133,11 +1209,13 @@ def main() -> int:
         "extract-calls", help="Extract call sites from source files"
     )
     extract_calls_parser.add_argument(
-        "files", nargs="*",
+        "files",
+        nargs="*",
         help="Source files to analyze (Python, TypeScript, …)",
     )
     extract_calls_parser.add_argument(
-        "--language", "-l",
+        "--language",
+        "-l",
         help="Force a specific language; auto-detected from extension when omitted",
     )
     extract_calls_parser.set_defaults(func=cmd_extract_calls)
@@ -1160,14 +1238,13 @@ def main() -> int:
     )
     check_parser.add_argument("old", help="Old Python file/directory")
     check_parser.add_argument("new", help="New Python file/directory")
-    check_parser.add_argument(
-        "runtime", nargs="?", help="Runtime data JSON (optional)"
-    )
+    check_parser.add_argument("runtime", nargs="?", help="Runtime data JSON (optional)")
     check_parser.add_argument(
         "output", nargs="?", default="impact_report.html", help="Output HTML report"
     )
     check_parser.add_argument(
-        "--watch", action="store_true",
+        "--watch",
+        action="store_true",
         help="Re-run automatically when source files change",
     )
     check_parser.set_defaults(func=cmd_check)
@@ -1179,14 +1256,13 @@ def main() -> int:
     check_diff_parser.add_argument(
         "diff", nargs="?", help="Path to unified diff / patch file (omit with --pipe)"
     )
-    check_diff_parser.add_argument(
-        "--runtime", help="Runtime data JSON (optional)"
-    )
+    check_diff_parser.add_argument("--runtime", help="Runtime data JSON (optional)")
     check_diff_parser.add_argument(
         "-o", "--output", help="Output directory or HTML report path"
     )
     check_diff_parser.add_argument(
-        "--pipe", action="store_true",
+        "--pipe",
+        action="store_true",
         help="Read diff from stdin instead of a file (e.g. diff A B | impactguard check-diff --pipe)",
     )
     check_diff_parser.set_defaults(func=cmd_check_diff)
@@ -1201,9 +1277,7 @@ def main() -> int:
     check_commit_parser.add_argument(
         "--files", nargs="+", help="Specific files to compare (relative to repo root)"
     )
-    check_commit_parser.add_argument(
-        "--runtime", help="Runtime data JSON (optional)"
-    )
+    check_commit_parser.add_argument("--runtime", help="Runtime data JSON (optional)")
     check_commit_parser.add_argument(
         "-o", "--output", help="Output path for HTML report"
     )
@@ -1225,9 +1299,7 @@ def main() -> int:
     check_commits_parser.add_argument(
         "runtime", nargs="?", help="Runtime data JSON (optional)"
     )
-    check_commits_parser.add_argument(
-        "output", nargs="?", help="Output HTML report"
-    )
+    check_commits_parser.add_argument("output", nargs="?", help="Output HTML report")
     check_commits_parser.set_defaults(func=cmd_check_commits)
 
     # install-hooks subcommand
@@ -1278,9 +1350,7 @@ def main() -> int:
     changelog_parser.add_argument(
         "--new-files", nargs="+", help="New Python files (alternative to new_ref)"
     )
-    changelog_parser.add_argument(
-        "output", nargs="?", help="Output file for changelog"
-    )
+    changelog_parser.add_argument("output", nargs="?", help="Output file for changelog")
     changelog_parser.set_defaults(func=cmd_generate_changelog)
 
     # baseline subcommand
@@ -1290,15 +1360,31 @@ def main() -> int:
     baseline_sub = baseline_parser.add_subparsers(
         dest="baseline_cmd", help="Baseline subcommands"
     )
-    baseline_save = baseline_sub.add_parser("save", help="Save current signatures as baseline")
-    baseline_save.add_argument("files", nargs="*", help="Python files to snapshot (default: all)")
-    baseline_save.add_argument("--path", dest="baseline_path", help="Path to baseline JSON file")
+    baseline_save = baseline_sub.add_parser(
+        "save", help="Save current signatures as baseline"
+    )
+    baseline_save.add_argument(
+        "files", nargs="*", help="Python files to snapshot (default: all)"
+    )
+    baseline_save.add_argument(
+        "--path", dest="baseline_path", help="Path to baseline JSON file"
+    )
     baseline_status = baseline_sub.add_parser("status", help="Show baseline info")
-    baseline_status.add_argument("--path", dest="baseline_path", help="Path to baseline JSON file")
-    baseline_compare = baseline_sub.add_parser("compare", help="Compare current code against baseline")
-    baseline_compare.add_argument("files", nargs="*", help="Python files to compare (default: all)")
-    baseline_compare.add_argument("--path", dest="baseline_path", help="Path to baseline JSON file")
-    baseline_compare.add_argument("-o", "--output", help="Output JSON file for comparison result")
+    baseline_status.add_argument(
+        "--path", dest="baseline_path", help="Path to baseline JSON file"
+    )
+    baseline_compare = baseline_sub.add_parser(
+        "compare", help="Compare current code against baseline"
+    )
+    baseline_compare.add_argument(
+        "files", nargs="*", help="Python files to compare (default: all)"
+    )
+    baseline_compare.add_argument(
+        "--path", dest="baseline_path", help="Path to baseline JSON file"
+    )
+    baseline_compare.add_argument(
+        "-o", "--output", help="Output JSON file for comparison result"
+    )
     baseline_parser.set_defaults(func=cmd_baseline)
 
     # semver subcommand
@@ -1308,9 +1394,13 @@ def main() -> int:
     semver_parser.add_argument("old", help="Old signatures JSON file")
     semver_parser.add_argument("new", help="New signatures JSON file")
     semver_parser.add_argument(
-        "--current-version", dest="current_version", help="Current version string (e.g. 1.2.3)"
+        "--current-version",
+        dest="current_version",
+        help="Current version string (e.g. 1.2.3)",
     )
-    semver_parser.add_argument("-o", "--output", help="Output JSON file for recommendation")
+    semver_parser.add_argument(
+        "-o", "--output", help="Output JSON file for recommendation"
+    )
     semver_parser.set_defaults(func=cmd_semver)
 
     # report-markdown subcommand
@@ -1331,7 +1421,9 @@ def main() -> int:
         dest="feedback_cmd", help="Feedback subcommands"
     )
 
-    fb_record = feedback_sub.add_parser("record", help="Record a patch acceptance/rejection")
+    fb_record = feedback_sub.add_parser(
+        "record", help="Record a patch acceptance/rejection"
+    )
     fb_record.add_argument("patch_id", help="Patch identifier")
     _fb_outcome = fb_record.add_mutually_exclusive_group()
     _fb_outcome.add_argument(
@@ -1371,40 +1463,91 @@ def main() -> int:
     )
 
     hist_list = history_sub.add_parser("list", help="List all tagged baselines")
-    hist_list.add_argument("--history-path", dest="history_path", help="History JSON file path")
+    hist_list.add_argument(
+        "--history-path", dest="history_path", help="History JSON file path"
+    )
 
     hist_save = history_sub.add_parser("save", help="Save a tagged baseline snapshot")
     hist_save.add_argument("tag", help="Release tag (e.g. v1.2.0)")
     hist_save.add_argument("files", nargs="*", help="Python files to snapshot")
-    hist_save.add_argument("--history-path", dest="history_path", help="History JSON file path")
+    hist_save.add_argument(
+        "--history-path", dest="history_path", help="History JSON file path"
+    )
 
     hist_compare = history_sub.add_parser(
         "compare", help="Compare current code against a tagged baseline"
     )
     hist_compare.add_argument("tag_from", help="Tag to compare against")
     hist_compare.add_argument("files", nargs="*", help="Python files to compare")
-    hist_compare.add_argument("--history-path", dest="history_path", help="History JSON file path")
-    hist_compare.add_argument("-o", "--output", help="Output JSON file for comparison result")
+    hist_compare.add_argument(
+        "--history-path", dest="history_path", help="History JSON file path"
+    )
+    hist_compare.add_argument(
+        "-o", "--output", help="Output JSON file for comparison result"
+    )
 
     hist_delete = history_sub.add_parser("delete", help="Delete a tagged baseline")
     hist_delete.add_argument("tag", help="Tag to delete")
-    hist_delete.add_argument("--history-path", dest="history_path", help="History JSON file path")
+    hist_delete.add_argument(
+        "--history-path", dest="history_path", help="History JSON file path"
+    )
 
     history_parser.set_defaults(func=cmd_baseline_tagged)
 
-
-    if len(sys.argv) > 1 and sys.argv[1] not in [
-        "extract", "compare", "analyze", "risk", "report", "report-markdown",
-        "trace", "check", "check-commits", "check-diff", "check-commit",
-        "install-hooks",
-        "enforce", "extract-calls", "runtime-impact",
-        "generate-changelog", "suggest", "patch",
-        "baseline", "semver", "feedback", "history",
-    ] and not sys.argv[1].startswith("-"):
+    if (
+        len(sys.argv) > 1
+        and sys.argv[1]
+        not in [
+            "extract",
+            "compare",
+            "analyze",
+            "risk",
+            "report",
+            "report-markdown",
+            "trace",
+            "check",
+            "check-commits",
+            "check-diff",
+            "check-commit",
+            "install-hooks",
+            "enforce",
+            "extract-calls",
+            "runtime-impact",
+            "generate-changelog",
+            "suggest",
+            "patch",
+            "baseline",
+            "semver",
+            "feedback",
+            "history",
+        ]
+        and not sys.argv[1].startswith("-")
+    ):
         # Assume pipeline mode: impactguard old/ new/ [runtime] [output]
         sys.argv.insert(1, "check")
 
     args = parser.parse_args()
+
+    # Configure logging to append to specified file
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+
+    # Remove existing file handlers to avoid duplicates
+    for handler in logger.handlers[:]:
+        if isinstance(handler, logging.FileHandler):
+            logger.removeHandler(handler)
+
+    # Add file handler in append mode
+    file_handler = logging.FileHandler(args.log_file, mode="a")
+    file_handler.setLevel(logging.INFO)
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
+    _logger = logging.getLogger(__name__)
+    _logger.info(f"ImpactGuard started with command: {args.command}")
 
     if not args.command:
         parser.print_help()
@@ -1471,7 +1614,8 @@ def post_commit_hook() -> int:
     # Update signature tracking
     print("ImpactGuard: Updating signature tracking...")
     result = subprocess.run(
-        ["impactguard", "extract"] + subprocess.run(
+        ["impactguard", "extract"]
+        + subprocess.run(
             ["git", "ls-files", "|", "grep", r"'\\.py$'"],
             capture_output=True,
             text=True,
@@ -1483,10 +1627,15 @@ def post_commit_hook() -> int:
     if result.returncode == 0:
         print("ImpactGuard: Signatures updated successfully")
     else:
-        print(f"ImpactGuard: Warning - signature extraction failed: {result.stderr}", file=sys.stderr)
+        print(
+            f"ImpactGuard: Warning - signature extraction failed: {result.stderr}",
+            file=sys.stderr,
+        )
 
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    result = main()
+    logging.shutdown()
+    sys.exit(result)
