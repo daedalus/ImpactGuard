@@ -69,6 +69,15 @@ _DEFAULTS: dict[str, Any] = {
             "transitive_depth": 0,
             "suppress": [],
         },
+        "languages": {
+            # Canonical language names to enable.  "python" is always available.
+            # "typescript" requires tree-sitter-typescript (pip install impactguard[languages]).
+            "enabled": ["python", "typescript"],
+            # Extension-to-language overrides.  Useful when non-standard extensions
+            # (e.g. ".mts") should be treated as a known language.
+            # Example: {"extension_overrides": {".mts": "typescript"}}
+            "extension_overrides": {},
+        },
     }
 }
 

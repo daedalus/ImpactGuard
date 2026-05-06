@@ -36,7 +36,11 @@ lint = [
     "semgrep",
     "mypy",
 ]
-all = ["impactguard[dev,test,lint]"]
+languages = [
+    "tree-sitter>=0.23",
+    "tree-sitter-typescript>=0.23",
+]
+all = ["impactguard[dev,test,lint,languages]"]
 
 [project.scripts]
 impactguard = "impactguard.__main__:main"

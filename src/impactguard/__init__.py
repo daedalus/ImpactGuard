@@ -80,6 +80,15 @@ from .feedback import (
     compute_calibrated_weights,
     apply_weights_to_config,
 )
+from .languages import (
+    LanguageExtractor,
+    register as register_language,
+    get_extractor,
+    get_extractor_by_language,
+    detect_language,
+    list_languages,
+    list_extensions as list_language_extensions,
+)
 
 __version__ = "0.1.0"
 __all__ = [
@@ -175,6 +184,14 @@ __all__ = [
     "get_feedback_stats",
     "compute_calibrated_weights",
     "apply_weights_to_config",
+    # Language registry
+    "LanguageExtractor",
+    "register_language",
+    "get_extractor",
+    "get_extractor_by_language",
+    "detect_language",
+    "list_languages",
+    "list_language_extensions",
 ]
 
 
