@@ -478,6 +478,183 @@ def run_pipeline_git(
         )
 
 
+def _parse_unified_diff(diff_text: str) -> dict[str, tuple[str, str]]:
+    """Parse a unified diff and return old/new content per Python file.
+
+    For each changed file the returned tuple contains:
+      - old_content: context lines + removed lines (as they appeared before)
+      - new_content: context lines + added lines (as they appear after)
+
+    Only ``.py`` files are included in the result.
+    """
+    files: dict[str, tuple[str, str]] = {}
+    old_lines: list[str] = []
+    new_lines: list[str] = []
+    old_name: str | None = None
+    new_name: str | None = None
+
+    def _save_current() -> None:
+        name = new_name or old_name
+        if name and name.endswith(".py"):
+            files[name] = ("\n".join(old_lines), "\n".join(new_lines))
+
+    for raw in diff_text.splitlines():
+        if raw.startswith("--- "):
+            _save_current()
+            old_name = raw[4:].split("\t")[0].strip()
+            if old_name.startswith("a/"):
+                old_name = old_name[2:]
+            if old_name == "/dev/null":
+                old_name = None
+            new_name = None
+            old_lines = []
+            new_lines = []
+        elif raw.startswith("+++ "):
+            new_name = raw[4:].split("\t")[0].strip()
+            if new_name.startswith("b/"):
+                new_name = new_name[2:]
+            if new_name == "/dev/null":
+                new_name = None
+        elif raw.startswith("@@"):
+            pass  # hunk header – no content to collect
+        elif raw.startswith("-") and not raw.startswith("---"):
+            old_lines.append(raw[1:])
+        elif raw.startswith("+") and not raw.startswith("+++"):
+            new_lines.append(raw[1:])
+        elif raw.startswith(" "):
+            # context line – present in both versions
+            old_lines.append(raw[1:])
+            new_lines.append(raw[1:])
+
+    _save_current()
+    return files
+
+
+def run_pipeline_diff(
+    diff_path: str,
+    runtime_path: str | None = None,
+    output_dir: str | None = None,
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Run the full ImpactGuard pipeline on a unified diff / patch file.
+
+    The diff is parsed to reconstruct the old and new Python source
+    content for every changed file, and then the standard pipeline is
+    executed on those reconstructed versions.
+
+    Args:
+        diff_path: Path to a unified diff / patch file.
+        runtime_path: Optional path to runtime data JSON.
+        output_dir: Directory for output files (default: temp dir).
+        config: Optional configuration dictionary.
+
+    Returns:
+        Same dictionary as :func:`run_pipeline`.
+
+    Raises:
+        FileNotFoundError: If *diff_path* does not exist.
+        ValueError: If the diff contains no Python files.
+    """
+    diff_text = Path(diff_path).read_text()
+    file_contents = _parse_unified_diff(diff_text)
+
+    if not file_contents:
+        raise ValueError(f"No Python file changes found in diff: {diff_path}")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        old_dir = Path(tmpdir) / "old"
+        new_dir = Path(tmpdir) / "new"
+        old_dir.mkdir()
+        new_dir.mkdir()
+
+        old_files: list[str] = []
+        new_files: list[str] = []
+
+        for rel_path, (old_src, new_src) in file_contents.items():
+            if old_src.strip():
+                dest = old_dir / rel_path
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_text(old_src)
+                old_files.append(str(dest))
+            if new_src.strip():
+                dest = new_dir / rel_path
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_text(new_src)
+                new_files.append(str(dest))
+
+        if not new_files:
+            raise ValueError(f"Diff {diff_path} contains only deletions – nothing to analyze")
+
+        effective_output = output_dir or tempfile.mkdtemp(prefix="impactguard_diff_")
+
+        return run_pipeline(
+            old_files=old_files or None,
+            new_files=new_files,
+            runtime_path=runtime_path,
+            output_dir=effective_output,
+            config=config,
+        )
+
+
+def run_pipeline_commit(
+    commit_ref: str,
+    files: list[str] | None = None,
+    runtime_path: str | None = None,
+    output_path: str | None = None,
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Run the full ImpactGuard pipeline on a single git commit.
+
+    This automatically derives the parent commit so you do not need to
+    supply two refs manually.  Equivalent to::
+
+        run_pipeline_git(parent_of(commit_ref), commit_ref, ...)
+
+    Args:
+        commit_ref: Git reference (commit SHA, branch, or tag) to analyze.
+        files: Optional list of specific files to compare (relative to repo root).
+        runtime_path: Path to runtime data JSON.
+        output_path: Path for output files / HTML report.
+        config: Optional configuration dictionary.
+
+    Returns:
+        Same dictionary as :func:`run_pipeline`.
+
+    Raises:
+        ValueError: If *commit_ref* is not a valid git reference or has no parent.
+    """
+    import subprocess
+
+    if not _validate_git_ref(commit_ref):
+        raise ValueError(f"Invalid git reference: '{commit_ref}'")
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", f"{commit_ref}^"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=30,
+        )
+        parent_ref = result.stdout.strip()
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"Timeout resolving parent of '{commit_ref}'") from exc
+    except subprocess.CalledProcessError as exc:
+        raise ValueError(
+            f"Cannot find parent commit for '{commit_ref}'. "
+            "Initial commits have no parent."
+        ) from exc
+
+    return run_pipeline_git(
+        old_ref=parent_ref,
+        new_ref=commit_ref,
+        files=files,
+        runtime_path=runtime_path,
+        output_path=output_path,
+        config=config,
+    )
+
+
 class ImpactGuard:
     """Unified API class for ImpactGuard."""
 
