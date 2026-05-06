@@ -55,10 +55,13 @@ def cmd_analyze(args: argparse.Namespace) -> int:
 
 def cmd_risk(args: argparse.Namespace) -> int:
     """Run risk analysis pipeline."""
+    import os
+    import tempfile as _tmpmod
     from .risk_gate import run as risk_main
 
     pipe: bool = getattr(args, "pipe", False)
     diff_path: str | None = getattr(args, "diff", None)
+    _tmp_path: str | None = None
 
     if pipe:
         if not sys.stdin.isatty():
@@ -66,18 +69,25 @@ def cmd_risk(args: argparse.Namespace) -> int:
         else:
             print("Error: --pipe requires data on stdin", file=sys.stderr)
             return 1
-        import tempfile as _tmpmod
         with _tmpmod.NamedTemporaryFile(
             mode="w", suffix=".diff", prefix="impactguard_pipe_", delete=False
         ) as _tmp:
             _tmp.write(diff_text)
-            diff_path = _tmp.name
+            _tmp_path = _tmp.name
+            diff_path = _tmp_path
 
     if not diff_path:
         print("Error: provide a diff path or use --pipe", file=sys.stderr)
         return 1
 
-    return risk_main(diff_path, args.runtime, args.output)
+    try:
+        return risk_main(diff_path, args.runtime, args.output)
+    finally:
+        if _tmp_path is not None:
+            try:
+                os.unlink(_tmp_path)
+            except OSError:
+                pass
 
 
 def cmd_report(args: argparse.Namespace) -> int:
@@ -90,10 +100,13 @@ def cmd_report(args: argparse.Namespace) -> int:
 
 def cmd_enforce(args: argparse.Namespace) -> int:
     """Enforce gate - block on HIGH risk."""
+    import os
+    import tempfile as _tmpmod
     from .enforce_gate import enforce
 
     pipe: bool = getattr(args, "pipe", False)
     diff_path: str | None = getattr(args, "diff", None)
+    _tmp_path: str | None = None
 
     if pipe:
         if not sys.stdin.isatty():
@@ -102,19 +115,26 @@ def cmd_enforce(args: argparse.Namespace) -> int:
             print("Error: --pipe requires data on stdin", file=sys.stderr)
             return 1
         # Write stdin content to a temp file so enforce() can consume it
-        import tempfile as _tmpmod
         with _tmpmod.NamedTemporaryFile(
             mode="w", suffix=".diff", prefix="impactguard_pipe_", delete=False
         ) as _tmp:
             _tmp.write(diff_text)
-            diff_path = _tmp.name
+            _tmp_path = _tmp.name
+            diff_path = _tmp_path
 
     if not diff_path:
         print("Error: provide a diff path or use --pipe", file=sys.stderr)
         return 1
 
     block_unknown: bool | None = getattr(args, "block_unknown", None) or None
-    return enforce(diff_path, args.runtime, getattr(args, "output", None), block_unknown=block_unknown)
+    try:
+        return enforce(diff_path, args.runtime, getattr(args, "output", None), block_unknown=block_unknown)
+    finally:
+        if _tmp_path is not None:
+            try:
+                os.unlink(_tmp_path)
+            except OSError:
+                pass
 
 
 def cmd_extract_calls(args: argparse.Namespace) -> int:
@@ -341,7 +361,7 @@ def cmd_check_diff(args: argparse.Namespace) -> int:
                 runtime_path=getattr(args, "runtime", None),
                 output_dir=getattr(args, "output", None),
             )
-        except (ValueError,) as e:
+        except ValueError as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
     else:

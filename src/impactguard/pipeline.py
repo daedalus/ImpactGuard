@@ -630,8 +630,8 @@ def run_pipeline_diff(
             config=config,
         )
     except ValueError as exc:
-        # Re-raise with the file path for a more descriptive error message.
-        raise ValueError(str(exc).replace("diff", f"diff: {diff_path}", 1)) from exc
+        # Re-raise with the file path included in the error message.
+        raise ValueError(f"{exc} (diff file: {diff_path})") from exc
 
 
 def run_pipeline_commit(
