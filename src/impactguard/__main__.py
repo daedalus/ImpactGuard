@@ -543,6 +543,171 @@ def cmd_semver(args: argparse.Namespace) -> int:
     return 0
 
 
+
+def cmd_report_markdown(args: argparse.Namespace) -> int:
+    """Generate a markdown PR-comment summary from a risk report JSON."""
+    from .generate_report import generate_markdown_from_file
+
+    output: str | None = getattr(args, "output", None)
+    md = generate_markdown_from_file(args.report, output_path=output)
+    if not output:
+        print(md)
+    else:
+        print(f"Markdown report written to {output}")
+    return 0
+
+
+def cmd_feedback(args: argparse.Namespace) -> int:
+    """Manage patch-outcome feedback for confidence calibration."""
+    from .feedback import (
+        record_outcome,
+        get_stats,
+        load_outcomes,
+        compute_calibrated_weights,
+        apply_weights_to_config,
+    )
+
+    subcmd: str = getattr(args, "feedback_cmd", "") or "stats"
+
+    if subcmd == "record":
+        accepted: bool = not getattr(args, "rejected", False)
+        record_outcome(
+            patch_id=args.patch_id,
+            accepted=accepted,
+            change_type=getattr(args, "change_type", None),
+            feedback_path=getattr(args, "feedback_path", None),
+        )
+        status = "accepted" if accepted else "rejected"
+        print(f"Recorded patch '{args.patch_id}' as {status}.")
+        return 0
+
+    if subcmd == "stats":
+        stats = get_stats(getattr(args, "feedback_path", None))
+        print(f"Total recorded: {stats['total']}")
+        print(f"Accepted:       {stats['accepted']}")
+        print(f"Rejected:       {stats['rejected']}")
+        rate = stats["acceptance_rate"]
+        print(f"Acceptance rate: {rate:.0%}")
+        if stats["by_change_type"]:
+            print("\nBy change type:")
+            for ct, r in sorted(stats["by_change_type"].items()):
+                print(f"  {ct}: {r:.0%}")
+        return 0
+
+    if subcmd == "calibrate":
+        outcomes = load_outcomes(getattr(args, "feedback_path", None))
+        weights = compute_calibrated_weights(outcomes)
+        if not weights:
+            print("Not enough data for calibration (need ≥ 5 outcomes per category).")
+            return 0
+        config_path: str = getattr(args, "config_path", None) or "impactguard.toml"
+        ok = apply_weights_to_config(weights, config_path)
+        if ok:
+            print(f"Calibrated weights applied to {config_path}:")
+            for k, v in weights.items():
+                print(f"  {k} = {v:.4f}")
+        else:
+            print(f"Error: could not write to {config_path}", file=sys.stderr)
+            return 1
+        return 0
+
+    print(f"Unknown feedback subcommand: {subcmd}", file=sys.stderr)
+    return 1
+
+
+def cmd_baseline_tagged(args: argparse.Namespace) -> int:
+    """Handle tagged baseline sub-subcommands: save --tag, list, compare --from."""
+    from .baseline import (
+        save_tagged_baseline,
+        list_baselines,
+        compare_with_tagged_baseline,
+        delete_tagged_baseline,
+    )
+
+    subcmd: str = getattr(args, "tagged_cmd", "") or "list"
+    history_path: str | None = getattr(args, "history_path", None)
+
+    if subcmd == "list":
+        entries = list_baselines(history_path)
+        if not entries:
+            print("No tagged baselines stored yet.")
+        for e in entries:
+            meta = e.get("metadata") or {}
+            saved_at = meta.get("saved_at", "")
+            print(f"  {e['tag']:20s}  {e['signature_count']:4d} signatures  {saved_at}")
+        return 0
+
+    if subcmd == "save":
+        import datetime
+        import glob as _glob
+
+        tag: str = args.tag
+        files = getattr(args, "files", None) or []
+        if not files:
+            files = list(_glob.glob("**/*.py", recursive=True))
+            if not files:
+                print("Error: No Python files found", file=sys.stderr)
+                return 1
+
+        metadata = {
+            "saved_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "files_count": len(files),
+        }
+        try:
+            saved = save_tagged_baseline(tag, files, history_path, metadata)
+            print(f"Tagged baseline '{tag}' saved to {saved} ({len(files)} file(s))")
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+        return 0
+
+    if subcmd == "compare":
+        import glob as _glob
+
+        tag_from: str = args.tag_from
+        files = getattr(args, "files", None) or []
+        if not files:
+            files = list(_glob.glob("**/*.py", recursive=True))
+            if not files:
+                print("Error: No Python files found", file=sys.stderr)
+                return 1
+        try:
+            result = compare_with_tagged_baseline(tag_from, files, history_path)
+        except (FileNotFoundError, KeyError) as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+        comparison = result["comparison"]
+        semver = result["semver"]
+        print(f"Comparing against baseline tag '{tag_from}':")
+        print(f"  Breaking changes:     {len(comparison.get('breaking', []))}")
+        print(f"  Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
+        print(f"  Semver recommendation: {semver.get('bump', 'patch').upper()}")
+        for item in comparison.get("breaking", []):
+            print(f"  ⚠ {item}")
+
+        output = getattr(args, "output", None)
+        if output:
+            with open(output, "w") as f:
+                json.dump(result, f, indent=2)
+            print(f"\nResult written to {output}")
+
+        return 1 if comparison.get("breaking") else 0
+
+    if subcmd == "delete":
+        tag_del: str = args.tag
+        removed = delete_tagged_baseline(tag_del, history_path)
+        if removed:
+            print(f"Tagged baseline '{tag_del}' deleted.")
+        else:
+            print(f"Tag '{tag_del}' not found.", file=sys.stderr)
+            return 1
+        return 0
+
+    print(f"Unknown tagged-baseline subcommand: {subcmd}", file=sys.stderr)
+    return 1
+
+
 def main() -> int:
     from . import __version__
 
@@ -759,13 +924,91 @@ def main() -> int:
     semver_parser.add_argument("-o", "--output", help="Output JSON file for recommendation")
     semver_parser.set_defaults(func=cmd_semver)
 
-    # Make 'check' the default if no subcommand provided but args look like paths
+    # report-markdown subcommand
+    report_md_parser = subparsers.add_parser(
+        "report-markdown", help="Generate markdown PR comment from risk report JSON"
+    )
+    report_md_parser.add_argument("report", help="Risk report JSON file")
+    report_md_parser.add_argument(
+        "-o", "--output", help="Output markdown file (default: stdout)"
+    )
+    report_md_parser.set_defaults(func=cmd_report_markdown)
+
+    # feedback subcommand
+    feedback_parser = subparsers.add_parser(
+        "feedback", help="Manage patch-outcome feedback for confidence calibration"
+    )
+    feedback_sub = feedback_parser.add_subparsers(
+        dest="feedback_cmd", help="Feedback subcommands"
+    )
+
+    fb_record = feedback_sub.add_parser("record", help="Record a patch acceptance/rejection")
+    fb_record.add_argument("patch_id", help="Patch identifier")
+    fb_record.add_argument(
+        "--accepted", action="store_true", default=True, help="Mark patch as accepted (default)"
+    )
+    fb_record.add_argument(
+        "--rejected", action="store_true", default=False, help="Mark patch as rejected"
+    )
+    fb_record.add_argument("--change-type", dest="change_type", help="Change category")
+    fb_record.add_argument(
+        "--feedback-path", dest="feedback_path", help="Feedback JSON file path"
+    )
+
+    fb_stats = feedback_sub.add_parser("stats", help="Show feedback statistics")
+    fb_stats.add_argument(
+        "--feedback-path", dest="feedback_path", help="Feedback JSON file path"
+    )
+
+    fb_calibrate = feedback_sub.add_parser(
+        "calibrate", help="Calibrate patch-confidence weights from recorded outcomes"
+    )
+    fb_calibrate.add_argument(
+        "--feedback-path", dest="feedback_path", help="Feedback JSON file path"
+    )
+    fb_calibrate.add_argument(
+        "--config-path", dest="config_path", help="Path to impactguard.toml to update"
+    )
+
+    feedback_parser.set_defaults(func=cmd_feedback)
+
+    # baseline tagged subcommand (history)
+    history_parser = subparsers.add_parser(
+        "history", help="Manage tagged release-history baselines"
+    )
+    history_sub = history_parser.add_subparsers(
+        dest="tagged_cmd", help="History subcommands"
+    )
+
+    hist_list = history_sub.add_parser("list", help="List all tagged baselines")
+    hist_list.add_argument("--history-path", dest="history_path", help="History JSON file path")
+
+    hist_save = history_sub.add_parser("save", help="Save a tagged baseline snapshot")
+    hist_save.add_argument("tag", help="Release tag (e.g. v1.2.0)")
+    hist_save.add_argument("files", nargs="*", help="Python files to snapshot")
+    hist_save.add_argument("--history-path", dest="history_path", help="History JSON file path")
+
+    hist_compare = history_sub.add_parser(
+        "compare", help="Compare current code against a tagged baseline"
+    )
+    hist_compare.add_argument("tag_from", help="Tag to compare against")
+    hist_compare.add_argument("files", nargs="*", help="Python files to compare")
+    hist_compare.add_argument("--history-path", dest="history_path", help="History JSON file path")
+    hist_compare.add_argument("-o", "--output", help="Output JSON file for comparison result")
+
+    hist_delete = history_sub.add_parser("delete", help="Delete a tagged baseline")
+    hist_delete.add_argument("tag", help="Tag to delete")
+    hist_delete.add_argument("--history-path", dest="history_path", help="History JSON file path")
+
+    history_parser.set_defaults(func=cmd_baseline_tagged)
+
+
     if len(sys.argv) > 1 and sys.argv[1] not in [
-        "extract", "compare", "analyze", "risk", "report", "trace",
-        "check", "check-commits", "install-hooks",
+        "extract", "compare", "analyze", "risk", "report", "report-markdown",
+        "trace", "check", "check-commits", "install-hooks",
         "enforce", "extract-calls", "runtime-impact",
         "generate-changelog", "suggest", "patch",
-        "baseline", "semver",
+        "baseline", "semver", "feedback", "history",
     ] and not sys.argv[1].startswith("-"):
         # Assume pipeline mode: impactguard old/ new/ [runtime] [output]
         sys.argv.insert(1, "check")
