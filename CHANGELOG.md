@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
 - SPEC.md with complete API documentation
 - CHANGELOG.md
 - pyproject.toml with hatchling build system
@@ -21,18 +22,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Complete type hints and docstrings
 
 ### Changed
+
 - Migrated from setuptools to hatchling build system
 - Reorganized project to src/ layout
 - Updated README.md with shields and proper documentation
 - Moved internal tests from package to tests/ directory
 
 ### Fixed
+
 - Added missing project files required by scaffold standard
 - Improved test structure with proper fixtures
 
 ## [0.2.0] - 2026-01-XX
 
 ### Added
+
 - Initial release with core functionality
 - AST-based signature extraction
 - Semantic signature comparison
