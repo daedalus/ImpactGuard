@@ -103,8 +103,19 @@ def _parse_union_members(type_str: str) -> frozenset[str]:
     return frozenset({s})
 
 
-def _type_change_kind(old_type: str, new_type: str) -> str:
+def _type_change_kind(
+    old_type: str,
+    new_type: str,
+    union_parser: Any = None,
+) -> str:
     """Classify the relationship between two type annotation strings.
+
+    Args:
+        old_type: Previous type annotation string.
+        new_type: New type annotation string.
+        union_parser: Optional callable ``(type_str) -> frozenset[str]``
+            used to decompose union types.  Defaults to the built-in
+            Python-syntax parser when *None*.
 
     Returns:
         ``"widening"``  – new_type is a strict superset of old_type (safe for
@@ -113,8 +124,9 @@ def _type_change_kind(old_type: str, new_type: str) -> str:
         ``"changed"``   – types overlap or differ with no clear direction
             (treated as breaking).
     """
-    old_members = _parse_union_members(old_type)
-    new_members = _parse_union_members(new_type)
+    parse = union_parser if union_parser is not None else _parse_union_members
+    old_members = parse(old_type)
+    new_members = parse(new_type)
     if new_members > old_members:
         return "widening"
     if new_members < old_members:
@@ -136,6 +148,7 @@ def compare(  # noqa: MC0001
     old_path: str,
     new_path: str,
     include_private: bool | None = None,
+    language: str | None = None,
 ) -> dict[str, list[str]]:
     """Compare two signature snapshots.
 
@@ -146,6 +159,10 @@ def compare(  # noqa: MC0001
             leaf name starts with ``_`` (or that are not in ``__all__`` when
             the module defines it) are excluded from comparison.  Pass *True*
             to include them.
+        language: Optional language name (e.g. ``"typescript"``) used to
+            select a language-specific union-type parser for the
+            type-compatibility comparison.  When *None* the built-in Python
+            parser is used (backward-compatible default).
 
     Returns:
         Dictionary with ``'breaking'``, ``'nonbreaking'``, and
@@ -159,6 +176,14 @@ def compare(  # noqa: MC0001
         include_private = bool(cfg_get("analysis", "include_private", False))
 
     suppress_list: list[str] = list(cfg_get("analysis", "suppress", []) or [])
+
+    # Resolve language-specific union parser (falls back to None → Python default)
+    _union_parser: Any = None
+    if language is not None:
+        from .languages.registry import get_extractor_by_language
+        _lang_ext = get_extractor_by_language(language)
+        if _lang_ext is not None:
+            _union_parser = _lang_ext.parse_union_members
 
     old = load(old_path)
     new = load(new_path)
@@ -256,7 +281,7 @@ def compare(  # noqa: MC0001
             o_type = o_arg.get("type")
             n_type = n_arg.get("type")
             if o_type is not None and n_type is not None and o_type != n_type:
-                kind = _type_change_kind(o_type, n_type)
+                kind = _type_change_kind(o_type, n_type, _union_parser)
                 if kind == "widening":
                     nonbreaking.append(
                         f"TYPE WIDENED: {k} arg '{o_arg['name']}' {o_type} -> {n_type}"
@@ -271,7 +296,7 @@ def compare(  # noqa: MC0001
                 o_type = o_arg.get("type")
                 n_type = n_kw[o_arg_name].get("type")
                 if o_type is not None and n_type is not None and o_type != n_type:
-                    kind = _type_change_kind(o_type, n_type)
+                    kind = _type_change_kind(o_type, n_type, _union_parser)
                     if kind == "widening":
                         nonbreaking.append(
                             f"TYPE WIDENED: {k} kwarg '{o_arg_name}' {o_type} -> {n_type}"
@@ -285,7 +310,7 @@ def compare(  # noqa: MC0001
         o_ret = o.get("return_type")
         n_ret = n.get("return_type")
         if o_ret is not None and n_ret is not None and o_ret != n_ret:
-            kind = _type_change_kind(o_ret, n_ret)
+            kind = _type_change_kind(o_ret, n_ret, _union_parser)
             if kind == "widening":
                 nonbreaking.append(
                     f"RETURN TYPE WIDENED: {k} {o_ret} -> {n_ret}"
