@@ -280,8 +280,9 @@ def _process_arrow_function(
 ) -> None:
     """Extract signature from an ``arrow_function`` node assigned to a variable."""
     is_async = False
-    params_node = None
-    return_type_node = None
+    params_node: Any = None
+    return_type_node: Any = None
+    single_param_name: str | None = None  # set for single-identifier arrow: x => expr
 
     for child in arrow_node.children:
         if child.type == "async":
@@ -290,43 +291,32 @@ def _process_arrow_function(
             params_node = child
         elif child.type == "type_annotation":
             return_type_node = child
-        elif child.type == "identifier" and params_node is None:
-            # Single-param arrow: x => expr — treat as one positional arg
-            params_node = child  # handled specially below
+        elif child.type == "identifier" and params_node is None and return_type_node is None:
+            # Single-param arrow without parens: x => expr
+            single_param_name = _node_text(child, source)
 
-    # Single identifier param (no parens): wrap into a pseudo positional list
-    if params_node is not None and params_node.type == "identifier":
-        single_name = _node_text(params_node, source)
-        positional: list[dict[str, Any]] = [
-            {"name": single_name, "has_default": False, "type": None}
-        ]
-        has_vararg = False
-        params_node = None  # signal to _build_sig to skip formal parsing
-    else:
-        positional_override = None
+    if single_param_name is not None:
+        # Single identifier param path: build the signature directly
+        return_type: str | None = None
+        if return_type_node is not None:
+            return_type = _extract_type_annotation(return_type_node, source)
 
-    return_type: str | None = None
-    if return_type_node is not None:
-        return_type = _extract_type_annotation(return_type_node, source)
+        if class_name:
+            fqname = f"{fq_file}:{class_name}.{var_name}"
+            display_name = f"{class_name}.{var_name}"
+        else:
+            fqname = f"{fq_file}:{var_name}"
+            display_name = var_name
 
-    if class_name:
-        fqname = f"{fq_file}:{class_name}.{var_name}"
-        display_name = f"{class_name}.{var_name}"
-    else:
-        fqname = f"{fq_file}:{var_name}"
-        display_name = var_name
-
-    if params_node is None and "positional_override" not in dir():
-        # single-identifier path
         funcs.append({
             "fqname": fqname,
             "name": display_name,
             "file": fq_file,
             "lineno": arrow_node.start_point[0] + 1,
             "end_lineno": arrow_node.end_point[0] + 1,
-            "positional": positional,
+            "positional": [{"name": single_param_name, "has_default": False, "type": None}],
             "kwonly": [],
-            "vararg": has_vararg,
+            "vararg": False,
             "kwarg": False,
             "class_name": class_name,
             "return_type": return_type,
@@ -336,6 +326,7 @@ def _process_arrow_function(
             "exported": exported,
         })
     else:
+        # Normal path: formal_parameters or no params at all
         funcs.append(
             _build_sig(
                 var_name, arrow_node, source, fq_file, class_name, exported,
