@@ -14,9 +14,21 @@ _lock = threading.Lock()
 COUNTS: dict[str, int] = defaultdict(int)
 LAST_FLUSH = time.time()
 
+# Use a dedicated Random instance rather than the module-level shared state.
+# random.random() delegates to a module-level instance whose internal state is
+# shared across all threads; under heavy concurrent use the GIL prevents data
+# corruption but can cause non-uniform sampling distributions.  A private
+# instance avoids this without requiring per-call locking.
+_rng = random.Random()
+
+
+def set_seed(seed: int) -> None:
+    """Seed the sampler's RNG for deterministic behaviour (e.g. in tests)."""
+    _rng.seed(seed)
+
 
 def should_sample() -> bool:
-    return random.random() < SAMPLE_RATE
+    return _rng.random() < SAMPLE_RATE
 
 
 def trace(func: Callable[..., Any]) -> Callable[..., Any]:

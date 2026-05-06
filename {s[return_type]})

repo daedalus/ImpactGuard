@@ -1,4 +1,0 @@
-  File "<string>", line 7
-    for s in sigs_old: print(f
-                            ^
-SyntaxError: '(' was never closed
