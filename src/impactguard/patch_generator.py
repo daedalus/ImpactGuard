@@ -1,5 +1,8 @@
 import difflib
+from pathlib import Path
 from typing import Any
+
+from ._pathutils import is_safe_path
 
 
 def patch_add_default(func: dict[str, Any], param_name: str) -> tuple[str | None, str | None]:
@@ -9,6 +12,9 @@ def patch_add_default(func: dict[str, Any], param_name: str) -> tuple[str | None
 
     if not file or lineno < 1:
         return None, "Invalid function data"
+
+    if not is_safe_path(file):
+        return None, "Unsafe file path rejected"
 
     try:
         lines = open(file).read().splitlines()
@@ -42,6 +48,9 @@ def patch_call_site(call: dict[str, Any], _func: dict[str, Any]) -> tuple[str | 
 
     if not file or lineno < 1:
         return None, "Invalid call data"
+
+    if not is_safe_path(file):
+        return None, "Unsafe file path rejected"
 
     try:
         lines = open(file).read().splitlines()

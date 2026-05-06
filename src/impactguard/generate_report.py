@@ -1,3 +1,4 @@
+import html as _html
 import json
 from typing import Any
 
@@ -126,18 +127,25 @@ def generate_html(report_data: list[dict[str, Any]]) -> str:
             '<span class="tag-transitive">(indirect)</span>' if is_transitive else ""
         )
 
-        details_html = details or ""
+        # Escape all user-controlled strings before inserting into HTML to prevent XSS.
+        safe_level = _html.escape(str(level))
+        safe_func = _html.escape(str(func))
+        safe_change = _html.escape(str(change))
+
+        details_html = _html.escape(str(details)) if details else ""
         if fixes:
-            details_html += "<ul>" + "".join(f"<li>{f}</li>" for f in fixes) + "</ul>"
+            details_html += "<ul>" + "".join(
+                f"<li>{_html.escape(str(f))}</li>" for f in fixes
+            ) + "</ul>"
         if patches:
             for p in patches:
-                details_html += f"<pre>{p}</pre>"
+                details_html += f"<pre>{_html.escape(str(p))}</pre>"
 
         html.append(
-            f"""        <tr data-risk="{level}" data-text="{func.lower()} {change.lower()}">
-            <td><span class="risk-{level}">{level}</span></td>
-            <td>{func}{transitive_tag}</td>
-            <td>{change}</td>
+            f"""        <tr data-risk="{safe_level}" data-text="{safe_func.lower()} {safe_change.lower()}">
+            <td><span class="risk-{safe_level}">{safe_level}</span></td>
+            <td>{safe_func}{transitive_tag}</td>
+            <td>{safe_change}</td>
             <td>{exp:.2%}</td>
             <td>{conf:.2f}</td>
             <td>{details_html}</td>
