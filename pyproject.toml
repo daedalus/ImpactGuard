@@ -95,7 +95,7 @@ python_version = "3.11"
 strict = true
 warn_return_any = true
 warn_unused_ignores = true
-exclude = ["src/impactguard/__init__.py", "src/impactguard/__main__.py", "src/impactguard/_pathutils.py"]
+exclude = ["src/impactguard/__init__.py", "src/impactguard/__main__.py", "src/impactguard/_pathutils.py", "examples", "tests"]
 
 [tool.prospector]
 output-format = "text"

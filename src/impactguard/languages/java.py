@@ -27,7 +27,7 @@ from typing import Any
 # ── Optional tree-sitter dependency ──────────────────────────────────────────
 
 try:
-    import tree_sitter_java as _java_lang  # type: ignore[import-untyped]
+    import tree_sitter_java as _java_lang
     from tree_sitter import Language as _JavaLanguage
     from tree_sitter import Parser as _JavaParser
 

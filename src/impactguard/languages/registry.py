@@ -48,7 +48,7 @@ def _auto_populate(fn: Callable[..., _T]) -> Callable[..., _T]:
             from . import typescript as _ts_mod  # noqa: F401
         return fn(*args, **kwargs)
 
-    return wrapper  # type: ignore[return-value]
+    return wrapper
 
 
 def register(extractor: LanguageExtractor) -> None:

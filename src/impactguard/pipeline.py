@@ -71,6 +71,7 @@ def _extract_by_language(
 
     all_sigs: list[dict[str, Any]] = []
     for extractor, lang_files in groups.values():
+        assert extractor is not None
         all_sigs.extend(extractor.extract_signatures(lang_files, _base_path=base_path))
     return all_sigs
 

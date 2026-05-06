@@ -28,7 +28,7 @@ from typing import Any
 # ── Optional tree-sitter dependency ──────────────────────────────────────────
 
 try:
-    import tree_sitter_typescript as _ts_lang  # type: ignore[import-untyped]
+    import tree_sitter_typescript as _ts_lang
     from tree_sitter import Language as _TsLanguage
     from tree_sitter import Node as _TsNode
     from tree_sitter import Parser as _TsParser
