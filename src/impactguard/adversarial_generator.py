@@ -112,8 +112,8 @@ def _param(
 
 def _sig(
     fqname: str,
-    positional: list[dict] | None = None,
-    kwonly: list[dict] | None = None,
+    positional: list[dict[str, Any]] | None = None,
+    kwonly: list[dict[str, Any]] | None = None,
     vararg: bool = False,
     kwarg: bool = False,
     return_type: str | None = None,
