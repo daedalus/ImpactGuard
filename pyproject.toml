@@ -47,6 +47,12 @@ languages = [
     "tree-sitter-c>=0.23",
     "tree-sitter-cpp>=0.23",
     "tree-sitter-ruby>=0.23",
+    "tree-sitter-javascript>=0.23",
+    "tree-sitter-kotlin>=0.23",
+    "tree-sitter-swift>=0.23",
+    "tree-sitter-zig>=0.23",
+    "tree-sitter-c-sharp>=0.23",
+    "tree-sitter-haskell>=0.23",
 ]
 all = ["impactguard[dev,test,lint,languages]"]
 
