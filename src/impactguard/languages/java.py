@@ -39,6 +39,7 @@ except ImportError:  # pragma: no cover
 
 # ── Tree-sitter helpers ───────────────────────────────────────────────────────
 
+
 def _make_parser() -> Any:
     """Create a fresh tree-sitter Java parser."""
     return _JavaParser(_JAVA_LANGUAGE)
@@ -46,7 +47,7 @@ def _make_parser() -> Any:
 
 def _node_text(node: Any, source: bytes) -> str:
     """Return the UTF-8 text of a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
+    return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
 
 
 def _child_of_type(node: Any, *types: str) -> Any | None:
@@ -120,7 +121,11 @@ def _extract_class_methods(
             _process_method(child, source, fq_file, class_name, funcs)
         elif child.type == "constructor_declaration":
             _process_method(child, source, fq_file, class_name, funcs)
-        elif child.type in ("class_declaration", "interface_declaration", "enum_declaration"):
+        elif child.type in (
+            "class_declaration",
+            "interface_declaration",
+            "enum_declaration",
+        ):
             # Nested types — recurse
             _process_type_decl(child, source, fq_file, funcs)
 
@@ -143,11 +148,22 @@ def _process_method(
             name = _node_text(child, source)
         elif child.type == "formal_parameters":
             params_node = child
-        elif child.type not in (
-            "modifiers", "identifier", "formal_parameters",
-            "block", "throws", "type_parameters",
-            ";", "{", "}",
-        ) and return_type_node is None and not is_constructor:
+        elif (
+            child.type
+            not in (
+                "modifiers",
+                "identifier",
+                "formal_parameters",
+                "block",
+                "throws",
+                "type_parameters",
+                ";",
+                "{",
+                "}",
+            )
+            and return_type_node is None
+            and not is_constructor
+        ):
             # The return type is the first non-modifier, non-name child
             return_type_node = child
 
@@ -166,23 +182,25 @@ def _process_method(
         fqname = f"{fq_file}:{name}"
         display_name = name
 
-    funcs.append({
-        "fqname": fqname,
-        "name": display_name,
-        "file": fq_file,
-        "lineno": node.start_point[0] + 1,
-        "end_lineno": node.end_point[0] + 1,
-        "positional": positional,
-        "kwonly": [],
-        "vararg": has_vararg,
-        "kwarg": False,
-        "class_name": class_name,
-        "return_type": return_type,
-        "decorators": [],
-        "is_async": False,
-        "ignored": _has_ignore_comment(source, node.start_point[0]),
-        "exported": False,
-    })
+    funcs.append(
+        {
+            "fqname": fqname,
+            "name": display_name,
+            "file": fq_file,
+            "lineno": node.start_point[0] + 1,
+            "end_lineno": node.end_point[0] + 1,
+            "positional": positional,
+            "kwonly": [],
+            "vararg": has_vararg,
+            "kwarg": False,
+            "class_name": class_name,
+            "return_type": return_type,
+            "decorators": [],
+            "is_async": False,
+            "ignored": _has_ignore_comment(source, node.start_point[0]),
+            "exported": False,
+        }
+    )
 
 
 def _process_type_decl(
@@ -204,7 +222,7 @@ def _process_type_decl(
 
 def _extract_with_tree_sitter(
     files: list[str],
-    base_path: str | None = None,
+    _base_path: str | None = None,
 ) -> list[dict[str, Any]]:
     """Extract Java signatures using tree-sitter."""
     parser = _make_parser()
@@ -222,7 +240,11 @@ def _extract_with_tree_sitter(
         funcs: list[dict[str, Any]] = []
 
         for child in tree.root_node.children:
-            if child.type in ("class_declaration", "interface_declaration", "enum_declaration"):
+            if child.type in (
+                "class_declaration",
+                "interface_declaration",
+                "enum_declaration",
+            ):
                 _process_type_decl(child, source, fq_file, funcs)
 
         all_funcs.extend(funcs)
@@ -252,18 +274,19 @@ def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
                 arg_count = 0
                 if args_node is not None:
                     arg_count = sum(
-                        1 for c in args_node.children
-                        if c.type not in ("(", ")", ",")
+                        1 for c in args_node.children if c.type not in ("(", ")", ",")
                     )
-                calls.append({
-                    "name": name,
-                    "lineno": node.start_point[0] + 1,
-                    "args": arg_count,
-                    "kwargs": [],
-                    "has_starargs": False,
-                    "has_kwargs": False,
-                    "file": str(path),
-                })
+                calls.append(
+                    {
+                        "name": name,
+                        "lineno": node.start_point[0] + 1,
+                        "args": arg_count,
+                        "kwargs": [],
+                        "has_starargs": False,
+                        "has_kwargs": False,
+                        "file": str(path),
+                    }
+                )
         for child in node.children:
             visit(child)
 
@@ -324,13 +347,22 @@ def _parse_java_params_regex(params_str: str) -> tuple[list[dict[str, Any]], boo
 
 def _extract_with_regex(
     files: list[str],
-    base_path: str | None = None,
+    _base_path: str | None = None,
 ) -> list[dict[str, Any]]:
     """Best-effort Java signature extraction using regular expressions."""
     all_funcs: list[dict[str, Any]] = []
     _KEYWORDS = {
-        "if", "while", "for", "switch", "catch", "try", "do",
-        "else", "return", "new", "void",
+        "if",
+        "while",
+        "for",
+        "switch",
+        "catch",
+        "try",
+        "do",
+        "else",
+        "return",
+        "new",
+        "void",
     }
 
     for f in files:
@@ -353,23 +385,25 @@ def _extract_with_regex(
             positional, has_vararg = _parse_java_params_regex(params_str)
             fqname = f"{fq_file}:{name}"
 
-            all_funcs.append({
-                "fqname": fqname,
-                "name": name,
-                "file": fq_file,
-                "lineno": lineno,
-                "end_lineno": lineno,
-                "positional": positional,
-                "kwonly": [],
-                "vararg": has_vararg,
-                "kwarg": False,
-                "class_name": None,
-                "return_type": return_type,
-                "decorators": [],
-                "is_async": False,
-                "ignored": _has_ignore_comment_fallback(lines, lineno),
-                "exported": False,
-            })
+            all_funcs.append(
+                {
+                    "fqname": fqname,
+                    "name": name,
+                    "file": fq_file,
+                    "lineno": lineno,
+                    "end_lineno": lineno,
+                    "positional": positional,
+                    "kwonly": [],
+                    "vararg": has_vararg,
+                    "kwarg": False,
+                    "class_name": None,
+                    "return_type": return_type,
+                    "decorators": [],
+                    "is_async": False,
+                    "ignored": _has_ignore_comment_fallback(lines, lineno),
+                    "exported": False,
+                }
+            )
 
     seen: set[str] = set()
     unique: list[dict[str, Any]] = []
@@ -397,21 +431,26 @@ def _extract_calls_with_regex(path: Path) -> list[dict[str, Any]]:
         if name in _KEYWORDS:
             continue
         args_str = m.group("args").strip()
-        arg_count = len([a for a in args_str.split(",") if a.strip()]) if args_str else 0
+        arg_count = (
+            len([a for a in args_str.split(",") if a.strip()]) if args_str else 0
+        )
         lineno = source[: m.start()].count("\n") + 1
-        calls.append({
-            "name": name,
-            "lineno": lineno,
-            "args": arg_count,
-            "kwargs": [],
-            "has_starargs": False,
-            "has_kwargs": False,
-            "file": str(path),
-        })
+        calls.append(
+            {
+                "name": name,
+                "lineno": lineno,
+                "args": arg_count,
+                "kwargs": [],
+                "has_starargs": False,
+                "has_kwargs": False,
+                "file": str(path),
+            }
+        )
     return calls
 
 
 # ── Public extractor class ────────────────────────────────────────────────────
+
 
 class JavaExtractor:
     """Language extractor for Java (``.java``) files.
@@ -441,13 +480,13 @@ class JavaExtractor:
     def extract_signatures(
         self,
         files: list[str],
-        base_path: str | None = None,
+        _base_path: str | None = None,
     ) -> list[dict[str, Any]]:
         """Extract signatures from Java files."""
         if _TREE_SITTER_AVAILABLE:
-            return _extract_with_tree_sitter(files, base_path)
+            return _extract_with_tree_sitter(files, _base_path)
         self._warn_if_no_tree_sitter()
-        return _extract_with_regex(files, base_path)
+        return _extract_with_regex(files, _base_path)
 
     def extract_calls(self, path: Path) -> list[dict[str, Any]]:
         """Extract call sites from a Java file."""
@@ -470,8 +509,10 @@ class JavaExtractor:
 
 # ── Self-registration ─────────────────────────────────────────────────────────
 
+
 def _register() -> None:
     from .registry import register
+
     register(JavaExtractor())
 
 

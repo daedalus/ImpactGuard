@@ -21,10 +21,9 @@ argument).  Each entry is a dict with keys:
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-
 
 DEFAULT_FEEDBACK_PATH = ".impactguard_feedback.json"
 
@@ -68,13 +67,29 @@ def _is_safe_feedback_path(path: str) -> bool:
         return True
 
     _SYSTEM_PREFIXES = (
-        "/etc/", "/usr/", "/bin/", "/sbin/", "/lib/", "/lib64/",
-        "/sys/", "/proc/", "/boot/", "/dev/",
+        "/etc/",
+        "/usr/",
+        "/bin/",
+        "/sbin/",
+        "/lib/",
+        "/lib64/",
+        "/sys/",
+        "/proc/",
+        "/boot/",
+        "/dev/",
     )
     norm = str(p)
     if any(norm.startswith(prefix) for prefix in _SYSTEM_PREFIXES) or norm in (
-        "/etc", "/usr", "/bin", "/sbin", "/lib", "/lib64",
-        "/sys", "/proc", "/boot", "/dev",
+        "/etc",
+        "/usr",
+        "/bin",
+        "/sbin",
+        "/lib",
+        "/lib64",
+        "/sys",
+        "/proc",
+        "/boot",
+        "/dev",
     ):
         print(
             f"Warning: impactguard: feedback path '{path}' targets a system "
@@ -86,6 +101,7 @@ def _is_safe_feedback_path(path: str) -> bool:
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
+
 
 def record_outcome(
     patch_id: str,
@@ -116,7 +132,7 @@ def record_outcome(
     entry: dict[str, Any] = {
         "patch_id": patch_id,
         "accepted": accepted,
-        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "recorded_at": datetime.now(UTC).isoformat(),
     }
     if change_type is not None:
         entry["change_type"] = change_type
@@ -267,6 +283,7 @@ def apply_weights_to_config(
 
 
 # ── Private helpers ───────────────────────────────────────────────────────────
+
 
 def _load_raw(path: str) -> list[dict[str, Any]]:
     p = Path(path)

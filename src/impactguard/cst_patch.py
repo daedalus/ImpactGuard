@@ -46,18 +46,22 @@ try:
                     keyword=cst.Name(self.param_name), value=cst.Name("FIXME")
                 )
 
-                return updated_node.with_changes(args=list(updated_node.args) + [new_arg])
+                return updated_node.with_changes(
+                    args=list(updated_node.args) + [new_arg]
+                )
 
             return updated_node
 
 except ImportError:
     LIBCST_AVAILABLE = False
 
-    def AddDefaultTransformer(*args, **kwargs):
-        raise ImportError("libcst not installed")
+    class AddDefaultTransformer:  # type: ignore[no-redef]
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            raise ImportError("libcst not installed")
 
-    def FixCallTransformer(*args, **kwargs):
-        raise ImportError("libcst not installed")
+    class FixCallTransformer:  # type: ignore[no-redef]
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            raise ImportError("libcst not installed")
 
 
 def patch_function(

@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 from tempfile import mkdtemp
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 
 def test_run_pipeline_with_old_files(tmp_path):
@@ -28,8 +28,8 @@ def test_run_pipeline_with_old_files(tmp_path):
 
 def test_run_pipeline_with_sigs_path(tmp_path):
     """Test run_pipeline with signature paths."""
-    from impactguard.pipeline import run_pipeline
     from impactguard.extract_signatures import extract
+    from impactguard.pipeline import run_pipeline
 
     old_file = tmp_path / "old.py"
     old_file.write_text("def foo(a, b): return a + b\n")
@@ -78,7 +78,9 @@ def test_quick_check_single_file(tmp_path):
     old_file.write_text("def hello(name): return f'Hello {name}'\n")
 
     new_file = tmp_path / "new.py"
-    new_file.write_text("def hello(name, greeting='Hello'): return f'{greeting} {name}'\n")
+    new_file.write_text(
+        "def hello(name, greeting='Hello'): return f'{greeting} {name}'\n"
+    )
 
     result = quick_check(str(old_file), str(new_file))
 
@@ -137,8 +139,29 @@ def test_impactguard_class_methods(tmp_path):
     assert isinstance(sigs, list)
 
     # Test compare
-    old_sigs = [{"fqname": "test:foo", "name": "foo", "positional": [{"name": "a", "has_default": False}], "kwonly": [], "vararg": False, "kwarg": False}]
-    new_sigs = [{"fqname": "test:foo", "name": "foo", "positional": [{"name": "a", "has_default": False}, {"name": "b", "has_default": True}], "kwonly": [], "vararg": False, "kwarg": False}]
+    old_sigs = [
+        {
+            "fqname": "test:foo",
+            "name": "foo",
+            "positional": [{"name": "a", "has_default": False}],
+            "kwonly": [],
+            "vararg": False,
+            "kwarg": False,
+        }
+    ]
+    new_sigs = [
+        {
+            "fqname": "test:foo",
+            "name": "foo",
+            "positional": [
+                {"name": "a", "has_default": False},
+                {"name": "b", "has_default": True},
+            ],
+            "kwonly": [],
+            "vararg": False,
+            "kwarg": False,
+        }
+    ]
 
     old_path = tmp_path / "old.json"
     new_path = tmp_path / "new.json"

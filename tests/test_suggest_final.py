@@ -1,18 +1,19 @@
 """Final targeted test for suggest_fixes.py lines 79-156."""
 
-from impactguard.suggest_fixes import suggest, enrich_with_fixes
+from impactguard.suggest_fixes import enrich_with_fixes, suggest
+
 
 # Test with various inputs to cover lines 79-156
 def test_suggest_fixes_comprehensive():
     """Comprehensive test to cover suggest_fixes.py missing lines."""
-    
+
     # Test with patch types
     patch_types = [
         {"type": "add_default", "param": "x", "default": None},
         {"type": "add_kwarg", "param": "kwargs"},
         {"type": "wrap_function", "wrapper": "decorator"},
     ]
-    
+
     for patch in patch_types:
         item = {
             "fqname": "test.py:foo",
@@ -21,9 +22,10 @@ def test_suggest_fixes_comprehensive():
         }
         result = suggest(item, [item])
         assert isinstance(result, list)
-        
+
         enriched = enrich_with_fixes(item, [item])
         assert isinstance(enriched, list)
+
 
 # Test with callsites
 def test_suggest_with_callsites():
@@ -36,12 +38,13 @@ def test_suggest_with_callsites():
             {"file": "other.py", "lineno": 20, "args": 3},
         ],
     }
-    
+
     result = suggest(item, [item])
     assert isinstance(result, list)
-    
+
     enriched = enrich_with_fixes(item, [item])
     assert isinstance(enriched, list)
+
 
 # Test with no patches
 def test_suggest_no_patches():
@@ -50,9 +53,10 @@ def test_suggest_no_patches():
         "fqname": "test.py:foo",
         "change": "REMOVED",
     }
-    
+
     result = suggest(item, [item])
     assert isinstance(result, list)
+
 
 # Test enrich_with_fixes with various inputs
 def test_enrich_variants():
@@ -64,7 +68,7 @@ def test_enrich_variants():
     }
     result = enrich_with_fixes(item1, [item1])
     assert isinstance(result, list)
-    
+
     # With callsites
     item2 = {
         "fqname": "test.py:bar",

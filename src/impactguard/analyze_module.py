@@ -1,17 +1,19 @@
+from __future__ import annotations
+
 import ast
 from pathlib import Path
 from typing import Any
 
 
 class Scope:
-    def __init__(self, parent=None):
+    def __init__(self, parent: Scope | None = None) -> None:
         self.parent = parent
-        self.vars = {}
+        self.vars: dict[str, str] = {}
 
-    def set(self, name, typ):
+    def set(self, name: str, typ: str) -> None:
         self.vars[name] = typ
 
-    def get(self, name):
+    def get(self, name: str) -> str | None:
         if name in self.vars:
             return self.vars[name]
         if self.parent:
@@ -20,50 +22,52 @@ class Scope:
 
 
 class Analyzer(ast.NodeVisitor):
-    def __init__(self, file):
+    def __init__(self, file: str) -> None:
         self.file = file
-        self.imports = {}
-        self.from_imports = {}
-        self.calls = []
+        self.imports: dict[str, str] = {}
+        self.from_imports: dict[str, str] = {}
+        self.calls: list[dict[str, Any]] = []
         self.scope = Scope()
 
-    # ---------------- imports ----------------
+    # --------------- imports ---------------
 
-    def visit_Import(self, node):
+    def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
             name = alias.asname or alias.name
             self.imports[name] = alias.name
 
-    def visit_ImportFrom(self, node):
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         mod = node.module or ""
         for alias in node.names:
             name = alias.asname or alias.name
             self.from_imports[name] = f"{mod}.{alias.name}"
 
-    # ---------------- scopes ----------------
+    # --------------- scopes ---------------
 
-    def visit_FunctionDef(self, node):
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         prev = self.scope
         self.scope = Scope(parent=prev)
 
         # arguments with annotations
         for arg in node.args.args:
             if arg.annotation:
-                self.scope.set(arg.arg, self._type_name(arg.annotation))
+                typ = self._type_name(arg.annotation)
+                if typ is not None:
+                    self.scope.set(arg.arg, typ)
 
         self.generic_visit(node)
         self.scope = prev
 
-    # ---------------- assignments ----------------
+    # --------------- assignments ---------------
 
-    def visit_AnnAssign(self, node):
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
         # x: MyClass
         if isinstance(node.target, ast.Name):
             typ = self._type_name(node.annotation)
             if typ:
                 self.scope.set(node.target.id, typ)
 
-    def visit_Assign(self, node):
+    def visit_Assign(self, node: ast.Assign) -> None:
         # x = MyClass() or x = y (alias/reassignment)
         if isinstance(node.value, ast.Call):
             func = node.value.func
@@ -77,15 +81,15 @@ class Analyzer(ast.NodeVisitor):
                         self.scope.set(target.id, typ)
         # Handle reassignments: x = y (where y has a known type)
         elif isinstance(node.value, ast.Name):
-            typ = self.scope.get(node.value.id)
-            if typ:
+            typ2 = self.scope.get(node.value.id)
+            if typ2 is not None:
                 for target in node.targets:
                     if isinstance(target, ast.Name):
-                        self.scope.set(target.id, typ)
+                        self.scope.set(target.id, typ2)
 
-    # ---------------- calls ----------------
+    # --------------- calls ---------------
 
-    def visit_Call(self, node):
+    def visit_Call(self, node: ast.Call) -> None:
         name = self.resolve_call(node.func)
 
         if name:
@@ -103,9 +107,9 @@ class Analyzer(ast.NodeVisitor):
 
         self.generic_visit(node)
 
-    # ---------------- resolution ----------------
+    # --------------- resolution ---------------
 
-    def resolve_call(self, node):
+    def resolve_call(self, node: ast.AST) -> str | None:
         # foo()
         if isinstance(node, ast.Name):
             if node.id in self.from_imports:
@@ -128,15 +132,15 @@ class Analyzer(ast.NodeVisitor):
 
         return None
 
-    # ---------------- helpers ----------------
+    # --------------- helpers ---------------
 
-    def _type_name(self, node):
+    def _type_name(self, node: ast.AST | None) -> str | None:
         """Extract type name from an AST annotation node, handling subscripts."""
         if isinstance(node, ast.Name):
             return node.id
         if isinstance(node, ast.Attribute):
             # Build full attribute chain: module.Class.method
-            parts = []
+            parts: list[str] = []
             while isinstance(node, ast.Attribute):
                 parts.append(node.attr)
                 node = node.value
@@ -150,7 +154,7 @@ class Analyzer(ast.NodeVisitor):
         return None
 
 
-def analyze(path):
+def analyze(path: str) -> dict[str, Any] | None:
     try:
         tree = ast.parse(Path(path).read_text())
     except Exception:

@@ -12,9 +12,7 @@ def test_suggest_fixes_with_cst_patch(tmp_path):
     risk_item = {
         "fqname": "test.py:foo",
         "change": "POSITIONAL REMOVED: test.py:foo",
-        "patches": [
-            {"type": "add_default", "param": "x", "default": "None"}
-        ],
+        "patches": [{"type": "add_default", "param": "x", "default": "None"}],
     }
 
     result = suggest(risk_item, [risk_item])
@@ -28,9 +26,7 @@ def test_suggest_fixes_with_call_sites(tmp_path):
     risk_item = {
         "fqname": "test.py:foo",
         "change": "OPTIONAL POSITIONAL ADDED: test.py:foo",
-        "callsites": [
-            {"file": "main.py", "lineno": 10, "args": 2}
-        ],
+        "callsites": [{"file": "main.py", "lineno": 10, "args": 2}],
     }
 
     result = suggest(risk_item, [risk_item])
@@ -144,7 +140,16 @@ def test_compare_signatures_edge_cases(tmp_path):
     from impactguard.compare_signatures import compare
 
     # Same signatures - no changes
-    sigs = [{"fqname": "test:foo", "name": "foo", "positional": [{"name": "a", "has_default": False}], "kwonly": [], "vararg": False, "kwarg": False}]
+    sigs = [
+        {
+            "fqname": "test:foo",
+            "name": "foo",
+            "positional": [{"name": "a", "has_default": False}],
+            "kwonly": [],
+            "vararg": False,
+            "kwarg": False,
+        }
+    ]
 
     old_path = tmp_path / "old.json"
     new_path = tmp_path / "new.json"
@@ -160,8 +165,26 @@ def test_compare_with_vararg_changes(tmp_path):
     """Test compare with *args changes."""
     from impactguard.compare_signatures import compare
 
-    old = [{"fqname": "test:foo", "name": "foo", "positional": [{"name": "a", "has_default": False}], "kwonly": [], "vararg": True, "kwarg": False}]
-    new = [{"fqname": "test:foo", "name": "foo", "positional": [{"name": "a", "has_default": False}], "kwonly": [], "vararg": False, "kwarg": False}]
+    old = [
+        {
+            "fqname": "test:foo",
+            "name": "foo",
+            "positional": [{"name": "a", "has_default": False}],
+            "kwonly": [],
+            "vararg": True,
+            "kwarg": False,
+        }
+    ]
+    new = [
+        {
+            "fqname": "test:foo",
+            "name": "foo",
+            "positional": [{"name": "a", "has_default": False}],
+            "kwonly": [],
+            "vararg": False,
+            "kwarg": False,
+        }
+    ]
 
     old_path = tmp_path / "old.json"
     new_path = tmp_path / "new.json"

@@ -24,9 +24,10 @@ def _effective_severity_scores() -> dict[str, float]:
     """Return severity scores, preferring any overrides from the config file."""
     try:
         from .config import get_config
+
         cfg = get_config()
-        overrides: dict[str, float] = (
-            cfg.get("impactguard", {}).get("severity_scores", {})
+        overrides: dict[str, float] = cfg.get("impactguard", {}).get(
+            "severity_scores", {}
         )
         if overrides:
             merged = dict(SEVERITY_SCORES)
@@ -62,6 +63,7 @@ def classify(
 ) -> tuple[str, float, float]:
     try:
         from .config import get as cfg_get
+
         conf_threshold: float = cfg_get("risk", "confidence_threshold", 0.3)
         high_exp_min: float = cfg_get("risk", "high_exposure_min", 0.1)
         med_exp_min: float = cfg_get("risk", "medium_exposure_min", 0.01)

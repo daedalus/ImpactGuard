@@ -41,6 +41,7 @@ except ImportError:  # pragma: no cover
 
 # ── Tree-sitter helpers ───────────────────────────────────────────────────────
 
+
 def _make_parser() -> Any:
     """Create a fresh tree-sitter TypeScript parser."""
     parser = _TsParser(_TS_LANGUAGE)
@@ -49,7 +50,7 @@ def _make_parser() -> Any:
 
 def _node_text(node: Any, source: bytes) -> str:
     """Return the UTF-8 text of a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
+    return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
 
 
 def _child_of_type(node: Any, *types: str) -> Any | None:
@@ -226,8 +227,16 @@ def _process_function_declaration(
 
     funcs.append(
         _build_sig(
-            name, node, source, fq_file, class_name, exported,
-            decorators, is_async, params_node, return_type_node,
+            name,
+            node,
+            source,
+            fq_file,
+            class_name,
+            exported,
+            decorators,
+            is_async,
+            params_node,
+            return_type_node,
         )
     )
 
@@ -262,8 +271,16 @@ def _process_method_definition(
 
     funcs.append(
         _build_sig(
-            name, node, source, fq_file, class_name, exported,
-            decorators, is_async, params_node, return_type_node,
+            name,
+            node,
+            source,
+            fq_file,
+            class_name,
+            exported,
+            decorators,
+            is_async,
+            params_node,
+            return_type_node,
         )
     )
 
@@ -291,7 +308,11 @@ def _process_arrow_function(
             params_node = child
         elif child.type == "type_annotation":
             return_type_node = child
-        elif child.type == "identifier" and params_node is None and return_type_node is None:
+        elif (
+            child.type == "identifier"
+            and params_node is None
+            and return_type_node is None
+        ):
             # Single-param arrow without parens: x => expr
             single_param_name = _node_text(child, source)
 
@@ -308,29 +329,41 @@ def _process_arrow_function(
             fqname = f"{fq_file}:{var_name}"
             display_name = var_name
 
-        funcs.append({
-            "fqname": fqname,
-            "name": display_name,
-            "file": fq_file,
-            "lineno": arrow_node.start_point[0] + 1,
-            "end_lineno": arrow_node.end_point[0] + 1,
-            "positional": [{"name": single_param_name, "has_default": False, "type": None}],
-            "kwonly": [],
-            "vararg": False,
-            "kwarg": False,
-            "class_name": class_name,
-            "return_type": return_type,
-            "decorators": decorators,
-            "is_async": is_async,
-            "ignored": _has_ignore_comment_ts(source, arrow_node.start_point[0]),
-            "exported": exported,
-        })
+        funcs.append(
+            {
+                "fqname": fqname,
+                "name": display_name,
+                "file": fq_file,
+                "lineno": arrow_node.start_point[0] + 1,
+                "end_lineno": arrow_node.end_point[0] + 1,
+                "positional": [
+                    {"name": single_param_name, "has_default": False, "type": None}
+                ],
+                "kwonly": [],
+                "vararg": False,
+                "kwarg": False,
+                "class_name": class_name,
+                "return_type": return_type,
+                "decorators": decorators,
+                "is_async": is_async,
+                "ignored": _has_ignore_comment_ts(source, arrow_node.start_point[0]),
+                "exported": exported,
+            }
+        )
     else:
         # Normal path: formal_parameters or no params at all
         funcs.append(
             _build_sig(
-                var_name, arrow_node, source, fq_file, class_name, exported,
-                decorators, is_async, params_node, return_type_node,
+                var_name,
+                arrow_node,
+                source,
+                fq_file,
+                class_name,
+                exported,
+                decorators,
+                is_async,
+                params_node,
+                return_type_node,
             )
         )
 
@@ -359,8 +392,13 @@ def _process_class_declaration(
             pending_decorators.append(_decorator_text(child, source))
         elif child.type == "method_definition":
             _process_method_definition(
-                child, source, fq_file, class_name, exported,
-                pending_decorators, funcs,
+                child,
+                source,
+                fq_file,
+                class_name,
+                exported,
+                pending_decorators,
+                funcs,
             )
             pending_decorators = []
         else:
@@ -384,8 +422,14 @@ def _process_variable_declarator(
         elif child.type in ("arrow_function", "function"):
             if var_name is not None:
                 _process_arrow_function(
-                    child, var_name, source, fq_file,
-                    class_name, exported, decorators, funcs,
+                    child,
+                    var_name,
+                    source,
+                    fq_file,
+                    class_name,
+                    exported,
+                    decorators,
+                    funcs,
                 )
 
 
@@ -410,8 +454,13 @@ def _visit_node(
                 "lexical_declaration",
             ):
                 _visit_node(
-                    child, source, fq_file, class_name, True,
-                    pending_decorators, funcs,
+                    child,
+                    source,
+                    fq_file,
+                    class_name,
+                    True,
+                    pending_decorators,
+                    funcs,
                 )
         return
 
@@ -421,8 +470,13 @@ def _visit_node(
 
     if t == "function_declaration":
         _process_function_declaration(
-            node, source, fq_file, class_name, exported,
-            pending_decorators, funcs,
+            node,
+            source,
+            fq_file,
+            class_name,
+            exported,
+            pending_decorators,
+            funcs,
         )
         return
 
@@ -430,8 +484,13 @@ def _visit_node(
         for child in node.children:
             if child.type == "variable_declarator":
                 _process_variable_declarator(
-                    child, source, fq_file, class_name, exported,
-                    pending_decorators, funcs,
+                    child,
+                    source,
+                    fq_file,
+                    class_name,
+                    exported,
+                    pending_decorators,
+                    funcs,
                 )
         return
 
@@ -463,7 +522,7 @@ def _visit_node(
 
 def _extract_with_tree_sitter(
     files: list[str],
-    base_path: str | None = None,
+    _base_path: str | None = None,
 ) -> list[dict[str, Any]]:
     """Extract TypeScript signatures using tree-sitter."""
     parser = _make_parser()
@@ -514,18 +573,19 @@ def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
                 arg_count = 0
                 if args_node is not None:
                     arg_count = sum(
-                        1 for c in args_node.children
-                        if c.type not in ("(", ")", ",")
+                        1 for c in args_node.children if c.type not in ("(", ")", ",")
                     )
-                calls.append({
-                    "name": name,
-                    "lineno": node.start_point[0] + 1,
-                    "args": arg_count,
-                    "kwargs": [],
-                    "has_starargs": False,
-                    "has_kwargs": False,
-                    "file": str(path),
-                })
+                calls.append(
+                    {
+                        "name": name,
+                        "lineno": node.start_point[0] + 1,
+                        "args": arg_count,
+                        "kwargs": [],
+                        "has_starargs": False,
+                        "has_kwargs": False,
+                        "file": str(path),
+                    }
+                )
 
         for child in node.children:
             visit(child)
@@ -654,7 +714,7 @@ def _top_level_split(s: str) -> list[str]:
 
 def _extract_with_regex(
     files: list[str],
-    base_path: str | None = None,
+    _base_path: str | None = None,
 ) -> list[dict[str, Any]]:
     """Best-effort TypeScript signature extraction using regular expressions.
 
@@ -688,23 +748,25 @@ def _extract_with_regex(
                 positional, has_vararg = _parse_ts_params_regex(params_str)
                 fqname = f"{fq_file}:{name}"
 
-                all_funcs.append({
-                    "fqname": fqname,
-                    "name": name,
-                    "file": fq_file,
-                    "lineno": lineno,
-                    "end_lineno": lineno,
-                    "positional": positional,
-                    "kwonly": [],
-                    "vararg": has_vararg,
-                    "kwarg": False,
-                    "class_name": None,
-                    "return_type": return_type,
-                    "decorators": [],
-                    "is_async": is_async,
-                    "ignored": _has_ignore_comment_fallback(lines, lineno),
-                    "exported": exported,
-                })
+                all_funcs.append(
+                    {
+                        "fqname": fqname,
+                        "name": name,
+                        "file": fq_file,
+                        "lineno": lineno,
+                        "end_lineno": lineno,
+                        "positional": positional,
+                        "kwonly": [],
+                        "vararg": has_vararg,
+                        "kwarg": False,
+                        "class_name": None,
+                        "return_type": return_type,
+                        "decorators": [],
+                        "is_async": is_async,
+                        "ignored": _has_ignore_comment_fallback(lines, lineno),
+                        "exported": exported,
+                    }
+                )
 
     # De-duplicate by fqname (regex patterns may overlap for some forms)
     seen: set[str] = set()
@@ -731,21 +793,26 @@ def _extract_calls_with_regex(path: Path) -> list[dict[str, Any]]:
     for m in call_re.finditer(source):
         name = m.group("name")
         args_str = m.group("args").strip()
-        arg_count = len([a for a in _top_level_split(args_str) if a.strip()]) if args_str else 0
+        arg_count = (
+            len([a for a in _top_level_split(args_str) if a.strip()]) if args_str else 0
+        )
         lineno = source[: m.start()].count("\n") + 1
-        calls.append({
-            "name": name,
-            "lineno": lineno,
-            "args": arg_count,
-            "kwargs": [],
-            "has_starargs": False,
-            "has_kwargs": False,
-            "file": str(path),
-        })
+        calls.append(
+            {
+                "name": name,
+                "lineno": lineno,
+                "args": arg_count,
+                "kwargs": [],
+                "has_starargs": False,
+                "has_kwargs": False,
+                "file": str(path),
+            }
+        )
     return calls
 
 
 # ── Public extractor class ────────────────────────────────────────────────────
+
 
 class TypeScriptExtractor:
     """Language extractor for TypeScript (``.ts``) and TSX (``.tsx``) files.
@@ -777,13 +844,13 @@ class TypeScriptExtractor:
     def extract_signatures(
         self,
         files: list[str],
-        base_path: str | None = None,
+        _base_path: str | None = None,
     ) -> list[dict[str, Any]]:
         """Extract signatures from TypeScript/TSX files."""
         if _TREE_SITTER_AVAILABLE:
-            return _extract_with_tree_sitter(files, base_path)
+            return _extract_with_tree_sitter(files, _base_path)
         self._warn_if_no_tree_sitter()
-        return _extract_with_regex(files, base_path)
+        return _extract_with_regex(files, _base_path)
 
     def extract_calls(self, path: Path) -> list[dict[str, Any]]:
         """Extract call sites from a TypeScript/TSX file."""
@@ -806,8 +873,10 @@ class TypeScriptExtractor:
 
 # ── Self-registration ─────────────────────────────────────────────────────────
 
+
 def _register() -> None:
     from .registry import register
+
     register(TypeScriptExtractor())
 
 

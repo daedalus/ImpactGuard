@@ -20,7 +20,6 @@ from typing import Any
 
 import pytest
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -77,12 +76,7 @@ def test_ignore_inline_comment_on_def_line(tmp_path: Path) -> None:
 
     src = tmp_path / "mod.py"
     src.write_text(
-        "# impactguard: ignore\n"
-        "def foo(x):\n"
-        "    pass\n"
-        "\n"
-        "def bar(y):\n"
-        "    pass\n"
+        "# impactguard: ignore\ndef foo(x):\n    pass\n\ndef bar(y):\n    pass\n"
     )
     sigs = extract([str(src)])
     foo = next(s for s in sigs if s["name"] == "foo")
@@ -183,8 +177,12 @@ def test_all_aware_comparison_excludes_non_exported(tmp_path: Path) -> None:
     # new: both removed — only foo (exported) should be in breaking
     result = _compare(old_sigs, [])
     breaking = result["breaking"]
-    assert any("mod.py:foo" in b for b in breaking), "exported removal should be breaking"
-    assert not any("mod.py:bar" in b for b in breaking), "non-exported should not be breaking"
+    assert any("mod.py:foo" in b for b in breaking), (
+        "exported removal should be breaking"
+    )
+    assert not any("mod.py:bar" in b for b in breaking), (
+        "non-exported should not be breaking"
+    )
 
 
 def test_all_aware_comparison_underscore_private_excluded_by_default() -> None:
@@ -224,13 +222,17 @@ def test_deprecated_removed_has_low_severity() -> None:
 
     score = SEVERITY_SCORES.get("DEPRECATED REMOVED", None)
     assert score is not None
-    assert score < SEVERITY_SCORES["REMOVED"], "deprecated removal must be lower risk than plain removal"
+    assert score < SEVERITY_SCORES["REMOVED"], (
+        "deprecated removal must be lower risk than plain removal"
+    )
 
 
 def test_deprecated_removed_does_not_trigger_major_semver() -> None:
     from impactguard.semver import suggest_semver
 
-    result = suggest_semver({"breaking": [], "nonbreaking": ["DEPRECATED REMOVED: mod.py:fn"]})
+    result = suggest_semver(
+        {"breaking": [], "nonbreaking": ["DEPRECATED REMOVED: mod.py:fn"]}
+    )
     assert result in ("minor", "patch")
 
 
@@ -287,18 +289,16 @@ def test_extract_class_hierarchy_abc(tmp_path: Path) -> None:
     from impactguard.class_hierarchy import extract_class_hierarchy
 
     src = tmp_path / "base.py"
-    src.write_text(
-        "import abc\n"
-        "\n"
-        "class Base(abc.ABC):\n"
-        "    def process(self): ...\n"
-    )
+    src.write_text("import abc\n\nclass Base(abc.ABC):\n    def process(self): ...\n")
     hier = extract_class_hierarchy([str(src)])
     assert hier["Base"]["is_abc"] is True
 
 
 def test_find_implementations(tmp_path: Path) -> None:
-    from impactguard.class_hierarchy import extract_class_hierarchy, find_implementations
+    from impactguard.class_hierarchy import (
+        extract_class_hierarchy,
+        find_implementations,
+    )
 
     src = tmp_path / "api.py"
     src.write_text(
@@ -323,7 +323,10 @@ def test_find_implementations(tmp_path: Path) -> None:
 def test_cascade_changes_for_protocol_method_change() -> None:
     from impactguard.class_hierarchy import get_cascade_changes
 
-    comparison = {"breaking": ["REMOVED: api.py:Serializer.serialize"], "nonbreaking": []}
+    comparison = {
+        "breaking": ["REMOVED: api.py:Serializer.serialize"],
+        "nonbreaking": [],
+    }
     hierarchy = {
         "Serializer": {
             "bases": ["Protocol"],
@@ -369,8 +372,20 @@ def test_cascade_empty_for_non_abstract() -> None:
 
 def test_type_widening_is_nonbreaking() -> None:
     """int → int | None is widening: non-breaking."""
-    old_sigs = [_sig("mod.py:fn", "fn", positional=[{"name": "x", "has_default": False, "type": "int"}])]
-    new_sigs = [_sig("mod.py:fn", "fn", positional=[{"name": "x", "has_default": False, "type": "int | None"}])]
+    old_sigs = [
+        _sig(
+            "mod.py:fn",
+            "fn",
+            positional=[{"name": "x", "has_default": False, "type": "int"}],
+        )
+    ]
+    new_sigs = [
+        _sig(
+            "mod.py:fn",
+            "fn",
+            positional=[{"name": "x", "has_default": False, "type": "int | None"}],
+        )
+    ]
     result = _compare(old_sigs, new_sigs)
     assert any("TYPE WIDENED" in nb for nb in result["nonbreaking"])
     assert not any("TYPE CHANGED" in b for b in result["breaking"])
@@ -385,8 +400,20 @@ def test_type_optional_widening_is_nonbreaking() -> None:
 
 def test_type_narrowing_is_breaking() -> None:
     """int | None → int is narrowing: breaking."""
-    old_sigs = [_sig("mod.py:fn", "fn", positional=[{"name": "x", "has_default": False, "type": "int | None"}])]
-    new_sigs = [_sig("mod.py:fn", "fn", positional=[{"name": "x", "has_default": False, "type": "int"}])]
+    old_sigs = [
+        _sig(
+            "mod.py:fn",
+            "fn",
+            positional=[{"name": "x", "has_default": False, "type": "int | None"}],
+        )
+    ]
+    new_sigs = [
+        _sig(
+            "mod.py:fn",
+            "fn",
+            positional=[{"name": "x", "has_default": False, "type": "int"}],
+        )
+    ]
     result = _compare(old_sigs, new_sigs)
     assert any("TYPE CHANGED" in b for b in result["breaking"])
 
@@ -416,7 +443,7 @@ def test_return_type_narrowing_is_breaking() -> None:
 
 
 def test_union_widening_detection() -> None:
-    from impactguard.compare_signatures import _type_change_kind, _parse_union_members
+    from impactguard.compare_signatures import _parse_union_members, _type_change_kind
 
     # Union[str, int] → Union[str, int, None]  widening
     assert _type_change_kind("str | int", "str | int | None") == "widening"
@@ -500,8 +527,20 @@ def test_generate_markdown_basic() -> None:
     from impactguard.generate_report import generate_markdown
 
     report = [
-        {"function": "foo", "risk": "HIGH", "change": "REMOVED", "exposure": 0.5, "confidence": 0.9},
-        {"function": "bar", "risk": "LOW", "change": "OPTIONAL", "exposure": 0.01, "confidence": 0.3},
+        {
+            "function": "foo",
+            "risk": "HIGH",
+            "change": "REMOVED",
+            "exposure": 0.5,
+            "confidence": 0.9,
+        },
+        {
+            "function": "bar",
+            "risk": "LOW",
+            "change": "OPTIONAL",
+            "exposure": 0.01,
+            "confidence": 0.3,
+        },
     ]
     md = generate_markdown(report)
     assert "ImpactGuard" in md
@@ -521,7 +560,18 @@ def test_generate_markdown_with_semver() -> None:
     from impactguard.generate_report import generate_markdown
 
     semver = {"bump": "major", "reason": "breaking change", "next_version": "2.0.0"}
-    md = generate_markdown([{"function": "f", "risk": "HIGH", "change": "REMOVED", "exposure": 1.0, "confidence": 1.0}], semver_rec=semver)
+    md = generate_markdown(
+        [
+            {
+                "function": "f",
+                "risk": "HIGH",
+                "change": "REMOVED",
+                "exposure": 1.0,
+                "confidence": 1.0,
+            }
+        ],
+        semver_rec=semver,
+    )
     assert "MAJOR" in md
     assert "2.0.0" in md
 
@@ -530,7 +580,13 @@ def test_generate_markdown_respects_max_rows() -> None:
     from impactguard.generate_report import generate_markdown
 
     report = [
-        {"function": f"fn{i}", "risk": "LOW", "change": "OPTIONAL", "exposure": 0.0, "confidence": 0.1}
+        {
+            "function": f"fn{i}",
+            "risk": "LOW",
+            "change": "OPTIONAL",
+            "exposure": 0.0,
+            "confidence": 0.1,
+        }
         for i in range(30)
     ]
     md = generate_markdown(report, max_rows=5)
@@ -541,7 +597,14 @@ def test_generate_markdown_transitive_label() -> None:
     from impactguard.generate_report import generate_markdown
 
     report = [
-        {"function": "fn", "risk": "MEDIUM", "change": "REQUIRED", "exposure": 0.1, "confidence": 0.5, "transitive": True}
+        {
+            "function": "fn",
+            "risk": "MEDIUM",
+            "change": "REQUIRED",
+            "exposure": 0.1,
+            "confidence": 0.5,
+            "transitive": True,
+        }
     ]
     md = generate_markdown(report)
     assert "indirect" in md
@@ -550,7 +613,15 @@ def test_generate_markdown_transitive_label() -> None:
 def test_generate_markdown_from_file(tmp_path: Path) -> None:
     from impactguard.generate_report import generate_markdown_from_file
 
-    report = [{"function": "f", "risk": "HIGH", "change": "REMOVED", "exposure": 0.5, "confidence": 1.0}]
+    report = [
+        {
+            "function": "f",
+            "risk": "HIGH",
+            "change": "REMOVED",
+            "exposure": 0.5,
+            "confidence": 1.0,
+        }
+    ]
     report_file = tmp_path / "report.json"
     report_file.write_text(json.dumps(report))
     output_file = tmp_path / "summary.md"
@@ -566,7 +637,7 @@ def test_generate_markdown_from_file(tmp_path: Path) -> None:
 
 
 def test_save_and_load_tagged_baseline(tmp_path: Path) -> None:
-    from impactguard.baseline import save_tagged_baseline, load_tagged_baseline
+    from impactguard.baseline import load_tagged_baseline, save_tagged_baseline
 
     src = tmp_path / "mod.py"
     src.write_text("def greet(name: str) -> None:\n    pass\n")
@@ -587,7 +658,7 @@ def test_list_baselines_empty(tmp_path: Path) -> None:
 
 
 def test_list_baselines_shows_all_tags(tmp_path: Path) -> None:
-    from impactguard.baseline import save_tagged_baseline, list_baselines
+    from impactguard.baseline import list_baselines, save_tagged_baseline
 
     src = tmp_path / "mod.py"
     src.write_text("def fn():\n    pass\n")
@@ -604,7 +675,7 @@ def test_list_baselines_shows_all_tags(tmp_path: Path) -> None:
 
 
 def test_compare_with_tagged_baseline(tmp_path: Path) -> None:
-    from impactguard.baseline import save_tagged_baseline, compare_with_tagged_baseline
+    from impactguard.baseline import compare_with_tagged_baseline, save_tagged_baseline
 
     old_src = tmp_path / "old.py"
     old_src.write_text("def greet(name: str) -> None:\n    pass\n")
@@ -614,14 +685,20 @@ def test_compare_with_tagged_baseline(tmp_path: Path) -> None:
     new_src = tmp_path / "new.py"
     new_src.write_text("")  # greet removed
 
-    result = compare_with_tagged_baseline("v1.0.0", [str(new_src)], history_path=str(history))
+    result = compare_with_tagged_baseline(
+        "v1.0.0", [str(new_src)], history_path=str(history)
+    )
     assert "comparison" in result
     assert "semver" in result
     assert result["baseline_tag"] == "v1.0.0"
 
 
 def test_delete_tagged_baseline(tmp_path: Path) -> None:
-    from impactguard.baseline import save_tagged_baseline, delete_tagged_baseline, list_baselines
+    from impactguard.baseline import (
+        delete_tagged_baseline,
+        list_baselines,
+        save_tagged_baseline,
+    )
 
     src = tmp_path / "mod.py"
     src.write_text("def fn():\n    pass\n")
@@ -643,7 +720,7 @@ def test_delete_nonexistent_tag_returns_false(tmp_path: Path) -> None:
 
 
 def test_load_missing_tag_raises_key_error(tmp_path: Path) -> None:
-    from impactguard.baseline import save_tagged_baseline, load_tagged_baseline
+    from impactguard.baseline import load_tagged_baseline, save_tagged_baseline
 
     src = tmp_path / "mod.py"
     src.write_text("def fn():\n    pass\n")
@@ -667,11 +744,13 @@ def test_save_tagged_baseline_empty_tag_raises(tmp_path: Path) -> None:
 
 
 def test_record_and_load_outcome(tmp_path: Path) -> None:
-    from impactguard.feedback import record_outcome, load_outcomes
+    from impactguard.feedback import load_outcomes, record_outcome
 
     feedback = tmp_path / "feedback.json"
     record_outcome("patch-1", accepted=True, feedback_path=str(feedback))
-    record_outcome("patch-2", accepted=False, change_type="positional", feedback_path=str(feedback))
+    record_outcome(
+        "patch-2", accepted=False, change_type="positional", feedback_path=str(feedback)
+    )
 
     outcomes = load_outcomes(feedback_path=str(feedback))
     assert len(outcomes) == 2
@@ -681,7 +760,7 @@ def test_record_and_load_outcome(tmp_path: Path) -> None:
 
 
 def test_get_stats_basic(tmp_path: Path) -> None:
-    from impactguard.feedback import record_outcome, get_stats
+    from impactguard.feedback import get_stats, record_outcome
 
     feedback = tmp_path / "feedback.json"
     for _ in range(3):
@@ -704,24 +783,42 @@ def test_get_stats_empty(tmp_path: Path) -> None:
 
 
 def test_compute_calibrated_weights_needs_minimum_samples(tmp_path: Path) -> None:
-    from impactguard.feedback import record_outcome, load_outcomes, compute_calibrated_weights
+    from impactguard.feedback import (
+        compute_calibrated_weights,
+        load_outcomes,
+        record_outcome,
+    )
 
     feedback = tmp_path / "feedback.json"
     # Only 3 samples for "positional" — below the 5-sample threshold
     for i in range(3):
-        record_outcome(f"p{i}", accepted=True, change_type="positional", feedback_path=str(feedback))
+        record_outcome(
+            f"p{i}",
+            accepted=True,
+            change_type="positional",
+            feedback_path=str(feedback),
+        )
     outcomes = load_outcomes(str(feedback))
     weights = compute_calibrated_weights(outcomes)
     assert "structural_positional" not in weights
 
 
 def test_compute_calibrated_weights_sufficient_samples(tmp_path: Path) -> None:
-    from impactguard.feedback import record_outcome, load_outcomes, compute_calibrated_weights
+    from impactguard.feedback import (
+        compute_calibrated_weights,
+        load_outcomes,
+        record_outcome,
+    )
 
     feedback = tmp_path / "feedback.json"
     # 5 accepted positional — should produce a weight
     for i in range(5):
-        record_outcome(f"p{i}", accepted=True, change_type="positional", feedback_path=str(feedback))
+        record_outcome(
+            f"p{i}",
+            accepted=True,
+            change_type="positional",
+            feedback_path=str(feedback),
+        )
     outcomes = load_outcomes(str(feedback))
     weights = compute_calibrated_weights(outcomes)
     assert "structural_positional" in weights
@@ -760,7 +857,7 @@ def test_apply_weights_updates_existing_key(tmp_path: Path) -> None:
 
 
 def test_record_outcome_with_patch_data(tmp_path: Path) -> None:
-    from impactguard.feedback import record_outcome, load_outcomes
+    from impactguard.feedback import load_outcomes, record_outcome
 
     feedback = tmp_path / "feedback.json"
     record_outcome(
@@ -850,7 +947,13 @@ def test_validate_risk_report_valid() -> None:
     from impactguard.schema import validate_risk_report
 
     data = [
-        {"function": "foo", "risk": "HIGH", "change": "REMOVED", "exposure": 0.5, "confidence": 0.8}
+        {
+            "function": "foo",
+            "risk": "HIGH",
+            "change": "REMOVED",
+            "exposure": 0.5,
+            "confidence": 0.8,
+        }
     ]
     valid, errors = validate_risk_report(data)
     assert valid is True
@@ -860,7 +963,13 @@ def test_validate_risk_report_invalid_risk_level() -> None:
     from impactguard.schema import validate_risk_report
 
     data = [
-        {"function": "foo", "risk": "EXTREME", "change": "REMOVED", "exposure": 0.5, "confidence": 0.8}
+        {
+            "function": "foo",
+            "risk": "EXTREME",
+            "change": "REMOVED",
+            "exposure": 0.5,
+            "confidence": 0.8,
+        }
     ]
     valid, errors = validate_risk_report(data)
     assert valid is False
@@ -881,12 +990,16 @@ def test_validate_unknown_kind_raises() -> None:
         validate("widgets", [])
 
 
-def test_validate_signatures_emits_warning_on_load(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+def test_validate_signatures_emits_warning_on_load(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
     """compare_signatures.load() should warn to stderr on invalid data."""
     from impactguard.compare_signatures import load
 
     bad = tmp_path / "bad.json"
-    bad.write_text(json.dumps([{"fqname": "x:y", "name": "y"}]))  # missing required fields
+    bad.write_text(
+        json.dumps([{"fqname": "x:y", "name": "y"}])
+    )  # missing required fields
     load(str(bad))
     captured = capsys.readouterr()
     assert "Warning" in captured.err or len(captured.err) == 0  # warning is non-fatal
@@ -908,7 +1021,9 @@ def test_extract_signatures_ignored_and_exported_fields(tmp_path: Path) -> None:
     from impactguard.extract_signatures import extract
 
     src = tmp_path / "mod.py"
-    src.write_text("__all__ = ['pub']\ndef pub():\n    pass\n# impactguard: ignore\ndef _hidden():\n    pass\n")
+    src.write_text(
+        "__all__ = ['pub']\ndef pub():\n    pass\n# impactguard: ignore\ndef _hidden():\n    pass\n"
+    )
     sigs = extract([str(src)])
     for s in sigs:
         assert "ignored" in s
@@ -925,17 +1040,29 @@ def test_markdown_report_in_package_init() -> None:
 
 def test_new_modules_importable() -> None:
     """All three new modules can be imported."""
-    import impactguard.schema  # noqa: F401
     import impactguard.class_hierarchy  # noqa: F401
     import impactguard.feedback  # noqa: F401
+    import impactguard.schema  # noqa: F401
 
 
 def test_type_widening_not_in_breaking() -> None:
     """TYPE WIDENED changes must never appear in the breaking list."""
     from impactguard.compare_signatures import compare
 
-    old_sigs = [_sig("m.py:fn", "fn", positional=[{"name": "x", "has_default": False, "type": "str"}])]
-    new_sigs = [_sig("m.py:fn", "fn", positional=[{"name": "x", "has_default": False, "type": "str | None"}])]
+    old_sigs = [
+        _sig(
+            "m.py:fn",
+            "fn",
+            positional=[{"name": "x", "has_default": False, "type": "str"}],
+        )
+    ]
+    new_sigs = [
+        _sig(
+            "m.py:fn",
+            "fn",
+            positional=[{"name": "x", "has_default": False, "type": "str | None"}],
+        )
+    ]
     with tempfile.TemporaryDirectory() as tmpdir:
         old_p = Path(tmpdir) / "old.json"
         new_p = Path(tmpdir) / "new.json"

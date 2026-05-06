@@ -1,9 +1,8 @@
 import json
-import math
 import sys
 from typing import Any
 
-from .risk_model import SEVERITY_SCORES, get_severity, exposure, confidence, classify
+from .risk_model import classify, get_severity
 
 
 def run(
@@ -81,7 +80,7 @@ def run(
     return report
 
 
-def main(
+def risk_main_cli(
     diff_path: str | None = None,
     runtime_path: str | None = None,
     output_path: str | None = None,

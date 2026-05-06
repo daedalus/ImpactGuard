@@ -173,7 +173,7 @@ Install git hooks for ImpactGuard.
 
 - `repo_path`: Path to git repository (default: current directory)
 - `--pre`: Install pre-commit hook only
-- `--post`: Install post-commit hook only  
+- `--post`: Install post-commit hook only
 - `--both`: Install both hooks (default)
 - Pre-commit hook: Extracts signatures from staged Python files
 - Post-commit hook: Updates `.signatures.txt` after commit

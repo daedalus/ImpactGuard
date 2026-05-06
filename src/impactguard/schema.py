@@ -8,8 +8,8 @@ No external dependencies — validation uses plain Python structural checks.
 
 from typing import Any, cast
 
-
 # ── Internal helpers ──────────────────────────────────────────────────────────
+
 
 def _check_list(data: object, label: str, errors: list[str]) -> bool:
     """Ensure *data* is a list; record an error and return False otherwise."""
@@ -62,10 +62,14 @@ def validate_signatures(data: object) -> tuple[bool, list[str]]:
     if not _check_list(data, "signatures", errors):
         return False, errors
 
-    data_list = cast(list, data)  # _check_list() above already verified isinstance(data, list)
+    data_list = cast(
+        "list[Any]", data
+    )  # _check_list() above already verified isinstance(data, list)
     for i, item in enumerate(data_list):
         if not isinstance(item, dict):
-            errors.append(f"signatures[{i}]: expected an object, got {type(item).__name__}")
+            errors.append(
+                f"signatures[{i}]: expected an object, got {type(item).__name__}"
+            )
             continue
         _check_fields(item, _SIGNATURE_REQUIRED, "signatures", i, errors)
         for arg in item.get("positional", []):
@@ -89,7 +93,9 @@ def validate_calls(data: object) -> tuple[bool, list[str]]:
     if not _check_list(data, "calls", errors):
         return False, errors
 
-    data_list = cast(list, data)  # _check_list() above already verified isinstance(data, list)
+    data_list = cast(
+        "list[Any]", data
+    )  # _check_list() above already verified isinstance(data, list)
     for i, item in enumerate(data_list):
         if not isinstance(item, dict):
             errors.append(f"calls[{i}]: expected an object, got {type(item).__name__}")
@@ -112,15 +118,21 @@ def validate_runtime(data: object) -> tuple[bool, list[str]]:
     if not _check_list(data, "runtime", errors):
         return False, errors
 
-    data_list = cast(list, data)  # _check_list() above already verified isinstance(data, list)
+    data_list = cast(
+        "list[Any]", data
+    )  # _check_list() above already verified isinstance(data, list)
     for i, item in enumerate(data_list):
         if not isinstance(item, dict):
-            errors.append(f"runtime[{i}]: expected an object, got {type(item).__name__}")
+            errors.append(
+                f"runtime[{i}]: expected an object, got {type(item).__name__}"
+            )
             continue
         _check_fields(item, _RUNTIME_REQUIRED, "runtime", i, errors)
         count = item.get("count")
-        if count is not None and not isinstance(count, (int, float)):
-            errors.append(f"runtime[{i}].count: expected a number, got {type(count).__name__}")
+        if count is not None and not isinstance(count, int | float):
+            errors.append(
+                f"runtime[{i}].count: expected a number, got {type(count).__name__}"
+            )
 
     return len(errors) == 0, errors
 
@@ -139,7 +151,9 @@ def validate_risk_report(data: object) -> tuple[bool, list[str]]:
     if not _check_list(data, "risk_report", errors):
         return False, errors
 
-    data_list = cast(list, data)  # _check_list() above already verified isinstance(data, list)
+    data_list = cast(
+        "list[Any]", data
+    )  # _check_list() above already verified isinstance(data, list)
     for i, item in enumerate(data_list):
         if not isinstance(item, dict):
             errors.append(

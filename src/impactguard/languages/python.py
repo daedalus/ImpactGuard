@@ -30,13 +30,13 @@ class PythonExtractor:
     def extract_signatures(
         self,
         files: list[str],
-        base_path: str | None = None,
+        _base_path: str | None = None,
     ) -> list[dict[str, Any]]:
         """Extract signatures from Python files.
 
         Delegates to :func:`extract_signatures.extract`.
         """
-        return _extract_sigs_impl(files, base_path=base_path)
+        return _extract_sigs_impl(files, _base_path=_base_path)
 
     def extract_calls(self, path: Path) -> list[dict[str, Any]]:
         """Extract call sites from a single Python file.
@@ -73,8 +73,10 @@ class PythonExtractor:
 
 # ── Self-registration ─────────────────────────────────────────────────────────
 
+
 def _register() -> None:
     from .registry import register
+
     register(PythonExtractor())
 
 

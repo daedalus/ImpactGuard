@@ -3,12 +3,12 @@
 import json
 from pathlib import Path
 from tempfile import mkdtemp
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 
 def test_suggest_fixes_coverage_boost(tmp_path):
     """Boost coverage for suggest_fixes.py."""
-    from impactguard.suggest_fixes import suggest, enrich_with_fixes
+    from impactguard.suggest_fixes import enrich_with_fixes, suggest
 
     # Test with various configurations
     test_items = [
@@ -37,6 +37,7 @@ def test_suggest_fixes_coverage_boost(tmp_path):
 def test_main_cli_coverage(tmp_path):
     """Boost coverage for __main__.py."""
     import sys
+
     from impactguard.__main__ import main
 
     # Test extract command
@@ -101,7 +102,7 @@ def test_risk_gate_coverage_boost(tmp_path):
 
 def test_pipeline_coverage_boost(tmp_path):
     """Boost coverage for pipeline.py."""
-    from impactguard.pipeline import run_pipeline, quick_check
+    from impactguard.pipeline import quick_check, run_pipeline
 
     # Test quick_check with same file (no changes)
     test_file = tmp_path / "module.py"
@@ -123,16 +124,25 @@ def test_impact_analysis_coverage_boost(tmp_path):
     from impactguard.impact_analysis import analyze
 
     sigs = tmp_path / "sigs.json"
-    sigs.write_text(json.dumps([
-        {"fqname": "test:foo", "name": "foo",
-         "positional": [{"name": "a", "has_default": False}],
-         "kwonly": [], "vararg": False, "kwarg": False}
-    ]))
+    sigs.write_text(
+        json.dumps(
+            [
+                {
+                    "fqname": "test:foo",
+                    "name": "foo",
+                    "positional": [{"name": "a", "has_default": False}],
+                    "kwonly": [],
+                    "vararg": False,
+                    "kwarg": False,
+                }
+            ]
+        )
+    )
 
     calls = tmp_path / "calls.json"
-    calls.write_text(json.dumps([
-        {"fqname": "test:foo", "file": "main.py", "lineno": 10}
-    ]))
+    calls.write_text(
+        json.dumps([{"fqname": "test:foo", "file": "main.py", "lineno": 10}])
+    )
 
     result = analyze(str(sigs), str(calls))
     assert isinstance(result, list)

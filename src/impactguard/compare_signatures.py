@@ -70,6 +70,7 @@ def _is_ignored(fqname: str, sig: dict[str, Any], suppress_list: list[str]) -> b
 
 # ── Type-compatibility helpers ────────────────────────────────────────────────
 
+
 def _parse_union_members(type_str: str) -> frozenset[str]:
     """Break a type annotation string into its constituent member types.
 
@@ -136,6 +137,7 @@ def _type_change_kind(
 
 # ── Deprecation helper ────────────────────────────────────────────────────────
 
+
 def _has_deprecated_decorator(sig: dict[str, Any]) -> bool:
     """Return *True* when the signature has a ``@deprecated``-style decorator."""
     for dec in sig.get("decorators", []):
@@ -181,6 +183,7 @@ def compare(  # noqa: MC0001
     _union_parser: Any = None
     if language is not None:
         from .languages.registry import get_extractor_by_language
+
         _lang_ext = get_extractor_by_language(language)
         if _lang_ext is not None:
             _union_parser = _lang_ext.parse_union_members
@@ -246,7 +249,7 @@ def compare(  # noqa: MC0001
 
             # new positional args
             if len(n_pos) > len(o_pos):
-                added = n_pos[len(o_pos):]
+                added = n_pos[len(o_pos) :]
                 if any(is_required(a) for a in added):
                     breaking.append(f"REQUIRED POSITIONAL ADDED: {k}")
                 else:
@@ -312,9 +315,7 @@ def compare(  # noqa: MC0001
         if o_ret is not None and n_ret is not None and o_ret != n_ret:
             kind = _type_change_kind(o_ret, n_ret, _union_parser)
             if kind == "widening":
-                nonbreaking.append(
-                    f"RETURN TYPE WIDENED: {k} {o_ret} -> {n_ret}"
-                )
+                nonbreaking.append(f"RETURN TYPE WIDENED: {k} {o_ret} -> {n_ret}")
             else:
                 breaking.append(f"RETURN TYPE CHANGED: {k} {o_ret} -> {n_ret}")
 
@@ -332,4 +333,3 @@ def compare(  # noqa: MC0001
         "nonbreaking": sorted(set(nonbreaking)),
         "suppressed": sorted(set(suppressed)),
     }
-

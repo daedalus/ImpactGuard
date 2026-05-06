@@ -7,7 +7,7 @@ from tempfile import mkdtemp
 
 def test_suggest_fixes_full_coverage(tmp_path):
     """Test suggest_fixes module fully."""
-    from impactguard.suggest_fixes import suggest, enrich_with_fixes
+    from impactguard.suggest_fixes import enrich_with_fixes, suggest
 
     # Test with various risk items
     risk_items = [
@@ -55,10 +55,14 @@ def test_enforce_gate_full_coverage(tmp_path):
 
     # Test with mixed - should fail
     report_path = tmp_path / "mixed.json"
-    report_path.write_text(json.dumps([
-        {"risk": "LOW", "function": "test:foo"},
-        {"risk": "HIGH", "function": "test:bar"},
-    ]))
+    report_path.write_text(
+        json.dumps(
+            [
+                {"risk": "LOW", "function": "test:foo"},
+                {"risk": "HIGH", "function": "test:bar"},
+            ]
+        )
+    )
     assert enforce_report(str(report_path)) == 1
 
 
@@ -165,8 +169,8 @@ async def async_func():
 
 def test_pipeline_full_coverage(tmp_path):
     """Test pipeline module fully."""
-    from impactguard.pipeline import run_pipeline, quick_check
     from impactguard import ImpactGuard
+    from impactguard.pipeline import quick_check, run_pipeline
 
     # Test ImpactGuard class
     guard = ImpactGuard({"test": True})
@@ -233,16 +237,35 @@ def test_compare_signatures_full_coverage(tmp_path):
     from impactguard.compare_signatures import compare
 
     # Test with added function (non-breaking)
-    old = [{"fqname": "test:foo", "name": "foo",
-             "positional": [{"name": "a", "has_default": False}],
-             "kwonly": [], "vararg": False, "kwarg": False}]
+    old = [
+        {
+            "fqname": "test:foo",
+            "name": "foo",
+            "positional": [{"name": "a", "has_default": False}],
+            "kwonly": [],
+            "vararg": False,
+            "kwarg": False,
+        }
+    ]
 
-    new = [{"fqname": "test:foo", "name": "foo",
-             "positional": [{"name": "a", "has_default": False}],
-             "kwonly": [], "vararg": False, "kwarg": False},
-            {"fqname": "test:bar", "name": "bar",
-             "positional": [], "kwonly": [],
-             "vararg": False, "kwarg": False}]
+    new = [
+        {
+            "fqname": "test:foo",
+            "name": "foo",
+            "positional": [{"name": "a", "has_default": False}],
+            "kwonly": [],
+            "vararg": False,
+            "kwarg": False,
+        },
+        {
+            "fqname": "test:bar",
+            "name": "bar",
+            "positional": [],
+            "kwonly": [],
+            "vararg": False,
+            "kwarg": False,
+        },
+    ]
 
     old_path = tmp_path / "old.json"
     new_path = tmp_path / "new.json"

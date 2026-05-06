@@ -39,6 +39,7 @@ except ImportError:  # pragma: no cover
 
 # ── Tree-sitter helpers ───────────────────────────────────────────────────────
 
+
 def _make_parser() -> Any:
     """Create a fresh tree-sitter Ruby parser."""
     return _RubyParser(_RUBY_LANGUAGE)
@@ -46,7 +47,7 @@ def _make_parser() -> Any:
 
 def _node_text(node: Any, source: bytes) -> str:
     """Return the UTF-8 text of a tree-sitter node."""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
+    return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
 
 
 def _child_of_type(node: Any, *types: str) -> Any | None:
@@ -81,11 +82,13 @@ def _parse_method_parameters(
     for child in params_node.children:
         t = child.type
         if t == "identifier":
-            positional.append({
-                "name": _node_text(child, source),
-                "has_default": False,
-                "type": None,
-            })
+            positional.append(
+                {
+                    "name": _node_text(child, source),
+                    "has_default": False,
+                    "type": None,
+                }
+            )
         elif t == "optional_parameter":
             name_node = _child_of_type(child, "identifier")
             name = _node_text(name_node, source) if name_node else "unknown"
@@ -102,7 +105,9 @@ def _parse_method_parameters(
             # name: or name: default
             name_node = _child_of_type(child, "identifier")
             name = _node_text(name_node, source) if name_node else "unknown"
-            has_default = any(c.type not in ("identifier", ":", ",") for c in child.children)
+            has_default = any(
+                c.type not in ("identifier", ":", ",") for c in child.children
+            )
             positional.append({"name": name, "has_default": has_default, "type": None})
 
     return positional, has_vararg
@@ -137,23 +142,25 @@ def _process_method(
         fqname = f"{fq_file}:{name}"
         display_name = name
 
-    funcs.append({
-        "fqname": fqname,
-        "name": display_name,
-        "file": fq_file,
-        "lineno": node.start_point[0] + 1,
-        "end_lineno": node.end_point[0] + 1,
-        "positional": positional,
-        "kwonly": [],
-        "vararg": has_vararg,
-        "kwarg": False,
-        "class_name": class_name,
-        "return_type": None,  # Ruby has no type annotations in standard syntax
-        "decorators": [],
-        "is_async": False,
-        "ignored": _has_ignore_comment(source, node.start_point[0]),
-        "exported": True,
-    })
+    funcs.append(
+        {
+            "fqname": fqname,
+            "name": display_name,
+            "file": fq_file,
+            "lineno": node.start_point[0] + 1,
+            "end_lineno": node.end_point[0] + 1,
+            "positional": positional,
+            "kwonly": [],
+            "vararg": has_vararg,
+            "kwarg": False,
+            "class_name": class_name,
+            "return_type": None,  # Ruby has no type annotations in standard syntax
+            "decorators": [],
+            "is_async": False,
+            "ignored": _has_ignore_comment(source, node.start_point[0]),
+            "exported": True,
+        }
+    )
 
 
 def _process_singleton_method(
@@ -190,28 +197,30 @@ def _process_singleton_method(
     positional, has_vararg = _parse_method_parameters(params_node, source)
     prefix = f"{class_name}." if class_name else ""
 
-    funcs.append({
-        "fqname": f"{fq_file}:{prefix}{name}",
-        "name": f"{prefix}{name}",
-        "file": fq_file,
-        "lineno": node.start_point[0] + 1,
-        "end_lineno": node.end_point[0] + 1,
-        "positional": positional,
-        "kwonly": [],
-        "vararg": has_vararg,
-        "kwarg": False,
-        "class_name": class_name,
-        "return_type": None,
-        "decorators": [],
-        "is_async": False,
-        "ignored": _has_ignore_comment(source, node.start_point[0]),
-        "exported": True,
-    })
+    funcs.append(
+        {
+            "fqname": f"{fq_file}:{prefix}{name}",
+            "name": f"{prefix}{name}",
+            "file": fq_file,
+            "lineno": node.start_point[0] + 1,
+            "end_lineno": node.end_point[0] + 1,
+            "positional": positional,
+            "kwonly": [],
+            "vararg": has_vararg,
+            "kwarg": False,
+            "class_name": class_name,
+            "return_type": None,
+            "decorators": [],
+            "is_async": False,
+            "ignored": _has_ignore_comment(source, node.start_point[0]),
+            "exported": True,
+        }
+    )
 
 
 def _extract_with_tree_sitter(
     files: list[str],
-    base_path: str | None = None,
+    _base_path: str | None = None,
 ) -> list[dict[str, Any]]:
     """Extract Ruby signatures using tree-sitter."""
     parser = _make_parser()
@@ -294,18 +303,19 @@ def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
                 arg_count = 0
                 if args_node is not None:
                     arg_count = sum(
-                        1 for c in args_node.children
-                        if c.type not in ("(", ")", ",")
+                        1 for c in args_node.children if c.type not in ("(", ")", ",")
                     )
-                calls.append({
-                    "name": name,
-                    "lineno": node.start_point[0] + 1,
-                    "args": arg_count,
-                    "kwargs": [],
-                    "has_starargs": False,
-                    "has_kwargs": False,
-                    "file": str(path),
-                })
+                calls.append(
+                    {
+                        "name": name,
+                        "lineno": node.start_point[0] + 1,
+                        "args": arg_count,
+                        "kwargs": [],
+                        "has_starargs": False,
+                        "has_kwargs": False,
+                        "file": str(path),
+                    }
+                )
 
         for child in node.children:
             visit(child)
@@ -361,7 +371,7 @@ def _parse_ruby_params_regex(params_str: str) -> tuple[list[dict[str, Any]], boo
 
 def _extract_with_regex(
     files: list[str],
-    base_path: str | None = None,
+    _base_path: str | None = None,
 ) -> list[dict[str, Any]]:
     """Best-effort Ruby signature extraction using regular expressions."""
     all_funcs: list[dict[str, Any]] = []
@@ -383,23 +393,25 @@ def _extract_with_regex(
             positional, has_vararg = _parse_ruby_params_regex(params_str)
             fqname = f"{fq_file}:{name}"
 
-            all_funcs.append({
-                "fqname": fqname,
-                "name": name,
-                "file": fq_file,
-                "lineno": lineno,
-                "end_lineno": lineno,
-                "positional": positional,
-                "kwonly": [],
-                "vararg": has_vararg,
-                "kwarg": False,
-                "class_name": None,
-                "return_type": None,
-                "decorators": [],
-                "is_async": False,
-                "ignored": _has_ignore_comment_fallback(lines, lineno),
-                "exported": True,
-            })
+            all_funcs.append(
+                {
+                    "fqname": fqname,
+                    "name": name,
+                    "file": fq_file,
+                    "lineno": lineno,
+                    "end_lineno": lineno,
+                    "positional": positional,
+                    "kwonly": [],
+                    "vararg": has_vararg,
+                    "kwarg": False,
+                    "class_name": None,
+                    "return_type": None,
+                    "decorators": [],
+                    "is_async": False,
+                    "ignored": _has_ignore_comment_fallback(lines, lineno),
+                    "exported": True,
+                }
+            )
 
     seen: set[str] = set()
     unique: list[dict[str, Any]] = []
@@ -427,21 +439,26 @@ def _extract_calls_with_regex(path: Path) -> list[dict[str, Any]]:
         if name in _KEYWORDS:
             continue
         args_str = m.group("args").strip()
-        arg_count = len([a for a in args_str.split(",") if a.strip()]) if args_str else 0
+        arg_count = (
+            len([a for a in args_str.split(",") if a.strip()]) if args_str else 0
+        )
         lineno = source[: m.start()].count("\n") + 1
-        calls.append({
-            "name": name,
-            "lineno": lineno,
-            "args": arg_count,
-            "kwargs": [],
-            "has_starargs": False,
-            "has_kwargs": False,
-            "file": str(path),
-        })
+        calls.append(
+            {
+                "name": name,
+                "lineno": lineno,
+                "args": arg_count,
+                "kwargs": [],
+                "has_starargs": False,
+                "has_kwargs": False,
+                "file": str(path),
+            }
+        )
     return calls
 
 
 # ── Public extractor class ────────────────────────────────────────────────────
+
 
 class RubyExtractor:
     """Language extractor for Ruby (``.rb``) files.
@@ -471,13 +488,13 @@ class RubyExtractor:
     def extract_signatures(
         self,
         files: list[str],
-        base_path: str | None = None,
+        _base_path: str | None = None,
     ) -> list[dict[str, Any]]:
         """Extract signatures from Ruby files."""
         if _TREE_SITTER_AVAILABLE:
-            return _extract_with_tree_sitter(files, base_path)
+            return _extract_with_tree_sitter(files, _base_path)
         self._warn_if_no_tree_sitter()
-        return _extract_with_regex(files, base_path)
+        return _extract_with_regex(files, _base_path)
 
     def extract_calls(self, path: Path) -> list[dict[str, Any]]:
         """Extract call sites from a Ruby file."""
@@ -501,8 +518,10 @@ class RubyExtractor:
 
 # ── Self-registration ─────────────────────────────────────────────────────────
 
+
 def _register() -> None:
     from .registry import register
+
     register(RubyExtractor())
 
 

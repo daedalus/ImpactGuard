@@ -120,8 +120,8 @@ def compare_with_baseline(
     """
     import tempfile
 
-    from .extract_signatures import extract
     from .compare_signatures import compare
+    from .extract_signatures import extract
     from .semver import format_semver_recommendation
 
     baseline = load_baseline(baseline_path)
@@ -135,7 +135,9 @@ def compare_with_baseline(
         old_path.write_text(json.dumps(old_sigs))
         new_path.write_text(json.dumps(new_sigs))
 
-        comparison = compare(str(old_path), str(new_path), include_private=include_private)
+        comparison = compare(
+            str(old_path), str(new_path), include_private=include_private
+        )
 
     return {
         "comparison": comparison,
@@ -150,6 +152,7 @@ def baseline_exists(path: str | None = None) -> bool:
 
 
 # ── Multi-baseline / Release history ─────────────────────────────────────────
+
 
 def save_tagged_baseline(
     tag: str,
@@ -220,11 +223,8 @@ def load_tagged_baseline(
     history = _load_history(effective_path)
     if tag not in history:
         available = sorted(history.keys())
-        raise KeyError(
-            f"Tag '{tag}' not found in history. "
-            f"Available tags: {available}"
-        )
-    return history[tag]
+        raise KeyError(f"Tag '{tag}' not found in history. Available tags: {available}")
+    return history[tag]  # type: ignore[no-any-return]
 
 
 def list_baselines(history_path: str | None = None) -> list[dict[str, Any]]:
@@ -270,8 +270,8 @@ def compare_with_tagged_baseline(
     """
     import tempfile
 
-    from .extract_signatures import extract
     from .compare_signatures import compare
+    from .extract_signatures import extract
     from .semver import format_semver_recommendation
 
     entry = load_tagged_baseline(tag, history_path)
@@ -283,7 +283,9 @@ def compare_with_tagged_baseline(
         new_path = Path(tmpdir) / "new.json"
         old_path.write_text(json.dumps(old_sigs))
         new_path.write_text(json.dumps(new_sigs))
-        comparison = compare(str(old_path), str(new_path), include_private=include_private)
+        comparison = compare(
+            str(old_path), str(new_path), include_private=include_private
+        )
 
     return {
         "comparison": comparison,
@@ -319,6 +321,7 @@ def delete_tagged_baseline(
 
 # ── Private helpers ───────────────────────────────────────────────────────────
 
+
 def _load_history(path: str) -> dict[str, Any]:
     """Load the history JSON file, returning an empty dict on missing/corrupt file."""
     p = Path(path)
@@ -329,4 +332,3 @@ def _load_history(path: str) -> dict[str, Any]:
         return data if isinstance(data, dict) else {}
     except (json.JSONDecodeError, OSError):
         return {}
-

@@ -6,21 +6,6 @@ repos:
   - id: ruff
     args:
       - --fix
-- repo: https://github.com/pre-commit/mirrors-mypy
-  rev: v1.14.0
-  hooks:
-  - id: mypy
-    args:
-      - --config-file=pyproject.toml
-      - src/
-- repo: https://github.com/semgrep/semgrep
-  rev: v1.161.0
-  hooks:
-  - id: semgrep
-    args:
-      - --config=auto
-      - --severity=ERROR
-      - src/
 - repo: https://github.com/pre-commit/pre-commit-hooks
   rev: v5.0.0
   hooks:

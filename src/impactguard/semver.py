@@ -11,7 +11,6 @@ Rules:
 
 from typing import Any
 
-
 # Change prefixes that indicate a breaking API change
 _BREAKING_PREFIXES = (
     "REMOVED:",

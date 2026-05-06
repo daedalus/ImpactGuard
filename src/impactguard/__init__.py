@@ -6,30 +6,78 @@ ImpactGuard - Lightweight API impact analyzer for Python projects.
 Track function signatures, detect breaking changes, and analyze call-site impact
 using static and runtime techniques.
 """
-from .analyze_module import analyze as analyze_module, analyze_calls
+from .analyze_module import analyze as analyze_module
+from .analyze_module import analyze_calls
+from .baseline import (
+    baseline_exists,
+    compare_with_baseline,
+    compare_with_tagged_baseline,
+    delete_tagged_baseline,
+    list_baselines,
+    load_baseline,
+    load_tagged_baseline,
+    save_baseline,
+    save_tagged_baseline,
+)
+from .class_hierarchy import (
+    extract_class_hierarchy,
+    find_implementations,
+    get_cascade_changes,
+)
 from .compare_signatures import compare, load
+from .config import get as get_config_value
+from .config import get_config, load_config, reload_config
+from .cst_patch import patch_call, patch_function
 from .enforce_gate import enforce, enforce_report
-from .extract_signatures import extract, serialize_function, extract_reexports
-from .generate_report import generate_html, generate_html_from_file, generate_markdown, generate_markdown_from_file
+from .extract_signatures import extract, extract_reexports, serialize_function
+from .feedback import (
+    apply_weights_to_config,
+    compute_calibrated_weights,
+    load_outcomes,
+    record_outcome,
+)
+from .feedback import (
+    get_stats as get_feedback_stats,
+)
+from .generate_report import (
+    generate_html,
+    generate_html_from_file,
+    generate_markdown,
+    generate_markdown_from_file,
+)
 from .impact_analysis import analyze, build_call_graph, find_transitive_callers
-from .patch_confidence import (
-    classify as classify_patch,
-    classify_with_factors,
+from .languages import (
+    LanguageExtractor,
+    detect_language,
+    get_extractor,
+    get_extractor_by_language,
+    list_languages,
+)
+from .languages import (
+    list_extensions as list_language_extensions,
+)
+from .languages import (
+    register as register_language,
 )
 from .patch_confidence import (
+    classify as classify_patch,
+)
+from .patch_confidence import (
+    classify_with_factors,
     compute_confidence,
     get_complexity_penalty,
     get_semantic_risk,
     get_structural_safety,
     get_target_certainty,
 )
-from .cst_patch import patch_function, patch_call
-from .suggest_fixes import suggest, enrich_with_fixes, get_line
-from .trace_calls import trace, install_tracer, dump as dump_trace
-from .trace_calls_prod import (
-    flush,
-    should_sample,
-    install_tracer as install_tracer_prod,
+from .pipeline import (
+    ImpactGuard,
+    quick_check,
+    run_pipeline,
+    run_pipeline_commit,
+    run_pipeline_diff,
+    run_pipeline_diff_content,
+    run_pipeline_git,
 )
 from .risk_model import (
     SEVERITY_SCORES,
@@ -39,55 +87,27 @@ from .risk_model import (
     exposure,
     get_severity,
 )
-from .pipeline import (
-    run_pipeline,
-    quick_check,
-    run_pipeline_git,
-    run_pipeline_diff,
-    run_pipeline_diff_content,
-    run_pipeline_commit,
-    ImpactGuard,
+from .schema import (
+    validate,
+    validate_risk_report,
+    validate_runtime,
 )
-from .config import get_config, load_config, reload_config, get as get_config_value
-from .semver import suggest_semver, format_semver_recommendation
-from .baseline import (
-    save_baseline,
-    load_baseline,
-    compare_with_baseline,
-    baseline_exists,
-    save_tagged_baseline,
-    load_tagged_baseline,
-    list_baselines,
-    compare_with_tagged_baseline,
-    delete_tagged_baseline,
+from .schema import (
+    validate_calls as validate_calls_data,
 )
 from .schema import (
     validate_signatures as validate_signatures_data,
-    validate_calls as validate_calls_data,
-    validate_runtime,
-    validate_risk_report,
-    validate,
 )
-from .class_hierarchy import (
-    extract_class_hierarchy,
-    find_implementations,
-    get_cascade_changes,
+from .semver import format_semver_recommendation, suggest_semver
+from .suggest_fixes import enrich_with_fixes, get_line, suggest
+from .trace_calls import dump as dump_trace
+from .trace_calls import install_tracer, trace
+from .trace_calls_prod import (
+    flush,
+    should_sample,
 )
-from .feedback import (
-    record_outcome,
-    load_outcomes,
-    get_stats as get_feedback_stats,
-    compute_calibrated_weights,
-    apply_weights_to_config,
-)
-from .languages import (
-    LanguageExtractor,
-    register as register_language,
-    get_extractor,
-    get_extractor_by_language,
-    detect_language,
-    list_languages,
-    list_extensions as list_language_extensions,
+from .trace_calls_prod import (
+    install_tracer as install_tracer_prod,
 )
 
 __version__ = "0.1.0"

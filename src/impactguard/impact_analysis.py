@@ -1,24 +1,26 @@
 import json
-import math
 import sys
 from typing import Any
 
-from .risk_model import get_severity, exposure
+from .risk_model import exposure
 
 
 def required_positional(func: dict[str, Any]) -> int:
     """Count required positional arguments."""
     return sum(1 for a in func.get("positional", []) if not a.get("has_default"))
 
+
 def total_positional(func: dict[str, Any]) -> int:
     """Count total positional arguments."""
     return len(func.get("positional", []))
+
 
 def load_funcs(path: str) -> dict[str, dict[str, Any]]:
     """Load function signatures from JSON file."""
     with open(path) as f:
         data: list[dict[str, Any]] = json.load(f)
     return {f["fqname"]: f for f in data}
+
 
 def load_calls(path: str) -> list[dict[str, Any]]:
     """Load call sites from JSON file."""
@@ -28,6 +30,7 @@ def load_calls(path: str) -> list[dict[str, Any]]:
 
 
 # ── Transitive impact helpers ─────────────────────────────────────────────────
+
 
 def build_call_graph(calls: list[dict[str, Any]]) -> dict[str, set[str]]:
     """Build a callee → set-of-callers inverted call graph.
@@ -81,6 +84,7 @@ def find_transitive_callers(
 
 # ── Core analysis ─────────────────────────────────────────────────────────────
 
+
 def analyze(
     sigs_path: str, calls_path: str, runtime_path: str | None = None
 ) -> list[dict[str, Any]]:
@@ -106,8 +110,8 @@ def analyze(
     runtime: dict[str, int] = {}
     if runtime_path:
         try:
-            with open(runtime_path) as f:
-                rt_data = json.load(f)
+            with open(runtime_path) as f_file:
+                rt_data = json.load(f_file)
             runtime = {item["function"]: item.get("count", 1) for item in rt_data}
         except (json.JSONDecodeError, KeyError) as e:
             print(f"Warning: Failed to parse runtime data: {e}", file=sys.stderr)
@@ -172,7 +176,9 @@ def analyze(
     # ── Transitive impact ─────────────────────────────────────────────────────
     if transitive_depth > 0 and directly_affected:
         call_graph = build_call_graph(calls)
-        transitive = find_transitive_callers(directly_affected, call_graph, transitive_depth)
+        transitive = find_transitive_callers(
+            directly_affected, call_graph, transitive_depth
+        )
 
         for caller, hop in transitive.items():
             issues.append(
@@ -193,7 +199,7 @@ def analyze(
     return issues
 
 
-def main() -> None:
+def analyze_main() -> None:
     """CLI entry point."""
     if len(sys.argv) < 3:
         print(
@@ -207,7 +213,9 @@ def main() -> None:
 
     # Output summary
     for level in ["HIGH", "MEDIUM", "LOW"]:
-        level_issues = [i for i in issues if i["risk"] == level and not i.get("transitive")]
+        level_issues = [
+            i for i in issues if i["risk"] == level and not i.get("transitive")
+        ]
         if level_issues:
             print(f"[{level}] {len(level_issues)} issues:")
             for i in level_issues[:5]:
@@ -219,4 +227,3 @@ def main() -> None:
 
     if any(i["risk"] == "HIGH" for i in issues):
         sys.exit(1)
-

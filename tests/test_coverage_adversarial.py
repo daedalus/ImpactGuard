@@ -31,14 +31,18 @@ import pytest
 
 
 def _tmp(content: str, suffix: str = ".py") -> str:
-    f = tempfile.NamedTemporaryFile(mode="w", suffix=suffix, delete=False, encoding="utf-8")
+    f = tempfile.NamedTemporaryFile(
+        mode="w", suffix=suffix, delete=False, encoding="utf-8"
+    )
     f.write(content)
     f.close()
     return f.name
 
 
 def _tmpjson(data: Any) -> str:
-    f = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8")
+    f = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", delete=False, encoding="utf-8"
+    )
     json.dump(data, f)
     f.close()
     return f.name
@@ -56,9 +60,11 @@ def _rm(*paths: str) -> None:
 # _pathutils
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestPathUtils:
     def _safe(self, f):
         from impactguard._pathutils import is_safe_path
+
         return is_safe_path(f)
 
     def test_empty_string_unsafe(self):
@@ -106,6 +112,7 @@ class TestPathUtils:
 # patch_generator
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestPatchGenerator:
     """Tests for patch_generator.py.
 
@@ -120,6 +127,7 @@ class TestPatchGenerator:
         try:
             os.chdir(tmp_path)
             from impactguard.patch_generator import patch_add_default
+
             diff, err = patch_add_default({"file": "foo.py", "lineno": 1}, "y")
         finally:
             os.chdir(orig_dir)
@@ -134,6 +142,7 @@ class TestPatchGenerator:
         try:
             os.chdir(tmp_path)
             from impactguard.patch_generator import patch_add_default
+
             diff, err = patch_add_default({"file": "bar.py", "lineno": 1}, "z")
         finally:
             os.chdir(orig_dir)
@@ -142,18 +151,21 @@ class TestPatchGenerator:
 
     def test_patch_add_default_missing_file_field(self):
         from impactguard.patch_generator import patch_add_default
+
         diff, err = patch_add_default({"lineno": 1}, "x")
         assert diff is None
         assert "Invalid" in err
 
     def test_patch_add_default_missing_lineno(self):
         from impactguard.patch_generator import patch_add_default
+
         diff, err = patch_add_default({"file": "foo.py", "lineno": 0}, "x")
         assert diff is None
         assert "Invalid" in err
 
     def test_patch_add_default_unsafe_path(self):
         from impactguard.patch_generator import patch_add_default
+
         diff, err = patch_add_default({"file": "/etc/passwd", "lineno": 1}, "x")
         assert diff is None
         assert "Unsafe" in err
@@ -164,6 +176,7 @@ class TestPatchGenerator:
         try:
             os.chdir(tmp_path)
             from impactguard.patch_generator import patch_add_default
+
             diff, err = patch_add_default({"file": "small.py", "lineno": 999}, "x")
         finally:
             os.chdir(orig_dir)
@@ -172,6 +185,7 @@ class TestPatchGenerator:
 
     def test_patch_add_default_nonexistent_file(self):
         from impactguard.patch_generator import patch_add_default
+
         diff, err = patch_add_default({"file": "nonexistent_xyz.py", "lineno": 1}, "x")
         assert diff is None
         assert err is not None
@@ -182,6 +196,7 @@ class TestPatchGenerator:
         try:
             os.chdir(tmp_path)
             from impactguard.patch_generator import patch_call_site
+
             diff, err = patch_call_site({"file": "caller.py", "lineno": 1}, {})
         finally:
             os.chdir(orig_dir)
@@ -190,18 +205,21 @@ class TestPatchGenerator:
 
     def test_patch_call_site_missing_file(self):
         from impactguard.patch_generator import patch_call_site
+
         diff, err = patch_call_site({"lineno": 1}, {})
         assert diff is None
         assert "Invalid" in err
 
     def test_patch_call_site_lineno_zero(self):
         from impactguard.patch_generator import patch_call_site
+
         diff, err = patch_call_site({"file": "f.py", "lineno": 0}, {})
         assert diff is None
         assert "Invalid" in err
 
     def test_patch_call_site_unsafe_path(self):
         from impactguard.patch_generator import patch_call_site
+
         diff, err = patch_call_site({"file": "/etc/passwd", "lineno": 1}, {})
         assert diff is None
         assert "Unsafe" in err
@@ -212,6 +230,7 @@ class TestPatchGenerator:
         try:
             os.chdir(tmp_path)
             from impactguard.patch_generator import patch_call_site
+
             diff, err = patch_call_site({"file": "call.py", "lineno": 999}, {})
         finally:
             os.chdir(orig_dir)
@@ -225,6 +244,7 @@ class TestPatchGenerator:
         try:
             os.chdir(tmp_path)
             from impactguard.patch_generator import patch_add_default
+
             diff, err = patch_add_default({"file": "empty.py", "lineno": 1}, "x")
         finally:
             os.chdir(orig_dir)
@@ -235,10 +255,12 @@ class TestPatchGenerator:
 # cst_patch
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestCstPatch:
     def test_patch_function_no_libcst(self):
         """If libcst unavailable, returns (None, 'libcst not installed')."""
         import impactguard.cst_patch as cp
+
         if not cp.LIBCST_AVAILABLE:
             patch, err = cp.patch_function("def foo(x): pass", "foo", "x")
             assert patch is None
@@ -246,6 +268,7 @@ class TestCstPatch:
 
     def test_patch_call_no_libcst(self):
         import impactguard.cst_patch as cp
+
         if not cp.LIBCST_AVAILABLE:
             patch, err = cp.patch_call("foo()", "foo", "x")
             assert patch is None
@@ -253,6 +276,7 @@ class TestCstPatch:
 
     def test_patch_function_with_libcst(self):
         import impactguard.cst_patch as cp
+
         if not cp.LIBCST_AVAILABLE:
             pytest.skip("libcst not available")
         src = "def foo(x, y):\n    return x + y\n"
@@ -263,6 +287,7 @@ class TestCstPatch:
 
     def test_patch_function_wrong_func_name(self):
         import impactguard.cst_patch as cp
+
         if not cp.LIBCST_AVAILABLE:
             pytest.skip("libcst not available")
         src = "def foo(x, y):\n    pass\n"
@@ -273,6 +298,7 @@ class TestCstPatch:
 
     def test_patch_function_syntax_error(self):
         import impactguard.cst_patch as cp
+
         if not cp.LIBCST_AVAILABLE:
             pytest.skip("libcst not available")
         patched, err = cp.patch_function("def foo(!!!):", "foo", "x")
@@ -281,6 +307,7 @@ class TestCstPatch:
 
     def test_patch_call_with_libcst(self):
         import impactguard.cst_patch as cp
+
         if not cp.LIBCST_AVAILABLE:
             pytest.skip("libcst not available")
         src = "def bar(): pass\nfoo(1, 2)\n"
@@ -290,6 +317,7 @@ class TestCstPatch:
 
     def test_patch_call_already_has_kwarg(self):
         import impactguard.cst_patch as cp
+
         if not cp.LIBCST_AVAILABLE:
             pytest.skip("libcst not available")
         src = "foo(x=1, token=2)\n"
@@ -300,6 +328,7 @@ class TestCstPatch:
 
     def test_patch_call_syntax_error(self):
         import impactguard.cst_patch as cp
+
         if not cp.LIBCST_AVAILABLE:
             pytest.skip("libcst not available")
         patched, err = cp.patch_call("foo(!!!)", "foo", "x")
@@ -311,29 +340,36 @@ class TestCstPatch:
 # suggest_fixes
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestSuggestFixes:
     def test_suggest_no_issues(self):
         from impactguard.suggest_fixes import suggest
+
         assert suggest({"name": "foo"}, []) == []
 
     def test_suggest_missing_args(self):
         from impactguard.suggest_fixes import suggest
+
         issues = [{"type": "missing_args", "file": "a.py", "lineno": 1}]
         result = suggest({"name": "bar"}, issues)
         assert any("bar" in r for r in result)
-        assert any("optional" in r.lower() or "defaults" in r.lower() or "make" in r.lower() for r in result)
+        assert any(
+            "optional" in r.lower() or "defaults" in r.lower() or "make" in r.lower()
+            for r in result
+        )
 
     def test_suggest_too_many_args(self):
         from impactguard.suggest_fixes import suggest
+
         issues = [{"type": "too_many_args", "file": "b.py", "lineno": 2}]
         result = suggest({"name": "baz"}, issues)
         assert any("baz" in r for r in result)
 
     def test_suggest_call_sites_listed(self):
         from impactguard.suggest_fixes import suggest
+
         issues = [
-            {"type": "missing_args", "file": "x.py", "lineno": i}
-            for i in range(1, 8)
+            {"type": "missing_args", "file": "x.py", "lineno": i} for i in range(1, 8)
         ]
         result = suggest({"name": "f"}, issues)
         # Should include up to 5 call sites
@@ -348,6 +384,7 @@ class TestSuggestFixes:
         try:
             os.chdir(tmp_path)
             from impactguard.suggest_fixes import get_line
+
             line1 = get_line("myfile.py", 1)
             line2 = get_line("myfile.py", 2)
         finally:
@@ -361,6 +398,7 @@ class TestSuggestFixes:
         try:
             os.chdir(tmp_path)
             from impactguard.suggest_fixes import get_line
+
             result = get_line("small.py", 99)
         finally:
             os.chdir(orig_dir)
@@ -368,6 +406,7 @@ class TestSuggestFixes:
 
     def test_get_line_unsafe_path(self, capsys):
         from impactguard.suggest_fixes import get_line
+
         result = get_line("/etc/passwd", 1)
         assert result == ""
         captured = capsys.readouterr()
@@ -375,16 +414,19 @@ class TestSuggestFixes:
 
     def test_get_line_nonexistent_file(self):
         from impactguard.suggest_fixes import get_line
+
         result = get_line("noexist_xyz.py", 1)
         assert result == ""
 
     def test_enrich_no_function_key(self):
         from impactguard.suggest_fixes import enrich_with_fixes
+
         result = enrich_with_fixes({}, [])
         assert isinstance(result, list)
 
     def test_enrich_with_patches(self):
         from impactguard.suggest_fixes import enrich_with_fixes
+
         item = {"patches": ["--- diff ---"]}
         result = enrich_with_fixes(item, [])
         assert len(result) >= 1
@@ -392,12 +434,14 @@ class TestSuggestFixes:
 
     def test_enrich_with_callsite_patches(self):
         from impactguard.suggest_fixes import enrich_with_fixes
+
         item = {"callsite_patches": ["--- cp ---"]}
         result = enrich_with_fixes(item, [])
         assert any(r["type"] == "update_call" for r in result)
 
     def test_enrich_with_function_no_file(self):
         from impactguard.suggest_fixes import enrich_with_fixes
+
         item = {"function": "foo", "change": "REMOVED param (x)", "file": ""}
         result = enrich_with_fixes(item, [])
         assert isinstance(result, list)
@@ -405,6 +449,7 @@ class TestSuggestFixes:
     # adversarial
     def test_suggest_none_name(self):
         from impactguard.suggest_fixes import suggest
+
         issues = [{"type": "missing_args"}]
         result = suggest({}, issues)
         assert isinstance(result, list)
@@ -413,6 +458,7 @@ class TestSuggestFixes:
 # ═══════════════════════════════════════════════════════════════════════════════
 # risk_gate
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestRiskGate:
     def _make_diff(self, content: str) -> str:
@@ -425,6 +471,7 @@ class TestRiskGate:
         diff = self._make_diff("")
         rt = self._make_runtime([])
         from impactguard.risk_gate import run
+
         result = run(diff, rt)
         _rm(diff, rt)
         assert result == []
@@ -433,6 +480,7 @@ class TestRiskGate:
         diff = self._make_diff("REMOVED: some_func\n")
         rt = self._make_runtime([{"function": "some_func", "count": 50}])
         from impactguard.risk_gate import run
+
         result = run(diff, rt)
         _rm(diff, rt)
         assert len(result) >= 1
@@ -442,6 +490,7 @@ class TestRiskGate:
         diff = self._make_diff("REQUIRED POSITIONAL ADDED: my_func\n")
         rt = self._make_runtime([{"function": "my_func", "count": 200}])
         from impactguard.risk_gate import run
+
         result = run(diff, rt)
         _rm(diff, rt)
         assert len(result) >= 1
@@ -451,6 +500,7 @@ class TestRiskGate:
         rt = self._make_runtime([])
         out = str(tmp_path / "report.json")
         from impactguard.risk_gate import run
+
         result = run(diff, rt, output_path=out)
         _rm(diff, rt)
         assert Path(out).exists()
@@ -459,6 +509,7 @@ class TestRiskGate:
 
     def test_run_missing_diff_raises(self):
         from impactguard.risk_gate import run
+
         with pytest.raises(OSError):
             run("nonexistent_diff.txt", "nonexistent_rt.json")
 
@@ -466,20 +517,21 @@ class TestRiskGate:
         diff = self._make_diff("REMOVED: f\n")
         rt = _tmp("NOT JSON!!!", suffix=".json")
         from impactguard.risk_gate import run
+
         result = run(diff, rt)
         _rm(diff, rt)
         # bad runtime → empty runtime dict → still produces a report
         assert isinstance(result, list)
 
     def test_run_sort_order(self):
-        diff = self._make_diff(
-            "REMOVED: func_high\n"
-            "POSITIONAL REORDER: func_low\n"
+        diff = self._make_diff("REMOVED: func_high\nPOSITIONAL REORDER: func_low\n")
+        rt = self._make_runtime(
+            [
+                {"function": "func_high", "count": 500},
+            ]
         )
-        rt = self._make_runtime([
-            {"function": "func_high", "count": 500},
-        ])
         from impactguard.risk_gate import run
+
         result = run(diff, rt)
         _rm(diff, rt)
         # HIGH should come before UNKNOWN/LOW
@@ -493,6 +545,7 @@ class TestRiskGate:
         diff = self._make_diff("REMOVED: f\n")
         rt = self._make_runtime([{"function": "f", "count": 200}])
         from impactguard.risk_gate import run
+
         result_high_lambda = run(diff, rt, lambda_=10.0)
         _rm(diff, rt)
         # High lambda → more likely HIGH
@@ -501,6 +554,7 @@ class TestRiskGate:
     def test_main_no_argv(self, monkeypatch):
         monkeypatch.setattr(sys, "argv", ["risk_gate.py"])
         from impactguard.risk_gate import main
+
         with pytest.raises(SystemExit):
             main()
 
@@ -510,6 +564,7 @@ class TestRiskGate:
         out = str(tmp_path / "out.json")
         monkeypatch.setattr(sys, "argv", ["risk_gate.py", diff, rt, out])
         from impactguard.risk_gate import main
+
         result = main()
         _rm(diff, rt)
         assert isinstance(result, list)
@@ -517,6 +572,7 @@ class TestRiskGate:
     def test_main_runtime_none(self):
         diff = self._make_diff("REMOVED: foo\n")
         from impactguard.risk_gate import main
+
         result = main(diff_path=diff, runtime_path=None)
         _rm(diff)
         assert result == []
@@ -524,11 +580,11 @@ class TestRiskGate:
     # adversarial
     def test_run_positional_kwonly_lines(self):
         diff = self._make_diff(
-            "POSITIONAL REORDER: reordered_fn\n"
-            "KWONLY REMOVED: kwonly_fn\n"
+            "POSITIONAL REORDER: reordered_fn\nKWONLY REMOVED: kwonly_fn\n"
         )
         rt = self._make_runtime([])
         from impactguard.risk_gate import run
+
         result = run(diff, rt)
         _rm(diff, rt)
         assert isinstance(result, list)
@@ -537,6 +593,7 @@ class TestRiskGate:
         diff = self._make_diff("REMOVED: g\n")
         rt = _tmp("[]", suffix=".json")
         from impactguard.risk_gate import run
+
         result = run(diff, rt)
         _rm(diff, rt)
         assert isinstance(result, list)
@@ -545,6 +602,7 @@ class TestRiskGate:
         diff = self._make_diff("REMOVED: never_called\n")
         rt = self._make_runtime([{"function": "never_called", "count": 0}])
         from impactguard.risk_gate import run
+
         result = run(diff, rt)
         _rm(diff, rt)
         assert any(r.get("details") == "not observed" for r in result)
@@ -553,6 +611,7 @@ class TestRiskGate:
 # ═══════════════════════════════════════════════════════════════════════════════
 # enforce_gate
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestEnforceGate:
     def _diff(self, content: str) -> str:
@@ -565,6 +624,7 @@ class TestEnforceGate:
         diff = self._diff("ADDED: new_func\n")
         rt = self._rt([])
         from impactguard.enforce_gate import enforce
+
         code = enforce(diff, rt)
         _rm(diff, rt)
         assert code == 0
@@ -573,6 +633,7 @@ class TestEnforceGate:
         diff = self._diff("REMOVED: critical_func\n")
         rt = self._rt([{"function": "critical_func", "count": 5000}])
         from impactguard.enforce_gate import enforce
+
         code = enforce(diff, rt, lambda_=10.0)
         _rm(diff, rt)
         assert code == 1
@@ -581,6 +642,7 @@ class TestEnforceGate:
         diff = self._diff("REMOVED: unknown_fn\n")
         rt = self._rt([])  # no runtime → UNKNOWN
         from impactguard.enforce_gate import enforce
+
         code = enforce(diff, rt, block_unknown=False)
         _rm(diff, rt)
         assert code in (0, 1)  # depends on threshold
@@ -589,55 +651,94 @@ class TestEnforceGate:
         diff = self._diff("REMOVED: fn_with_no_runtime\n")
         rt = self._rt([])
         from impactguard.enforce_gate import enforce
+
         code = enforce(diff, rt, block_unknown=True)
         _rm(diff, rt)
         # UNKNOWN with block_unknown=True → 1
         assert code in (0, 1)
 
     def test_enforce_report_valid_low(self, capsys):
-        report = _tmpjson([
-            {"function": "f", "risk": "LOW", "change": "OPTIONAL", "exposure": 0.1, "confidence": 0.9}
-        ])
+        report = _tmpjson(
+            [
+                {
+                    "function": "f",
+                    "risk": "LOW",
+                    "change": "OPTIONAL",
+                    "exposure": 0.1,
+                    "confidence": 0.9,
+                }
+            ]
+        )
         from impactguard.enforce_gate import enforce_report
+
         code = enforce_report(report)
         _rm(report)
         assert code == 0
 
     def test_enforce_report_high_risk(self, capsys):
-        report = _tmpjson([
-            {"function": "g", "risk": "HIGH", "change": "REMOVED", "exposure": 0.8, "confidence": 0.9}
-        ])
+        report = _tmpjson(
+            [
+                {
+                    "function": "g",
+                    "risk": "HIGH",
+                    "change": "REMOVED",
+                    "exposure": 0.8,
+                    "confidence": 0.9,
+                }
+            ]
+        )
         from impactguard.enforce_gate import enforce_report
+
         code = enforce_report(report)
         _rm(report)
         assert code == 1
 
     def test_enforce_report_unknown_no_block(self, capsys):
-        report = _tmpjson([
-            {"function": "h", "risk": "UNKNOWN", "change": "REMOVED", "exposure": 0.0, "confidence": 0.1}
-        ])
+        report = _tmpjson(
+            [
+                {
+                    "function": "h",
+                    "risk": "UNKNOWN",
+                    "change": "REMOVED",
+                    "exposure": 0.0,
+                    "confidence": 0.1,
+                }
+            ]
+        )
         from impactguard.enforce_gate import enforce_report
+
         code = enforce_report(report, block_unknown=False)
         _rm(report)
         assert code == 0
 
     def test_enforce_report_unknown_block(self, capsys):
-        report = _tmpjson([
-            {"function": "h", "risk": "UNKNOWN", "change": "REMOVED", "exposure": 0.0, "confidence": 0.1}
-        ])
+        report = _tmpjson(
+            [
+                {
+                    "function": "h",
+                    "risk": "UNKNOWN",
+                    "change": "REMOVED",
+                    "exposure": 0.0,
+                    "confidence": 0.1,
+                }
+            ]
+        )
         from impactguard.enforce_gate import enforce_report
+
         code = enforce_report(report, block_unknown=True)
         _rm(report)
         assert code == 1
 
     def test_enforce_report_missing_file(self, capsys):
         from impactguard.enforce_gate import enforce_report
+
         code = enforce_report("does_not_exist_xyz.json")
         assert code == 2
 
     def test_enforce_report_bad_json(self, capsys):
         bad = _tmp("NOT JSON", suffix=".json")
         from impactguard.enforce_gate import enforce_report
+
         code = enforce_report(bad)
         _rm(bad)
         assert code == 2
@@ -646,17 +747,39 @@ class TestEnforceGate:
     def test_enforce_report_empty_list(self, capsys):
         report = _tmpjson([])
         from impactguard.enforce_gate import enforce_report
+
         code = enforce_report(report)
         _rm(report)
         assert code == 0
 
     def test_enforce_report_mixed_risks(self, capsys):
-        report = _tmpjson([
-            {"function": "a", "risk": "HIGH", "change": "REMOVED", "exposure": 0.9, "confidence": 0.9},
-            {"function": "b", "risk": "LOW", "change": "ADDED", "exposure": 0.1, "confidence": 0.5},
-            {"function": "c", "risk": "UNKNOWN", "change": "REMOVED", "exposure": 0.0, "confidence": 0.0},
-        ])
+        report = _tmpjson(
+            [
+                {
+                    "function": "a",
+                    "risk": "HIGH",
+                    "change": "REMOVED",
+                    "exposure": 0.9,
+                    "confidence": 0.9,
+                },
+                {
+                    "function": "b",
+                    "risk": "LOW",
+                    "change": "ADDED",
+                    "exposure": 0.1,
+                    "confidence": 0.5,
+                },
+                {
+                    "function": "c",
+                    "risk": "UNKNOWN",
+                    "change": "REMOVED",
+                    "exposure": 0.0,
+                    "confidence": 0.0,
+                },
+            ]
+        )
         from impactguard.enforce_gate import enforce_report
+
         code = enforce_report(report)
         _rm(report)
         assert code == 1  # HIGH present → always blocks
@@ -666,6 +789,7 @@ class TestEnforceGate:
         rt = self._rt([{"function": "f", "count": 100}])
         out = str(tmp_path / "report.json")
         from impactguard.enforce_gate import enforce
+
         code = enforce(diff, rt, output_path=out)
         _rm(diff, rt)
         assert Path(out).exists()
@@ -675,10 +799,12 @@ class TestEnforceGate:
 # trace_calls
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestTraceCalls:
     def setup_method(self):
         # Reset module state between tests
         import impactguard.trace_calls as tc
+
         tc.COUNTS.clear()
         tc.DETAILS.clear()
 
@@ -801,13 +927,16 @@ class TestTraceCalls:
 # trace_calls_prod
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestTraceCallsProd:
     def setup_method(self):
         import impactguard.trace_calls_prod as tcp
+
         tcp.COUNTS.clear()
 
     def test_should_sample_returns_bool(self):
         import impactguard.trace_calls_prod as tcp
+
         result = tcp.should_sample()
         assert isinstance(result, bool)
 
@@ -822,6 +951,7 @@ class TestTraceCallsProd:
 
     def test_flush_creates_file(self, tmp_path):
         import impactguard.trace_calls_prod as tcp
+
         out = str(tmp_path / "prod.json")
         tcp.flush(out)
         assert Path(out).exists()
@@ -830,6 +960,7 @@ class TestTraceCallsProd:
 
     def test_flush_default_path(self, tmp_path, monkeypatch):
         import impactguard.trace_calls_prod as tcp
+
         out = str(tmp_path / "default.json")
         monkeypatch.chdir(tmp_path)
         tcp.flush()
@@ -880,6 +1011,7 @@ class TestTraceCallsProd:
     # adversarial
     def test_flush_threadsafety(self, tmp_path):
         import threading
+
         import impactguard.trace_calls_prod as tcp
 
         out = str(tmp_path / "safe.json")
@@ -902,6 +1034,7 @@ class TestTraceCallsProd:
 # ═══════════════════════════════════════════════════════════════════════════════
 # impact_analysis
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class TestImpactAnalysis:
     def _sigs(self, data: list) -> str:
@@ -928,16 +1061,19 @@ class TestImpactAnalysis:
 
     def test_required_positional(self):
         from impactguard.impact_analysis import required_positional
+
         func = {"positional": [self._param("a"), self._param("b", has_default=True)]}
         assert required_positional(func) == 1
 
     def test_total_positional(self):
         from impactguard.impact_analysis import total_positional
+
         func = {"positional": [self._param("a"), self._param("b", has_default=True)]}
         assert total_positional(func) == 2
 
     def test_build_call_graph(self):
         from impactguard.impact_analysis import build_call_graph
+
         calls = [
             {"fqname": "foo", "file": "a.py"},
             {"fqname": "foo", "file": "b.py"},
@@ -949,6 +1085,7 @@ class TestImpactAnalysis:
 
     def test_find_transitive_callers_depth1(self):
         from impactguard.impact_analysis import find_transitive_callers
+
         graph = {"foo": {"bar_file.py"}, "bar": {"baz_file.py"}}
         result = find_transitive_callers({"foo"}, graph, depth=1)
         assert "bar_file.py" in result
@@ -956,6 +1093,7 @@ class TestImpactAnalysis:
 
     def test_find_transitive_callers_depth2(self):
         from impactguard.impact_analysis import find_transitive_callers
+
         graph = {"foo": {"bar"}, "bar": {"baz"}}
         result = find_transitive_callers({"foo"}, graph, depth=2)
         assert "bar" in result
@@ -963,42 +1101,75 @@ class TestImpactAnalysis:
 
     def test_find_transitive_empty(self):
         from impactguard.impact_analysis import find_transitive_callers
+
         result = find_transitive_callers(set(), {}, depth=3)
         assert result == {}
 
     def test_analyze_basic_missing_args(self, tmp_path):
         from impactguard.impact_analysis import analyze
-        sigs = self._sigs([
-            self._sig("mymod.my_func", positional=[self._param("a"), self._param("b")])
-        ])
-        calls = self._calls([
-            {"name": "my_func", "fqname": "mymod.my_func", "args": 0, "file": "caller.py",
-             "lineno": 5, "has_starargs": False, "has_kwargs": False}
-        ])
+
+        sigs = self._sigs(
+            [
+                self._sig(
+                    "mymod.my_func", positional=[self._param("a"), self._param("b")]
+                )
+            ]
+        )
+        calls = self._calls(
+            [
+                {
+                    "name": "my_func",
+                    "fqname": "mymod.my_func",
+                    "args": 0,
+                    "file": "caller.py",
+                    "lineno": 5,
+                    "has_starargs": False,
+                    "has_kwargs": False,
+                }
+            ]
+        )
         issues = analyze(sigs, calls)
         _rm(sigs, calls)
         assert any(i["change"] == "missing args" for i in issues)
 
     def test_analyze_too_many_args(self, tmp_path):
         from impactguard.impact_analysis import analyze
-        sigs = self._sigs([
-            self._sig("mod.func", positional=[self._param("a")])
-        ])
-        calls = self._calls([
-            {"name": "func", "fqname": "mod.func", "args": 5, "file": "f.py",
-             "lineno": 1, "has_starargs": False, "has_kwargs": False}
-        ])
+
+        sigs = self._sigs([self._sig("mod.func", positional=[self._param("a")])])
+        calls = self._calls(
+            [
+                {
+                    "name": "func",
+                    "fqname": "mod.func",
+                    "args": 5,
+                    "file": "f.py",
+                    "lineno": 1,
+                    "has_starargs": False,
+                    "has_kwargs": False,
+                }
+            ]
+        )
         issues = analyze(sigs, calls)
         _rm(sigs, calls)
         assert any(i["change"] == "too many args" for i in issues)
 
     def test_analyze_skip_starargs(self):
         from impactguard.impact_analysis import analyze
+
         sigs = self._sigs([self._sig("m.f", positional=[self._param("a")])])
-        calls = self._calls([
-            {"name": "f", "fqname": "m.f", "args": 99, "file": "x.py",
-             "lineno": 1, "has_starargs": True, "has_kwargs": False}
-        ])
+        calls = self._calls(
+            [
+                {
+                    "name": "f",
+                    "fqname": "m.f",
+                    "args": 99,
+                    "file": "x.py",
+                    "lineno": 1,
+                    "has_starargs": True,
+                    "has_kwargs": False,
+                }
+            ]
+        )
         issues = analyze(sigs, calls)
         _rm(sigs, calls)
         # starargs → skip
@@ -1006,11 +1177,21 @@ class TestImpactAnalysis:
 
     def test_analyze_with_runtime(self):
         from impactguard.impact_analysis import analyze
+
         sigs = self._sigs([self._sig("mod.fn", positional=[self._param("x")])])
-        calls = self._calls([
-            {"name": "fn", "fqname": "mod.fn", "args": 0, "file": "a.py",
-             "lineno": 1, "has_starargs": False, "has_kwargs": False}
-        ])
+        calls = self._calls(
+            [
+                {
+                    "name": "fn",
+                    "fqname": "mod.fn",
+                    "args": 0,
+                    "file": "a.py",
+                    "lineno": 1,
+                    "has_starargs": False,
+                    "has_kwargs": False,
+                }
+            ]
+        )
         rt = self._rt([{"function": "fn", "count": 50}])
         issues = analyze(sigs, calls, rt)
         _rm(sigs, calls, rt)
@@ -1018,28 +1199,51 @@ class TestImpactAnalysis:
 
     def test_analyze_fallback_name_match(self):
         from impactguard.impact_analysis import analyze
-        sigs = self._sigs([self._sig("module.helper_func", positional=[self._param("x")])])
-        calls = self._calls([
-            {"name": "helper_func", "fqname": "helper_func", "args": 0, "file": "y.py",
-             "lineno": 2, "has_starargs": False, "has_kwargs": False}
-        ])
+
+        sigs = self._sigs(
+            [self._sig("module.helper_func", positional=[self._param("x")])]
+        )
+        calls = self._calls(
+            [
+                {
+                    "name": "helper_func",
+                    "fqname": "helper_func",
+                    "args": 0,
+                    "file": "y.py",
+                    "lineno": 2,
+                    "has_starargs": False,
+                    "has_kwargs": False,
+                }
+            ]
+        )
         issues = analyze(sigs, calls)
         _rm(sigs, calls)
         assert len(issues) >= 1
 
     def test_analyze_unknown_function_skipped(self):
         from impactguard.impact_analysis import analyze
+
         sigs = self._sigs([self._sig("mod.known")])
-        calls = self._calls([
-            {"name": "unknown_xyz", "fqname": "unknown_xyz", "args": 0, "file": "z.py",
-             "lineno": 1, "has_starargs": False, "has_kwargs": False}
-        ])
+        calls = self._calls(
+            [
+                {
+                    "name": "unknown_xyz",
+                    "fqname": "unknown_xyz",
+                    "args": 0,
+                    "file": "z.py",
+                    "lineno": 1,
+                    "has_starargs": False,
+                    "has_kwargs": False,
+                }
+            ]
+        )
         issues = analyze(sigs, calls)
         _rm(sigs, calls)
         assert issues == []
 
     def test_analyze_bad_runtime_file(self, capsys):
         from impactguard.impact_analysis import analyze
+
         sigs = self._sigs([])
         calls = self._calls([])
         bad_rt = _tmp("INVALID JSON", suffix=".json")
@@ -1052,19 +1256,33 @@ class TestImpactAnalysis:
     def test_main_too_few_args(self, monkeypatch):
         monkeypatch.setattr(sys, "argv", ["impact_analysis.py"])
         from impactguard.impact_analysis import main
+
         with pytest.raises(SystemExit):
             main()
 
     def test_main_with_high_risk(self, monkeypatch):
         from impactguard.impact_analysis import analyze
-        sigs = self._sigs([self._sig("mod.fn", positional=[self._param("x"), self._param("y")])])
-        calls = self._calls([
-            {"name": "fn", "fqname": "mod.fn", "args": 0, "file": "a.py",
-             "lineno": 1, "has_starargs": False, "has_kwargs": False}
-        ])
+
+        sigs = self._sigs(
+            [self._sig("mod.fn", positional=[self._param("x"), self._param("y")])]
+        )
+        calls = self._calls(
+            [
+                {
+                    "name": "fn",
+                    "fqname": "mod.fn",
+                    "args": 0,
+                    "file": "a.py",
+                    "lineno": 1,
+                    "has_starargs": False,
+                    "has_kwargs": False,
+                }
+            ]
+        )
         rt = self._rt([{"function": "fn", "count": 500}])
         monkeypatch.setattr(sys, "argv", ["impact_analysis.py", sigs, calls, rt])
         from impactguard.impact_analysis import main
+
         with pytest.raises(SystemExit) as exc_info:
             main()
         _rm(sigs, calls, rt)
@@ -1072,23 +1290,43 @@ class TestImpactAnalysis:
 
     def test_main_no_high_risk(self, monkeypatch, capsys):
         sigs = self._sigs([self._sig("mod.safe_fn")])
-        calls = self._calls([
-            {"name": "safe_fn", "fqname": "mod.safe_fn", "args": 0, "file": "b.py",
-             "lineno": 1, "has_starargs": False, "has_kwargs": False}
-        ])
+        calls = self._calls(
+            [
+                {
+                    "name": "safe_fn",
+                    "fqname": "mod.safe_fn",
+                    "args": 0,
+                    "file": "b.py",
+                    "lineno": 1,
+                    "has_starargs": False,
+                    "has_kwargs": False,
+                }
+            ]
+        )
         monkeypatch.setattr(sys, "argv", ["impact_analysis.py", sigs, calls])
         from impactguard.impact_analysis import main
+
         main()  # Should not raise
         _rm(sigs, calls)
 
     # adversarial
     def test_analyze_vararg_func(self):
         from impactguard.impact_analysis import analyze
+
         sigs = self._sigs([self._sig("mod.variadic", vararg=True)])
-        calls = self._calls([
-            {"name": "variadic", "fqname": "mod.variadic", "args": 100, "file": "v.py",
-             "lineno": 1, "has_starargs": False, "has_kwargs": False}
-        ])
+        calls = self._calls(
+            [
+                {
+                    "name": "variadic",
+                    "fqname": "mod.variadic",
+                    "args": 100,
+                    "file": "v.py",
+                    "lineno": 1,
+                    "has_starargs": False,
+                    "has_kwargs": False,
+                }
+            ]
+        )
         issues = analyze(sigs, calls)
         _rm(sigs, calls)
         # vararg → max_args = inf → no "too many args"
@@ -1097,14 +1335,29 @@ class TestImpactAnalysis:
     def test_analyze_transitive_depth(self, monkeypatch):
         """When transitive_depth > 0, indirect callers are included."""
         import impactguard.config as cfg_mod
+
         # Temporarily set transitive_depth
-        monkeypatch.setattr(cfg_mod, "get", lambda sec, key, default=None: 2 if key == "transitive_depth" else default)
+        monkeypatch.setattr(
+            cfg_mod,
+            "get",
+            lambda sec, key, default=None: 2 if key == "transitive_depth" else default,
+        )
         from impactguard.impact_analysis import analyze
+
         sigs = self._sigs([self._sig("mod.fn", positional=[self._param("x")])])
-        calls = self._calls([
-            {"name": "fn", "fqname": "mod.fn", "args": 0, "file": "caller.py",
-             "lineno": 1, "has_starargs": False, "has_kwargs": False}
-        ])
+        calls = self._calls(
+            [
+                {
+                    "name": "fn",
+                    "fqname": "mod.fn",
+                    "args": 0,
+                    "file": "caller.py",
+                    "lineno": 1,
+                    "has_starargs": False,
+                    "has_kwargs": False,
+                }
+            ]
+        )
         issues = analyze(sigs, calls)
         _rm(sigs, calls)
         assert isinstance(issues, list)
@@ -1114,9 +1367,11 @@ class TestImpactAnalysis:
 # language fallback extractors (go, java, ruby, rust, c)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestGoExtractor:
     def _extractor(self):
         from impactguard.languages.go import GoExtractor
+
         e = GoExtractor()
         e._warned = True  # suppress warning noise
         return e
@@ -1125,14 +1380,18 @@ class TestGoExtractor:
         return _tmp(content, suffix=".go")
 
     def test_extract_simple_func(self):
-        src = self._write_go("package main\nfunc Hello(name string) string {\n  return name\n}\n")
+        src = self._write_go(
+            "package main\nfunc Hello(name string) string {\n  return name\n}\n"
+        )
         e = self._extractor()
         sigs = e.extract_signatures([src])
         _rm(src)
         assert any("Hello" in s["name"] for s in sigs)
 
     def test_extract_variadic_func(self):
-        src = self._write_go("package main\nfunc Sum(nums ...int) int {\n  return 0\n}\n")
+        src = self._write_go(
+            "package main\nfunc Sum(nums ...int) int {\n  return 0\n}\n"
+        )
         e = self._extractor()
         sigs = e.extract_signatures([src])
         _rm(src)
@@ -1143,7 +1402,9 @@ class TestGoExtractor:
             assert isinstance(func_sigs[0]["vararg"], bool)
 
     def test_extract_calls(self):
-        src = self._write_go("package main\nfunc main() {\n  fmt.Println(Hello(\"world\"))\n}\n")
+        src = self._write_go(
+            'package main\nfunc main() {\n  fmt.Println(Hello("world"))\n}\n'
+        )
         e = self._extractor()
         calls = e.extract_calls(Path(src))
         _rm(src)
@@ -1168,13 +1429,12 @@ class TestGoExtractor:
 
     def test_parse_union_members(self):
         from impactguard.languages.go import GoExtractor
+
         e = GoExtractor()
         assert e.parse_union_members("int") == frozenset({"int"})
 
     def test_ignore_comment(self):
-        src = self._write_go(
-            "package main\n// impactguard: ignore\nfunc Secret() {}\n"
-        )
+        src = self._write_go("package main\n// impactguard: ignore\nfunc Secret() {}\n")
         e = self._extractor()
         sigs = e.extract_signatures([src])
         _rm(src)
@@ -1184,7 +1444,9 @@ class TestGoExtractor:
 
     # adversarial
     def test_extract_method_receiver(self):
-        src = self._write_go("package p\ntype S struct{}\nfunc (s S) Method(x int) {}\n")
+        src = self._write_go(
+            "package p\ntype S struct{}\nfunc (s S) Method(x int) {}\n"
+        )
         e = self._extractor()
         sigs = e.extract_signatures([src])
         _rm(src)
@@ -1194,6 +1456,7 @@ class TestGoExtractor:
 class TestJavaExtractor:
     def _extractor(self):
         from impactguard.languages.java import JavaExtractor
+
         e = JavaExtractor()
         e._warned = True
         return e
@@ -1237,6 +1500,7 @@ class TestJavaExtractor:
 
     def test_parse_union_members(self):
         from impactguard.languages.java import JavaExtractor
+
         e = JavaExtractor()
         assert e.parse_union_members("String") == frozenset({"String"})
 
@@ -1271,6 +1535,7 @@ class TestJavaExtractor:
 class TestRubyExtractor:
     def _extractor(self):
         from impactguard.languages.ruby import RubyExtractor
+
         e = RubyExtractor()
         e._warned = True
         return e
@@ -1315,6 +1580,7 @@ class TestRubyExtractor:
 
     def test_parse_union_members(self):
         from impactguard.languages.ruby import RubyExtractor
+
         e = RubyExtractor()
         assert e.parse_union_members("String") == frozenset({"String"})
 
@@ -1347,6 +1613,7 @@ class TestRubyExtractor:
 class TestRustExtractor:
     def _extractor(self):
         from impactguard.languages.rust import RustExtractor
+
         e = RustExtractor()
         e._warned = True
         return e
@@ -1355,7 +1622,9 @@ class TestRustExtractor:
         return _tmp(content, suffix=".rs")
 
     def test_extract_simple_fn(self):
-        src = self._write_rust("pub fn greet(name: &str) -> String {\n    name.to_string()\n}\n")
+        src = self._write_rust(
+            "pub fn greet(name: &str) -> String {\n    name.to_string()\n}\n"
+        )
         e = self._extractor()
         sigs = e.extract_signatures([src])
         _rm(src)
@@ -1370,7 +1639,9 @@ class TestRustExtractor:
         assert any("no_variadic" in s["name"] for s in sigs)
 
     def test_extract_calls(self):
-        src = self._write_rust("fn main() {\n    greet(\"world\");\n    println!(\"hi\");\n}\n")
+        src = self._write_rust(
+            'fn main() {\n    greet("world");\n    println!("hi");\n}\n'
+        )
         e = self._extractor()
         calls = e.extract_calls(Path(src))
         _rm(src)
@@ -1383,6 +1654,7 @@ class TestRustExtractor:
 
     def test_parse_union_members(self):
         from impactguard.languages.rust import RustExtractor
+
         e = RustExtractor()
         assert e.parse_union_members("i32") == frozenset({"i32"})
 
@@ -1395,7 +1667,9 @@ class TestRustExtractor:
         assert isinstance(sigs, list)
 
     def test_extract_async_fn(self):
-        src = self._write_rust("async fn fetch(url: &str) -> Result<(), Box<dyn Error>> {\n    Ok(())\n}\n")
+        src = self._write_rust(
+            "async fn fetch(url: &str) -> Result<(), Box<dyn Error>> {\n    Ok(())\n}\n"
+        )
         e = self._extractor()
         sigs = e.extract_signatures([src])
         _rm(src)
@@ -1415,6 +1689,7 @@ class TestRustExtractor:
 class TestCExtractor:
     def _extractor(self):
         from impactguard.languages.c import CExtractor
+
         e = CExtractor()
         e._warned = True
         return e
@@ -1439,7 +1714,7 @@ class TestCExtractor:
             assert log_sigs[0]["vararg"] is True
 
     def test_extract_calls(self):
-        src = self._write_c("int main() {\n    printf(\"hi\");\n    return 0;\n}\n")
+        src = self._write_c('int main() {\n    printf("hi");\n    return 0;\n}\n')
         e = self._extractor()
         calls = e.extract_calls(Path(src))
         _rm(src)
@@ -1461,6 +1736,7 @@ class TestCExtractor:
 
     def test_parse_union_members(self):
         from impactguard.languages.c import CExtractor
+
         e = CExtractor()
         assert e.parse_union_members("int") == frozenset({"int"})
 
@@ -1477,23 +1753,32 @@ class TestCExtractor:
 # languages/base.py
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestLanguageExtractorBase:
     def test_language_extractor_protocol(self):
         from impactguard.languages.base import LanguageExtractor
         from impactguard.languages.python import PythonExtractor
+
         e = PythonExtractor()
         assert isinstance(e, LanguageExtractor)
 
     def test_all_registered_extractors_satisfy_protocol(self):
         from impactguard.languages.base import LanguageExtractor
-        from impactguard.languages.registry import _BY_LANGUAGE, get_extractor_by_language
+        from impactguard.languages.registry import (
+            _BY_LANGUAGE,
+            get_extractor_by_language,
+        )
+
         # Trigger registration via get_extractor_by_language
         get_extractor_by_language("python")
         for lang, extractor in _BY_LANGUAGE.items():
-            assert isinstance(extractor, LanguageExtractor), f"{lang} extractor fails protocol"
+            assert isinstance(extractor, LanguageExtractor), (
+                f"{lang} extractor fails protocol"
+            )
 
     def test_protocol_attributes_present(self):
         from impactguard.languages.ruby import RubyExtractor
+
         e = RubyExtractor()
         assert isinstance(e.language, str)
         assert isinstance(e.extensions, list)
@@ -1503,102 +1788,144 @@ class TestLanguageExtractorBase:
 # schema validators
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestSchemaValidators:
     def test_validate_signatures_valid(self):
         from impactguard.schema import validate_signatures
-        data = [{
-            "fqname": "mod.func", "name": "func",
-            "positional": [{"name": "x", "has_default": False}],
-            "kwonly": [], "vararg": False, "kwarg": False,
-        }]
+
+        data = [
+            {
+                "fqname": "mod.func",
+                "name": "func",
+                "positional": [{"name": "x", "has_default": False}],
+                "kwonly": [],
+                "vararg": False,
+                "kwarg": False,
+            }
+        ]
         valid, errors = validate_signatures(data)
         assert valid
         assert errors == []
 
     def test_validate_signatures_not_list(self):
         from impactguard.schema import validate_signatures
+
         valid, errors = validate_signatures({"key": "value"})
         assert not valid
         assert errors
 
     def test_validate_signatures_missing_field(self):
         from impactguard.schema import validate_signatures
+
         valid, errors = validate_signatures([{"fqname": "x"}])
         assert not valid
         assert any("name" in e for e in errors)
 
     def test_validate_signatures_bad_arg(self):
         from impactguard.schema import validate_signatures
-        data = [{
-            "fqname": "a", "name": "a", "positional": ["not_a_dict"],
-            "kwonly": [], "vararg": False, "kwarg": False,
-        }]
+
+        data = [
+            {
+                "fqname": "a",
+                "name": "a",
+                "positional": ["not_a_dict"],
+                "kwonly": [],
+                "vararg": False,
+                "kwarg": False,
+            }
+        ]
         valid, errors = validate_signatures(data)
         assert not valid
 
     def test_validate_calls_valid(self):
         from impactguard.schema import validate_calls
+
         valid, errors = validate_calls([{"name": "foo", "lineno": 1}])
         assert valid
 
     def test_validate_calls_not_list(self):
         from impactguard.schema import validate_calls
+
         valid, errors = validate_calls(None)
         assert not valid
 
     def test_validate_runtime_valid(self):
         from impactguard.schema import validate_runtime
+
         valid, errors = validate_runtime([{"function": "f", "count": 10}])
         assert valid
 
     def test_validate_runtime_bad_count(self):
         from impactguard.schema import validate_runtime
+
         valid, errors = validate_runtime([{"function": "f", "count": "bad"}])
         assert not valid
 
     def test_validate_risk_report_valid(self):
         from impactguard.schema import validate_risk_report
-        data = [{"function": "f", "risk": "HIGH", "change": "REMOVED",
-                 "exposure": 0.9, "confidence": 0.8}]
+
+        data = [
+            {
+                "function": "f",
+                "risk": "HIGH",
+                "change": "REMOVED",
+                "exposure": 0.9,
+                "confidence": 0.8,
+            }
+        ]
         valid, errors = validate_risk_report(data)
         assert valid
 
     def test_validate_risk_report_invalid_level(self):
         from impactguard.schema import validate_risk_report
-        data = [{"function": "f", "risk": "EXTREME", "change": "REMOVED",
-                 "exposure": 0.9, "confidence": 0.8}]
+
+        data = [
+            {
+                "function": "f",
+                "risk": "EXTREME",
+                "change": "REMOVED",
+                "exposure": 0.9,
+                "confidence": 0.8,
+            }
+        ]
         valid, errors = validate_risk_report(data)
         assert not valid
         assert any("EXTREME" in e for e in errors)
 
     def test_validate_dispatch(self):
         from impactguard.schema import validate
+
         valid, errors = validate("calls", [{"name": "f", "lineno": 1}])
         assert valid
 
     def test_validate_unknown_kind(self):
         from impactguard.schema import validate
+
         with pytest.raises(ValueError, match="Unknown"):
             validate("unknown_kind", [])
 
     # adversarial
     def test_validate_signatures_non_dict_item(self):
         from impactguard.schema import validate_signatures
+
         valid, errors = validate_signatures([42, "string"])
         assert not valid
 
     def test_validate_calls_non_dict_item(self):
         from impactguard.schema import validate_calls
+
         valid, errors = validate_calls([None, 42])
         assert not valid
 
     def test_validate_runtime_non_dict_item(self):
         from impactguard.schema import validate_runtime
+
         valid, errors = validate_runtime([True])
         assert not valid or errors  # either fails validation or has errors
 
     def test_validate_risk_report_non_dict_item(self):
         from impactguard.schema import validate_risk_report
+
         valid, errors = validate_risk_report(["string"])
         assert not valid
 
@@ -1607,9 +1934,11 @@ class TestSchemaValidators:
 # class_hierarchy
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestClassHierarchy:
     def test_extract_protocol_class(self):
         from impactguard.class_hierarchy import extract_class_hierarchy
+
         src = _tmp(
             "from typing import Protocol\n"
             "class MyProto(Protocol):\n"
@@ -1622,10 +1951,9 @@ class TestClassHierarchy:
 
     def test_extract_abc_class(self):
         from impactguard.class_hierarchy import extract_class_hierarchy
+
         src = _tmp(
-            "from abc import ABC\n"
-            "class Base(ABC):\n"
-            "    def method(self): pass\n"
+            "from abc import ABC\nclass Base(ABC):\n    def method(self): pass\n"
         )
         h = extract_class_hierarchy([src])
         _rm(src)
@@ -1633,7 +1961,11 @@ class TestClassHierarchy:
         assert h["Base"]["is_abc"] is True
 
     def test_find_implementations(self):
-        from impactguard.class_hierarchy import extract_class_hierarchy, find_implementations
+        from impactguard.class_hierarchy import (
+            extract_class_hierarchy,
+            find_implementations,
+        )
+
         src = _tmp(
             "from typing import Protocol\n"
             "class IFoo(Protocol):\n"
@@ -1643,7 +1975,13 @@ class TestClassHierarchy:
         )
         # Manually wire Impl as implementing IFoo
         h = extract_class_hierarchy([src])
-        h["Impl"] = {"bases": ["IFoo"], "file": src, "is_protocol": False, "is_abc": False, "methods": ["do"]}
+        h["Impl"] = {
+            "bases": ["IFoo"],
+            "file": src,
+            "is_protocol": False,
+            "is_abc": False,
+            "methods": ["do"],
+        }
         _rm(src)
         impls = find_implementations(h)
         if "IFoo" in impls:
@@ -1651,15 +1989,24 @@ class TestClassHierarchy:
 
     def test_get_cascade_changes(self):
         from impactguard.class_hierarchy import (
-            extract_class_hierarchy, find_implementations, get_cascade_changes
+            extract_class_hierarchy,
+            find_implementations,
+            get_cascade_changes,
         )
+
         src = _tmp(
             "from typing import Protocol\n"
             "class IBar(Protocol):\n"
             "    def render(self): ...\n"
         )
         h = extract_class_hierarchy([src])
-        h["ConcreteBar"] = {"bases": ["IBar"], "file": src, "is_protocol": False, "is_abc": False, "methods": ["render"]}
+        h["ConcreteBar"] = {
+            "bases": ["IBar"],
+            "file": src,
+            "is_protocol": False,
+            "is_abc": False,
+            "methods": ["render"],
+        }
         _rm(src)
         impls = find_implementations(h)
         comparison = {"breaking": [f"REMOVED: {src}:IBar.render"], "nonbreaking": []}
@@ -1669,6 +2016,7 @@ class TestClassHierarchy:
 
     def test_extract_syntax_error_skipped(self):
         from impactguard.class_hierarchy import extract_class_hierarchy
+
         src = _tmp("class Broken(\n!!!syntax error\n")
         h = extract_class_hierarchy([src])
         _rm(src)
@@ -1677,6 +2025,7 @@ class TestClassHierarchy:
     # adversarial
     def test_extract_empty_file(self):
         from impactguard.class_hierarchy import extract_class_hierarchy
+
         src = _tmp("")
         h = extract_class_hierarchy([src])
         _rm(src)
@@ -1684,6 +2033,7 @@ class TestClassHierarchy:
 
     def test_extract_no_classes(self):
         from impactguard.class_hierarchy import extract_class_hierarchy
+
         src = _tmp("def foo(): pass\nx = 1\n")
         h = extract_class_hierarchy([src])
         _rm(src)
@@ -1691,12 +2041,17 @@ class TestClassHierarchy:
 
     def test_get_cascade_no_matching_classes(self):
         from impactguard.class_hierarchy import get_cascade_changes
-        comparison = {"breaking": ["REMOVED: file.py:UnknownClass.method"], "nonbreaking": []}
+
+        comparison = {
+            "breaking": ["REMOVED: file.py:UnknownClass.method"],
+            "nonbreaking": [],
+        }
         cascade = get_cascade_changes(comparison, {})
         assert cascade == []
 
     def test_get_cascade_top_level_function_skipped(self):
         from impactguard.class_hierarchy import get_cascade_changes
+
         comparison = {"breaking": ["REMOVED: module.top_level_func"], "nonbreaking": []}
         cascade = get_cascade_changes(comparison, {})
         assert cascade == []
@@ -1706,9 +2061,11 @@ class TestClassHierarchy:
 # feedback
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestFeedback:
     def test_record_and_load(self, tmp_path):
-        from impactguard.feedback import record_outcome, load_outcomes
+        from impactguard.feedback import load_outcomes, record_outcome
+
         path = str(tmp_path / "feedback.json")
         record_outcome("patch-1", True, feedback_path=path)
         record_outcome("patch-2", False, change_type="positional", feedback_path=path)
@@ -1719,13 +2076,15 @@ class TestFeedback:
 
     def test_get_stats_empty(self, tmp_path):
         from impactguard.feedback import get_stats
+
         path = str(tmp_path / "empty.json")
         stats = get_stats(feedback_path=path)
         assert stats["total"] == 0
         assert stats["acceptance_rate"] == 0.0
 
     def test_get_stats_with_data(self, tmp_path):
-        from impactguard.feedback import record_outcome, get_stats
+        from impactguard.feedback import get_stats, record_outcome
+
         path = str(tmp_path / "stats.json")
         record_outcome("a", True, change_type="positional", feedback_path=path)
         record_outcome("b", True, change_type="positional", feedback_path=path)
@@ -1739,6 +2098,7 @@ class TestFeedback:
 
     def test_unsafe_path_rejected(self, capsys):
         from impactguard.feedback import record_outcome
+
         # Should not raise but should reject write
         record_outcome("x", True, feedback_path="/etc/shadow")
         captured = capsys.readouterr()
@@ -1746,6 +2106,7 @@ class TestFeedback:
 
     def test_env_var_path(self, tmp_path, monkeypatch):
         from impactguard import feedback
+
         path = str(tmp_path / "env_fb.json")
         monkeypatch.setenv("IMPACTGUARD_FEEDBACK", path)
         feedback.record_outcome("p", True)
@@ -1753,9 +2114,12 @@ class TestFeedback:
         assert len(outcomes) == 1
 
     def test_record_with_patch_data(self, tmp_path):
-        from impactguard.feedback import record_outcome, load_outcomes
+        from impactguard.feedback import load_outcomes, record_outcome
+
         path = str(tmp_path / "pd.json")
-        record_outcome("p", True, patch_data={"diff": "--- a\n+++ b"}, feedback_path=path)
+        record_outcome(
+            "p", True, patch_data={"diff": "--- a\n+++ b"}, feedback_path=path
+        )
         outcomes = load_outcomes(feedback_path=path)
         assert outcomes[0].get("patch_data", {}).get("diff") == "--- a\n+++ b"
 
@@ -1764,6 +2128,7 @@ class TestFeedback:
 # compare_signatures edge cases
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestCompareSignaturesEdgeCases:
     """Test compare_signatures.compare() by writing JSON files."""
 
@@ -1771,7 +2136,16 @@ class TestCompareSignaturesEdgeCases:
         """Write a list of signature dicts to a temp JSON file."""
         return _tmpjson(sigs)
 
-    def _sig(self, fqname, positional=None, kwonly=None, vararg=False, kwarg=False, return_type=None, decorators=None):
+    def _sig(
+        self,
+        fqname,
+        positional=None,
+        kwonly=None,
+        vararg=False,
+        kwarg=False,
+        return_type=None,
+        decorators=None,
+    ):
         return {
             "fqname": fqname,
             "name": fqname.split(".")[-1],
@@ -1790,6 +2164,7 @@ class TestCompareSignaturesEdgeCases:
 
     def _compare(self, old_sigs: list, new_sigs: list, **kwargs):
         from impactguard.compare_signatures import compare
+
         old_path = self._write_sigs(old_sigs)
         new_path = self._write_sigs(new_sigs)
         try:
@@ -1886,14 +2261,12 @@ class TestCompareSignaturesEdgeCases:
 # extract_calls edge cases
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestExtractCallsEdgeCases:
     def test_extract_calls_from_file(self):
         from impactguard.extract_calls import extract
-        src = _tmp(
-            "def foo():\n"
-            "    bar(1, 2)\n"
-            "    baz(x=3)\n"
-        )
+
+        src = _tmp("def foo():\n    bar(1, 2)\n    baz(x=3)\n")
         calls = extract(Path(src))
         _rm(src)
         names = {c["name"] for c in calls}
@@ -1901,11 +2274,13 @@ class TestExtractCallsEdgeCases:
 
     def test_extract_calls_nonexistent(self):
         from impactguard.extract_calls import extract
+
         calls = extract(Path("nonexistent_xyz.py"))
         assert calls == []
 
     def test_extract_calls_with_starargs(self):
         from impactguard.extract_calls import extract
+
         src = _tmp("foo(*args, **kwargs)\n")
         calls = extract(Path(src))
         _rm(src)
@@ -1918,52 +2293,63 @@ class TestExtractCallsEdgeCases:
 # risk_model edge cases
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestRiskModelEdgeCases:
     def test_get_severity_unknown(self):
         from impactguard.risk_model import get_severity
+
         # A change type not in the dict falls back to 0.5
         assert get_severity("COMPLETELY UNKNOWN CHANGE") == 0.5
 
     def test_classify_unknown_low_confidence(self):
         from impactguard.risk_model import classify
+
         risk, exp, conf = classify(0.9, 500, 1000, 1)  # samples=1 → low confidence
         assert risk == "UNKNOWN"
 
     def test_classify_high_risk(self):
         from impactguard.risk_model import classify
+
         risk, exp, conf = classify(0.9, 500, 1000, 500)
         assert risk == "HIGH"
 
     def test_classify_medium_risk(self):
         from impactguard.risk_model import classify
+
         risk, exp, conf = classify(0.6, 100, 1000, 200)
         assert risk in ("MEDIUM", "HIGH", "LOW")
 
     def test_compute_risk(self):
         from impactguard.risk_model import compute_risk
+
         r = compute_risk(0.9, 0.8, 0.7, 1.0)
         assert abs(r - 0.9 * 0.8 * 0.7) < 1e-9
 
     def test_exposure_zero_count(self):
         from impactguard.risk_model import exposure
+
         assert exposure(0, 100) == 0
 
     def test_exposure_full(self):
         from impactguard.risk_model import exposure
+
         assert exposure(100, 100) == pytest.approx(1.0)
 
     def test_confidence_saturates_at_1(self):
         from impactguard.risk_model import confidence
+
         assert confidence(200, 100) == 1.0
 
     def test_severity_return_type_changed(self):
         from impactguard.risk_model import get_severity
+
         # "RETURN TYPE CHANGED" should match before "TYPE CHANGED"
         s = get_severity("RETURN TYPE CHANGED: my_func")
         assert s == 0.5  # RETURN TYPE CHANGED score
 
     def test_severity_type_widened(self):
         from impactguard.risk_model import get_severity
+
         s = get_severity("TYPE WIDENED: my_func")
         assert s == 0.05
 
@@ -1972,25 +2358,30 @@ class TestRiskModelEdgeCases:
 # patch_confidence edge cases
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestPatchConfidenceEdgeCases:
     def test_classify_with_factors_high(self):
         from impactguard.patch_confidence import classify_with_factors
+
         level, factors = classify_with_factors(1.0, 1.0, 1.0, 1.0)
         assert level == "HIGH"
 
     def test_classify_with_factors_medium(self):
         from impactguard.patch_confidence import classify_with_factors
+
         level, factors = classify_with_factors(0.6, 0.6, 0.6, 1.0)
         assert level in ("MEDIUM", "HIGH", "LOW")
 
     def test_classify_with_factors_low(self):
         from impactguard.patch_confidence import classify_with_factors
+
         level, factors = classify_with_factors(0.1, 0.1, 0.1, 0.1)
         # 0.1^4 = 0.0001 < 0.2 → UNKNOWN
         assert level in ("LOW", "UNKNOWN")
 
     def test_compute_confidence(self):
         from impactguard.patch_confidence import compute_confidence
+
         score = compute_confidence(0.8, 0.9, 0.7, 1.0)
         assert 0.0 <= score <= 1.0
 
@@ -1999,9 +2390,11 @@ class TestPatchConfidenceEdgeCases:
 # analyze_module edge cases (uncovered lines 156-157, 178-184)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestAnalyzeModuleEdgeCases:
     def test_analyze_nonexistent_file(self):
         from impactguard.analyze_module import analyze
+
         result = analyze("nonexistent_xyz.py")
         # Returns None for files that can't be parsed
         assert result is None or isinstance(result, dict)
@@ -2009,6 +2402,7 @@ class TestAnalyzeModuleEdgeCases:
     def test_analyze_empty_file(self):
         src = _tmp("")
         from impactguard.analyze_module import analyze
+
         result = analyze(src)
         _rm(src)
         # May return None or a dict with empty calls
@@ -2017,6 +2411,7 @@ class TestAnalyzeModuleEdgeCases:
     def test_analyze_with_calls(self):
         src = _tmp("def foo(x):\n    return bar(x)\n")
         from impactguard.analyze_module import analyze
+
         result = analyze(src)
         _rm(src)
         assert result is not None
@@ -2027,9 +2422,11 @@ class TestAnalyzeModuleEdgeCases:
 # baseline edge cases
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestBaselineEdgeCases:
     def test_save_and_load_baseline(self, tmp_path):
-        from impactguard.baseline import save_baseline, load_baseline
+        from impactguard.baseline import load_baseline, save_baseline
+
         # save_baseline takes a list of Python source files
         src = _tmp("def foo(): pass\n")
         try:
@@ -2044,6 +2441,7 @@ class TestBaselineEdgeCases:
 
     def test_load_baseline_missing_file(self):
         from impactguard.baseline import load_baseline
+
         with pytest.raises((OSError, FileNotFoundError)):
             load_baseline("nonexistent_baseline_xyz.json")
 
@@ -2052,6 +2450,7 @@ class TestBaselineEdgeCases:
 # More adversarial tests
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestAdversarialEdgeCases:
     """Hostile/boundary inputs across modules."""
 
@@ -2059,20 +2458,32 @@ class TestAdversarialEdgeCases:
         diff = _tmp("REMOVED: функция_foo\nREMOVED: 日本語関数\n", suffix=".txt")
         rt = _tmpjson([])
         from impactguard.risk_gate import run
+
         result = run(diff, rt)
         _rm(diff, rt)
         assert isinstance(result, list)
 
     def test_enforce_report_with_null_risk(self, capsys):
-        report = _tmpjson([{"function": "f", "risk": None, "change": "x",
-                            "exposure": 0.0, "confidence": 0.0}])
+        report = _tmpjson(
+            [
+                {
+                    "function": "f",
+                    "risk": None,
+                    "change": "x",
+                    "exposure": 0.0,
+                    "confidence": 0.0,
+                }
+            ]
+        )
         from impactguard.enforce_gate import enforce_report
+
         code = enforce_report(report)
         _rm(report)
         assert code == 0
 
     def test_impact_analysis_with_empty_files(self):
         from impactguard.impact_analysis import analyze
+
         sigs = _tmpjson([])
         calls = _tmpjson([])
         issues = analyze(sigs, calls)
@@ -2081,6 +2492,7 @@ class TestAdversarialEdgeCases:
 
     def test_trace_calls_with_lambda(self):
         import impactguard.trace_calls as tc
+
         tc.COUNTS.clear()
         f = tc.trace(lambda: 42)
         assert f() == 42
@@ -2092,14 +2504,18 @@ class TestAdversarialEdgeCases:
         try:
             os.chdir(tmp_path)
             from impactguard.patch_generator import patch_add_default
-            diff, err = patch_add_default({"file": "file with spaces.py", "lineno": 1}, "x")
+
+            diff, err = patch_add_default(
+                {"file": "file with spaces.py", "lineno": 1}, "x"
+            )
         finally:
             os.chdir(orig_dir)
         # Either returns a diff or an error — should not crash
         assert (diff is not None and err is None) or (diff is None and err is not None)
 
     def test_schema_validate_empty_list(self):
-        from impactguard.schema import validate_signatures, validate_calls
+        from impactguard.schema import validate_calls, validate_signatures
+
         valid, errors = validate_signatures([])
         assert valid
         valid2, errors2 = validate_calls([])
@@ -2107,6 +2523,7 @@ class TestAdversarialEdgeCases:
 
     def test_compare_signatures_empty_dicts(self):
         from impactguard.compare_signatures import compare
+
         old = _tmpjson([])
         new = _tmpjson([])
         result = compare(old, new)
@@ -2116,6 +2533,7 @@ class TestAdversarialEdgeCases:
 
     def test_risk_model_zero_max_count(self):
         from impactguard.risk_model import exposure
+
         # max_count=0 edge: no crash
         result = exposure(0, 0)
         assert result == 0
@@ -2123,16 +2541,40 @@ class TestAdversarialEdgeCases:
     def test_impact_analysis_multiple_fallback_matches(self):
         """When multiple fqnames match by short name, should skip (ambiguous)."""
         from impactguard.impact_analysis import analyze
-        sigs = _tmpjson([
-            {"fqname": "mod1.helper", "name": "helper", "positional": [{"name": "x", "has_default": False}],
-             "kwonly": [], "vararg": False, "kwarg": False},
-            {"fqname": "mod2.helper", "name": "helper", "positional": [{"name": "x", "has_default": False}],
-             "kwonly": [], "vararg": False, "kwarg": False},
-        ])
-        calls = _tmpjson([
-            {"name": "helper", "fqname": "helper", "args": 0, "file": "z.py",
-             "lineno": 1, "has_starargs": False, "has_kwargs": False}
-        ])
+
+        sigs = _tmpjson(
+            [
+                {
+                    "fqname": "mod1.helper",
+                    "name": "helper",
+                    "positional": [{"name": "x", "has_default": False}],
+                    "kwonly": [],
+                    "vararg": False,
+                    "kwarg": False,
+                },
+                {
+                    "fqname": "mod2.helper",
+                    "name": "helper",
+                    "positional": [{"name": "x", "has_default": False}],
+                    "kwonly": [],
+                    "vararg": False,
+                    "kwarg": False,
+                },
+            ]
+        )
+        calls = _tmpjson(
+            [
+                {
+                    "name": "helper",
+                    "fqname": "helper",
+                    "args": 0,
+                    "file": "z.py",
+                    "lineno": 1,
+                    "has_starargs": False,
+                    "has_kwargs": False,
+                }
+            ]
+        )
         issues = analyze(sigs, calls)
         _rm(sigs, calls)
         # Ambiguous fallback → skipped
@@ -2142,16 +2584,19 @@ class TestAdversarialEdgeCases:
         bad = str(tmp_path / "bad.json")
         Path(bad).write_text("CORRUPT", encoding="utf-8")
         from impactguard.feedback import load_outcomes
+
         outcomes = load_outcomes(feedback_path=bad)
         assert outcomes == []
 
     def test_class_hierarchy_nonexistent_file(self):
         from impactguard.class_hierarchy import extract_class_hierarchy
+
         h = extract_class_hierarchy(["nonexistent_xyz.py"])
         assert h == {}
 
     def test_go_extractor_calls_nonexistent(self):
         from impactguard.languages.go import GoExtractor
+
         e = GoExtractor()
         e._warned = True
         calls = e.extract_calls(Path("nonexistent_xyz.go"))
@@ -2159,6 +2604,7 @@ class TestAdversarialEdgeCases:
 
     def test_ruby_extractor_calls_nonexistent(self):
         from impactguard.languages.ruby import RubyExtractor
+
         e = RubyExtractor()
         e._warned = True
         calls = e.extract_calls(Path("nonexistent_xyz.rb"))
@@ -2166,6 +2612,7 @@ class TestAdversarialEdgeCases:
 
     def test_rust_extractor_calls_nonexistent(self):
         from impactguard.languages.rust import RustExtractor
+
         e = RustExtractor()
         e._warned = True
         calls = e.extract_calls(Path("nonexistent_xyz.rs"))
@@ -2173,6 +2620,7 @@ class TestAdversarialEdgeCases:
 
     def test_c_extractor_calls_nonexistent(self):
         from impactguard.languages.c import CExtractor
+
         e = CExtractor()
         e._warned = True
         calls = e.extract_calls(Path("nonexistent_xyz.c"))
@@ -2180,6 +2628,7 @@ class TestAdversarialEdgeCases:
 
     def test_java_extractor_calls_nonexistent(self):
         from impactguard.languages.java import JavaExtractor
+
         e = JavaExtractor()
         e._warned = True
         calls = e.extract_calls(Path("nonexistent_xyz.java"))

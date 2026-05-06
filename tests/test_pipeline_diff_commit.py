@@ -10,10 +10,10 @@ from unittest import mock
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_unified_diff(old_src: str, new_src: str, filename: str = "module.py") -> str:
     """Create a minimal unified diff string from two source strings."""
@@ -47,6 +47,7 @@ def run_cli(args: list[str]) -> int:
 # ---------------------------------------------------------------------------
 # _parse_unified_diff
 # ---------------------------------------------------------------------------
+
 
 class TestParseUnifiedDiff:
     def test_basic_change(self):
@@ -151,7 +152,9 @@ class TestParseUnifiedDiff:
         """A diff touching Python, TypeScript, Makefile, and HTML captures only supported files."""
         from impactguard.pipeline import _parse_unified_diff
 
-        py_diff = _make_unified_diff("def foo(): pass\n", "def foo(x): pass\n", "mod.py")
+        py_diff = _make_unified_diff(
+            "def foo(): pass\n", "def foo(x): pass\n", "mod.py"
+        )
         ts_diff = textwrap.dedent("""\
             --- a/lib.ts
             +++ b/lib.ts
@@ -202,6 +205,7 @@ class TestParseUnifiedDiff:
 # ---------------------------------------------------------------------------
 # run_pipeline_diff
 # ---------------------------------------------------------------------------
+
 
 class TestRunPipelineDiff:
     def test_basic_diff_runs_pipeline(self, tmp_path):
@@ -294,6 +298,7 @@ class TestRunPipelineDiff:
 # run_pipeline_commit
 # ---------------------------------------------------------------------------
 
+
 class TestRunPipelineCommit:
     def test_invalid_ref_raises(self):
         from impactguard.pipeline import run_pipeline_commit
@@ -312,7 +317,9 @@ class TestRunPipelineCommit:
     def test_timeout_raises(self):
         from impactguard.pipeline import run_pipeline_commit
 
-        with mock.patch("subprocess.run", side_effect=subprocess.TimeoutExpired(["git"], 30)):
+        with mock.patch(
+            "subprocess.run", side_effect=subprocess.TimeoutExpired(["git"], 30)
+        ):
             with pytest.raises(RuntimeError, match="Timeout"):
                 run_pipeline_commit("HEAD")
 
@@ -352,6 +359,7 @@ class TestRunPipelineCommit:
 # CLI: check-diff
 # ---------------------------------------------------------------------------
 
+
 class TestCliCheckDiff:
     def test_check_diff_help(self):
         code = run_cli(["check-diff", "--help"])
@@ -385,6 +393,7 @@ class TestCliCheckDiff:
 # CLI: check-commit
 # ---------------------------------------------------------------------------
 
+
 class TestCliCheckCommit:
     def test_check_commit_help(self):
         code = run_cli(["check-commit", "--help"])
@@ -406,6 +415,7 @@ class TestCliCheckCommit:
 # ---------------------------------------------------------------------------
 # run_pipeline_diff_content (new in-memory / pipe variant)
 # ---------------------------------------------------------------------------
+
 
 class TestRunPipelineDiffContent:
     def test_basic_change(self):
@@ -486,15 +496,17 @@ class TestRunPipelineDiffContent:
         breaking_file = len(result_file.get("comparison", {}).get("breaking", []))
         breaking_content = len(result_content.get("comparison", {}).get("breaking", []))
         nonbreaking_file = len(result_file.get("comparison", {}).get("nonbreaking", []))
-        nonbreaking_content = len(result_content.get("comparison", {}).get("nonbreaking", []))
+        nonbreaking_content = len(
+            result_content.get("comparison", {}).get("nonbreaking", [])
+        )
         assert breaking_file == breaking_content
         assert nonbreaking_file == nonbreaking_content
-
 
 
 # ---------------------------------------------------------------------------
 # Multi-language diff support
 # ---------------------------------------------------------------------------
+
 
 class TestMultiLanguageDiff:
     """Verify that non-Python supported files in a diff are processed."""
@@ -621,6 +633,7 @@ class TestMultiLanguageDiff:
 # CLI: check-diff --pipe
 # ---------------------------------------------------------------------------
 
+
 class TestCliCheckDiffPipe:
     def test_pipe_nonbreaking_change(self, monkeypatch):
         old_src = "def foo(x):\n    return x\n"
@@ -628,6 +641,7 @@ class TestCliCheckDiffPipe:
         diff_text = _make_unified_diff(old_src, new_src)
 
         import io
+
         monkeypatch.setattr("sys.stdin", io.StringIO(diff_text))
         monkeypatch.setattr("sys.stdin.isatty", lambda: False)
 
@@ -636,6 +650,7 @@ class TestCliCheckDiffPipe:
 
     def test_pipe_empty_diff_returns_error(self, monkeypatch):
         import io
+
         monkeypatch.setattr("sys.stdin", io.StringIO(""))
         monkeypatch.setattr("sys.stdin.isatty", lambda: False)
 
@@ -645,6 +660,7 @@ class TestCliCheckDiffPipe:
     def test_pipe_no_stdin_data_error(self, monkeypatch):
         """--pipe with a TTY (no piped data) should fail with an error."""
         import io
+
         monkeypatch.setattr("sys.stdin", io.StringIO(""))
         monkeypatch.setattr("sys.stdin.isatty", lambda: True)
 
@@ -654,6 +670,7 @@ class TestCliCheckDiffPipe:
     def test_pipe_no_python_files_error(self, monkeypatch):
         diff_text = "--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-old\n+new\n"
         import io
+
         monkeypatch.setattr("sys.stdin", io.StringIO(diff_text))
         monkeypatch.setattr("sys.stdin.isatty", lambda: False)
 
@@ -666,4 +683,3 @@ class TestCliCheckDiffPipe:
         # argparse prints to stdout; check captured output
         captured = capsys.readouterr()
         assert "--pipe" in captured.out
-

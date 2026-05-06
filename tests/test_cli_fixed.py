@@ -1,13 +1,14 @@
 """Tests for CLI module - fixed."""
 
 import sys
-from unittest.mock import patch, mock_open
+from unittest.mock import mock_open, patch
 
 
 def run_cli(args):
     """Run CLI with args."""
     from impactguard.__main__ import main
-    with patch('sys.argv', ['impactguard'] + args):
+
+    with patch("sys.argv", ["impactguard"] + args):
         try:
             return main()
         except SystemExit as e:
@@ -16,7 +17,7 @@ def run_cli(args):
 
 def test_cli_help(capsys):
     """Test CLI help."""
-    result = run_cli(['--help'])
+    result = run_cli(["--help"])
     # Help exits with 0
     assert result == 0
     assert "usage" in capsys.readouterr().out.lower()
@@ -24,7 +25,7 @@ def test_cli_help(capsys):
 
 def test_cli_version(capsys):
     """Test CLI version."""
-    result = run_cli(['--version'])
+    result = run_cli(["--version"])
     # Version exits with 0
     assert result == 0
 
@@ -33,8 +34,9 @@ def test_extract_no_files(capsys):
     """Test extract with no files."""
     from io import StringIO
     from unittest.mock import patch
-    with patch('sys.stdin', StringIO('')):
-        result = run_cli(['extract'])
+
+    with patch("sys.stdin", StringIO("")):
+        result = run_cli(["extract"])
     captured = capsys.readouterr()
     assert "no input" in captured.out.lower() or result == 1
 

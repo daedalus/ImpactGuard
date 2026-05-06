@@ -18,13 +18,13 @@ def _validate_git_ref(ref: str) -> bool:
     if not ref or len(ref) > 255:
         return False
     # Disallow shell metacharacters
-    if any(c in ref for c in ['|', ';', '&', '$', '`', '!', '(', ')', '<', '>']):
+    if any(c in ref for c in ["|", ";", "&", "$", "`", "!", "(", ")", "<", ">"]):
         return False
     # Disallow path traversal
-    if '..' in ref or ref.startswith('/'):
+    if ".." in ref or ref.startswith("/"):
         return False
     # Allow safe git ref characters
-    if not re.match(r'^[a-zA-Z0-9._\-/~^@{}]+$', ref):
+    if not re.match(r"^[a-zA-Z0-9._\-/~^@{}]+$", ref):
         return False
     return True
 
@@ -34,7 +34,7 @@ def _validate_git_path(path: str) -> bool:
     if not path or len(path) > 255:
         return False
     # Disallow path traversal
-    if '..' in path or path.startswith('/') or path.startswith('\\'):
+    if ".." in path or path.startswith("/") or path.startswith("\\"):
         return False
     # Must be a relative path
     if Path(path).is_absolute():
@@ -71,7 +71,7 @@ def _extract_by_language(
 
     all_sigs: list[dict[str, Any]] = []
     for extractor, lang_files in groups.values():
-        all_sigs.extend(extractor.extract_signatures(lang_files, base_path=base_path))
+        all_sigs.extend(extractor.extract_signatures(lang_files, _base_path=base_path))
     return all_sigs
 
 
@@ -115,14 +115,13 @@ def run_pipeline(
         - report_html: str  # HTML report content
         - fixes: [...]  # suggested fixes
     """
-    from .compare_signatures import compare, load
     from .analyze_module import analyze as analyze_module
-    from .impact_analysis import analyze
-    from .risk_gate import run as run_risk
+    from .compare_signatures import compare
     from .generate_report import generate_html
-    from .suggest_fixes import suggest, enrich_with_fixes
-    from .patch_confidence import classify_with_factors
+    from .impact_analysis import analyze
     from .languages.registry import get_extractor as _get_extractor
+    from .risk_gate import run as run_risk
+    from .suggest_fixes import enrich_with_fixes
 
     result: dict[str, Any] = {}
 
@@ -237,13 +236,13 @@ def run_pipeline(
     fixes = []
     for item in risk:
         if "patches" in item or "callsite_patches" in item:
-            fix_suggestions = suggest(item, [item])
             enriched = enrich_with_fixes(item, [item])
             fixes.extend(enriched)
     result["fixes"] = fixes
 
     # Step 8: Semver recommendation
     from .semver import format_semver_recommendation
+
     result["semver"] = format_semver_recommendation(comparison)
 
     # Add signatures to result
@@ -270,7 +269,6 @@ def quick_check(
     Returns:
         Pipeline result dictionary
     """
-    from .extract_signatures import extract
 
     # Collect files with a registered language extractor
     def collect_files(path: str) -> list[str]:
@@ -322,6 +320,7 @@ def generate_changelog(
     if old_ref and new_ref:
         import subprocess
         import tempfile
+
         from .languages.registry import get_extractor as _get_extractor
 
         # Validate git refs
@@ -329,7 +328,7 @@ def generate_changelog(
             if not _validate_git_ref(ref):
                 raise ValueError(f"Invalid git reference: '{ref}'")
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory() as tmpdir:  # noqa: F823
             old_dir = Path(tmpdir) / "old"
             new_dir = Path(tmpdir) / "new"
             old_dir.mkdir()
@@ -340,13 +339,16 @@ def generate_changelog(
                 try:
                     result = subprocess.run(
                         ["git", "ls-tree", "-r", "--name-only", ref],
-                        capture_output=True, text=True, timeout=30,
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
                     )
                 except subprocess.TimeoutExpired:
                     raise RuntimeError(f"Timeout listing files from {ref}")
 
                 src_files = [
-                    f for f in result.stdout.splitlines()
+                    f
+                    for f in result.stdout.splitlines()
                     if _get_extractor(f) is not None and _validate_git_path(f)
                 ]
                 for src_file in src_files:
@@ -355,7 +357,9 @@ def generate_changelog(
                     try:
                         r = subprocess.run(
                             ["git", "show", f"{ref}:{src_file}"],
-                            capture_output=True, text=True, timeout=30,
+                            capture_output=True,
+                            text=True,
+                            timeout=30,
                         )
                     except subprocess.TimeoutExpired:
                         print(f"  Warning: Timeout extracting {src_file} from {ref}")
@@ -363,8 +367,12 @@ def generate_changelog(
                     if r.returncode == 0 and r.stdout:
                         dest_path.write_text(r.stdout)
 
-            old_sigs = _extract_by_language([str(f) for f in old_dir.rglob("*") if f.is_file()])
-            new_sigs = _extract_by_language([str(f) for f in new_dir.rglob("*") if f.is_file()])
+            old_sigs = _extract_by_language(
+                [str(f) for f in old_dir.rglob("*") if f.is_file()]
+            )
+            new_sigs = _extract_by_language(
+                [str(f) for f in new_dir.rglob("*") if f.is_file()]
+            )
     elif old_files and new_files:
         old_sigs = _extract_by_language(old_files)
         new_sigs = _extract_by_language(new_files)
@@ -464,6 +472,7 @@ def run_pipeline_git(
         Same as run_pipeline()
     """
     import subprocess
+
     from .languages.registry import get_extractor as _get_extractor
 
     def extract_commit_files(ref: str, dest: str) -> None:
@@ -475,20 +484,28 @@ def run_pipeline_git(
 
         if files:
             # Extract only specified files that have a known extractor
-            src_files = [f for f in files if _get_extractor(f) is not None and _validate_git_path(f)]
+            src_files = [
+                f
+                for f in files
+                if _get_extractor(f) is not None and _validate_git_path(f)
+            ]
         else:
             # Get list of ALL supported source files in the commit
             try:
                 result = subprocess.run(
                     ["git", "ls-tree", "-r", "--name-only", ref],
-                    capture_output=True, text=True, check=True, timeout=30
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    timeout=30,
                 )
             except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:
                 print(f"  Error: Failed to list files from {ref}: {e}", file=sys.stderr)
                 return
 
             src_files = [
-                f for f in result.stdout.splitlines()
+                f
+                for f in result.stdout.splitlines()
                 if _get_extractor(f) is not None and _validate_git_path(f)
             ]
 
@@ -506,7 +523,9 @@ def run_pipeline_git(
             try:
                 result = subprocess.run(
                     ["git", "show", f"{ref}:{src_file}"],
-                    capture_output=True, text=True, timeout=30
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
                 )
             except subprocess.TimeoutExpired:
                 print(f"  Warning: Timeout extracting {src_file} from {ref}")
@@ -799,9 +818,7 @@ class ImpactGuard:
 
         return extract(files)
 
-    def compare(
-        self, old_sigs: str, new_sigs: str
-    ) -> dict[str, list[str]]:
+    def compare(self, old_sigs: str, new_sigs: str) -> dict[str, list[str]]:
         """Compare two signature snapshots.
 
         Args:
@@ -831,7 +848,11 @@ class ImpactGuard:
             ``{"signatures": [...], "status": "no_baseline"}`` when no
             baseline has been saved yet.
         """
-        from .baseline import compare_with_baseline, baseline_exists, DEFAULT_BASELINE_PATH
+        from .baseline import (
+            DEFAULT_BASELINE_PATH,
+            baseline_exists,
+            compare_with_baseline,
+        )
         from .extract_signatures import extract
 
         files: list[str] = []

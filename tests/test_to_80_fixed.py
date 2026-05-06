@@ -7,7 +7,7 @@ from tempfile import mkdtemp
 
 def test_suggest_fixes_coverage_push(tmp_path):
     """Push suggest_fixes.py coverage up."""
-    from impactguard.suggest_fixes import suggest, enrich_with_fixes
+    from impactguard.suggest_fixes import enrich_with_fixes, suggest
 
     items = [
         {
@@ -29,6 +29,7 @@ def test_suggest_fixes_coverage_push(tmp_path):
 def test_main_coverage_push(tmp_path):
     """Push __main__.py coverage up."""
     import sys
+
     from impactguard.__main__ import main
 
     # Test check command
@@ -63,7 +64,7 @@ def test_risk_gate_coverage_push(tmp_path):
 
 def test_pipeline_coverage_push(tmp_path):
     """Push pipeline.py coverage up."""
-    from impactguard.pipeline import run_pipeline, quick_check
+    from impactguard.pipeline import quick_check, run_pipeline
 
     # Test quick_check with directory
     old_dir = tmp_path / "old"
@@ -134,17 +135,35 @@ def test_compare_signatures_coverage_push(tmp_path):
     from impactguard.compare_signatures import compare
 
     # Test with added function (non-breaking)
-    old = [{"fqname": "test:foo", "name": "foo",
-             "positional": [{"name": "a", "has_default": False}],
-             "kwonly": [], "vararg": False, "kwarg": False}]
+    old = [
+        {
+            "fqname": "test:foo",
+            "name": "foo",
+            "positional": [{"name": "a", "has_default": False}],
+            "kwonly": [],
+            "vararg": False,
+            "kwarg": False,
+        }
+    ]
 
-    new = [{"fqname": "test:foo", "name": "foo",
-             "positional": [{"name": "a", "has_default": False}],
-             "kwonly": [{"name": "x", "has_default": True}],
-             "vararg": False, "kwarg": False},
-            {"fqname": "test:bar", "name": "bar",
-             "positional": [], "kwonly": [],
-             "vararg": False, "kwarg": False}]
+    new = [
+        {
+            "fqname": "test:foo",
+            "name": "foo",
+            "positional": [{"name": "a", "has_default": False}],
+            "kwonly": [{"name": "x", "has_default": True}],
+            "vararg": False,
+            "kwarg": False,
+        },
+        {
+            "fqname": "test:bar",
+            "name": "bar",
+            "positional": [],
+            "kwonly": [],
+            "vararg": False,
+            "kwarg": False,
+        },
+    ]
 
     old_path = tmp_path / "old.json"
     new_path = tmp_path / "new.json"
@@ -161,16 +180,25 @@ def test_impact_analysis_coverage_push(tmp_path):
     from impactguard.impact_analysis import analyze
 
     sigs = tmp_path / "sigs.json"
-    sigs.write_text(json.dumps([
-        {"fqname": "test:foo", "name": "foo",
-         "positional": [{"name": "a", "has_default": False}],
-         "kwonly": [], "vararg": False, "kwarg": False}
-    ]))
+    sigs.write_text(
+        json.dumps(
+            [
+                {
+                    "fqname": "test:foo",
+                    "name": "foo",
+                    "positional": [{"name": "a", "has_default": False}],
+                    "kwonly": [],
+                    "vararg": False,
+                    "kwarg": False,
+                }
+            ]
+        )
+    )
 
     calls = tmp_path / "calls.json"
-    calls.write_text(json.dumps([
-        {"fqname": "test:foo", "file": "main.py", "lineno": 10}
-    ]))
+    calls.write_text(
+        json.dumps([{"fqname": "test:foo", "file": "main.py", "lineno": 10}])
+    )
 
     result = analyze(str(sigs), str(calls))
     assert isinstance(result, list)
