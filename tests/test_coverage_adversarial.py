@@ -1480,7 +1480,7 @@ class TestJavaExtractor:
         e = self._extractor()
         sigs = e.extract_signatures([src])
         _rm(src)
-        log_sigs = [s for s in sigs if s["name"] == "log"]
+        log_sigs = [s for s in sigs if s["name"] == "Bar.log"]
         if log_sigs:
             assert log_sigs[0]["vararg"] is True
 
@@ -1511,7 +1511,7 @@ class TestJavaExtractor:
         sigs = e.extract_signatures([src1, src2])
         _rm(src1, src2)
         names = {s["name"] for s in sigs}
-        assert "foo" in names or "bar" in names
+        assert "A.foo" in names or "B.bar" in names
 
     # adversarial
     def test_extract_empty_file(self):

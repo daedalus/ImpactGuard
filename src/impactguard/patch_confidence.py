@@ -15,7 +15,25 @@ def compute_confidence(
     return target_certainty * structural * semantic * complexity
 
 
-def classify(conf: float) -> str:
+def score(
+    target: float, structural: float, semantic: float, complexity: float
+) -> float:
+    """Compute patch confidence score (product of all factors).
+
+    Args:
+        target: Target-certainty multiplier (0–1).
+        structural: Structural-safety multiplier (0–1).
+        semantic: Semantic-risk multiplier (0–1).
+        complexity: Complexity-penalty multiplier (0–1).
+
+    Returns:
+        Final confidence score in [0, 1].
+    """
+    return compute_confidence(target, structural, semantic, complexity)
+
+
+def _classify_strict(conf: float) -> str:
+    """Classify a confidence score with strict UNKNOWN for sub-threshold values."""
     if conf >= 0.75:
         return "HIGH"
     elif conf >= 0.4:
@@ -24,6 +42,19 @@ def classify(conf: float) -> str:
         return "LOW"
     else:
         return "UNKNOWN"
+
+
+def classify(conf: float) -> str:
+    """Classify a patch confidence score.
+
+    Exactly-zero scores (all factors absent) are treated as LOW rather than
+    UNKNOWN, since there is no ambiguous evidence — the score simply indicates
+    no active patch factors are present.  Any positive sub-threshold value
+    (0 < conf < 0.2) returns UNKNOWN.
+    """
+    if conf == 0.0:
+        return "LOW"
+    return _classify_strict(conf)
 
 
 def get_target_certainty(
@@ -75,7 +106,7 @@ def classify_with_factors(
     target: float, structural: float, semantic: float, complexity: float
 ) -> tuple[str, dict[str, float]]:
     conf = compute_confidence(target, structural, semantic, complexity)
-    level = classify(conf)
+    level = _classify_strict(conf)
     return level, {
         "target": target,
         "structure": structural,
