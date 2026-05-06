@@ -280,6 +280,90 @@ def cmd_check_commits(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_check_diff(args: argparse.Namespace) -> int:
+    """Run ImpactGuard pipeline on a unified diff / patch file."""
+    from .pipeline import run_pipeline_diff
+
+    print(f"Analyzing diff: {args.diff}")
+
+    try:
+        result = run_pipeline_diff(
+            diff_path=args.diff,
+            runtime_path=getattr(args, "runtime", None),
+            output_dir=getattr(args, "output", None),
+        )
+    except (FileNotFoundError, ValueError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    print("\n=== Comparison ===")
+    comparison = result.get("comparison", {})
+    print(f"Breaking changes: {len(comparison.get('breaking', []))}")
+    print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
+
+    if "semver" in result:
+        sv = result["semver"]
+        print("\n=== Semver Recommendation ===")
+        print(f"Bump: {sv.get('bump', 'patch').upper()}  — {sv.get('reason', '')}")
+
+    if "risk" in result:
+        risk_items = result["risk"]
+        high = sum(1 for r in risk_items if r.get("risk") == "HIGH")
+        print("\n=== Risk Analysis ===")
+        print(f"HIGH risk: {high}")
+
+    output = getattr(args, "output", None)
+    if output and "report_html" in result:
+        from pathlib import Path as _Path
+        output_path = _Path(output)
+        report_path = str(output_path / "impact_report.html") if output_path.is_dir() else output
+        with open(report_path, "w") as f:
+            f.write(result["report_html"])
+        print(f"\nReport written to {report_path}")
+
+    return 1 if comparison.get("breaking") else 0
+
+
+def cmd_check_commit(args: argparse.Namespace) -> int:
+    """Run ImpactGuard pipeline on a single git commit vs its parent."""
+    from .pipeline import run_pipeline_commit
+
+    print(f"Analyzing commit: {args.commit_ref}")
+
+    try:
+        result = run_pipeline_commit(
+            commit_ref=args.commit_ref,
+            files=getattr(args, "files", None),
+            runtime_path=getattr(args, "runtime", None),
+            output_path=getattr(args, "output", None),
+        )
+    except (ValueError, RuntimeError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    print("\n=== Comparison ===")
+    comparison = result.get("comparison", {})
+    print(f"Breaking changes: {len(comparison.get('breaking', []))}")
+    print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
+
+    if "semver" in result:
+        sv = result["semver"]
+        print("\n=== Semver Recommendation ===")
+        print(f"Bump: {sv.get('bump', 'patch').upper()}  — {sv.get('reason', '')}")
+
+    if "risk" in result:
+        risk_items = result["risk"]
+        high = sum(1 for r in risk_items if r.get("risk") == "HIGH")
+        print("\n=== Risk Analysis ===")
+        print(f"HIGH risk: {high}")
+
+    output = getattr(args, "output", None)
+    if output and "report_html" in result:
+        print(f"\nReport written to {output}")
+
+    return 1 if comparison.get("breaking") else 0
+
+
 def cmd_install_hooks(args: argparse.Namespace) -> int:
     """Install git hooks for ImpactGuard."""
     import os
@@ -825,6 +909,37 @@ def main() -> int:
     )
     check_parser.set_defaults(func=cmd_check)
 
+    # check-diff subcommand (unified diff / patch file)
+    check_diff_parser = subparsers.add_parser(
+        "check-diff", help="Run full pipeline on a unified diff / patch file"
+    )
+    check_diff_parser.add_argument("diff", help="Path to unified diff / patch file")
+    check_diff_parser.add_argument(
+        "--runtime", help="Runtime data JSON (optional)"
+    )
+    check_diff_parser.add_argument(
+        "-o", "--output", help="Output directory or HTML report path"
+    )
+    check_diff_parser.set_defaults(func=cmd_check_diff)
+
+    # check-commit subcommand (single commit vs its parent)
+    check_commit_parser = subparsers.add_parser(
+        "check-commit", help="Run full pipeline on a single git commit vs its parent"
+    )
+    check_commit_parser.add_argument(
+        "commit_ref", help="Git reference (commit SHA, branch, tag) to analyze"
+    )
+    check_commit_parser.add_argument(
+        "--files", nargs="+", help="Specific files to compare (relative to repo root)"
+    )
+    check_commit_parser.add_argument(
+        "--runtime", help="Runtime data JSON (optional)"
+    )
+    check_commit_parser.add_argument(
+        "-o", "--output", help="Output path for HTML report"
+    )
+    check_commit_parser.set_defaults(func=cmd_check_commit)
+
     # check-commits subcommand (git commit comparison)
     check_commits_parser = subparsers.add_parser(
         "check-commits", help="Compare two git commits"
@@ -1006,7 +1121,8 @@ def main() -> int:
 
     if len(sys.argv) > 1 and sys.argv[1] not in [
         "extract", "compare", "analyze", "risk", "report", "report-markdown",
-        "trace", "check", "check-commits", "install-hooks",
+        "trace", "check", "check-commits", "check-diff", "check-commit",
+        "install-hooks",
         "enforce", "extract-calls", "runtime-impact",
         "generate-changelog", "suggest", "patch",
         "baseline", "semver", "feedback", "history",
