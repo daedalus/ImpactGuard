@@ -315,7 +315,8 @@ def cmd_check_diff(args: argparse.Namespace) -> int:
     output = getattr(args, "output", None)
     if output and "report_html" in result:
         from pathlib import Path as _Path
-        report_path = str(_Path(output) / "impact_report.html") if _Path(output).is_dir() else output
+        output_path = _Path(output)
+        report_path = str(output_path / "impact_report.html") if output_path.is_dir() else output
         with open(report_path, "w") as f:
             f.write(result["report_html"])
         print(f"\nReport written to {report_path}")
