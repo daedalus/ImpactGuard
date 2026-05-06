@@ -112,38 +112,39 @@ class AdversarialPair:
 
 
 def _strategy_required_param_hidden_by_type_annotation() -> AdversarialPair:
-    """Add a required positional parameter while also annotating an existing one.
+    """Add a required positional parameter while also widening a type annotation.
 
-    The type annotation on the first parameter is a genuine non-breaking
-    improvement.  A reviewer (or a naive tool) might focus on that and miss
-    that ``c`` is required and has no default.
+    Widening ``a``'s type from ``str`` to ``str | None`` is a genuine
+    non-breaking improvement.  A reviewer (or a naive tool) might focus on the
+    TYPE WIDENED entry and miss that ``c`` is required and has no default.
     """
     fqname = "mymodule:process"
     old = [
         _sig(
             fqname,
-            positional=[_param("a"), _param("b")],
+            positional=[_param("a", type_="str"), _param("b")],
         )
     ]
     new = [
         _sig(
             fqname,
             positional=[
-                _param("a", type_="str"),      # annotation added — looks like improvement
+                _param("a", type_="str | None"),  # widening — non-breaking noise
                 _param("b"),
-                _param("c"),                    # ← BREAKING: required, no default
+                _param("c"),                       # ← BREAKING: required, no default
             ],
         )
     ]
     return AdversarialPair(
         strategy_name="required_param_hidden_by_type_annotation",
         description=(
-            "A new required positional parameter is added alongside a harmless "
-            "type annotation on an existing parameter."
+            "A new required positional parameter is added alongside a non-breaking "
+            "type widening on an existing parameter."
         ),
         camouflage_notes=(
-            "The type annotation on 'a' is genuinely non-breaking and draws "
-            "attention away from the silent introduction of the required 'c'."
+            "Widening 'a' from 'str' to 'str | None' produces a TYPE WIDENED "
+            "non-breaking entry that draws attention away from the silent "
+            "introduction of the required 'c'."
         ),
         old_signatures=old,
         new_signatures=new,
@@ -476,7 +477,9 @@ def _strategy_kwargs_removal_hidden_by_explicit_params() -> AdversarialPair:
 # Registry
 # ---------------------------------------------------------------------------
 
-_STRATEGY_REGISTRY: dict[str, Any] = {
+from collections.abc import Callable
+
+_STRATEGY_REGISTRY: dict[str, Callable[[], "AdversarialPair"]] = {
     "required_param_hidden_by_type_annotation": _strategy_required_param_hidden_by_type_annotation,
     "positional_reorder_hidden_by_optional_add": _strategy_positional_reorder_hidden_by_optional_add,
     "type_narrowing_disguised_as_cleanup": _strategy_type_narrowing_disguised_as_cleanup,

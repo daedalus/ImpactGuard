@@ -188,13 +188,16 @@ class TestStrategyDetection:
         _assert_caught(pair)
 
     def test_required_param_camouflage_noise_present(self):
-        """Type annotation addition should generate a non-breaking entry."""
+        """Type annotation addition should be visible as a nonbreaking entry."""
         pair = generate("required_param_hidden_by_type_annotation")
         result = _run_compare(pair)
-        # At least one nonbreaking entry expected (type annotation → TYPE WIDENED)
-        # The important thing is the breaking entry is also present.
+        # The important check: the breaking entry must be present.
         breaking = result["breaking"]
         assert any("REQUIRED POSITIONAL ADDED" in b for b in breaking)
+        # Camouflage: type annotation on 'a' produces a TYPE WIDENED nonbreaking entry.
+        assert any("TYPE WIDENED" in nb for nb in result["nonbreaking"]), (
+            "Expected TYPE WIDENED nonbreaking entry from annotation on 'a'"
+        )
 
     def test_positional_reorder_hidden_by_optional_add(self):
         pair = generate("positional_reorder_hidden_by_optional_add")
