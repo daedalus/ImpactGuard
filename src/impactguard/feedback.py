@@ -282,7 +282,8 @@ def _upsert_toml_section(
     # Find section end (next section header or EOF)
     end_idx = len(result)
     for i in range(start_idx + 1, len(result)):
-        if result[i].strip().startswith("[") and not result[i].strip().startswith("[#"):
+        stripped_line = result[i].strip()
+        if stripped_line.startswith("[") and not stripped_line.startswith("[#"):
             end_idx = i
             break
 
