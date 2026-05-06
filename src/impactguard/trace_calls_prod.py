@@ -22,6 +22,11 @@ LAST_FLUSH = time.time()
 _rng = random.Random()
 
 
+def set_seed(seed: int) -> None:
+    """Seed the sampler's RNG for deterministic behaviour (e.g. in tests)."""
+    _rng.seed(seed)
+
+
 def should_sample() -> bool:
     return _rng.random() < SAMPLE_RATE
 
