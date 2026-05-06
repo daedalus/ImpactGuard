@@ -11,11 +11,13 @@ from impactguard.trace_calls_prod import (
 
 def test_should_sample():
     """Test should_sample function."""
-    # With SAMPLE_RATE = 0.01, random.random() < 0.01 is rarely True
-    with patch("random.random", return_value=0.005):
+    # With SAMPLE_RATE = 0.01, _rng.random() < 0.01 is rarely True
+    import impactguard.trace_calls_prod as tcp
+
+    with patch.object(tcp._rng, "random", return_value=0.005):
         assert should_sample() is True
 
-    with patch("random.random", return_value=0.5):
+    with patch.object(tcp._rng, "random", return_value=0.5):
         assert should_sample() is False
 
 

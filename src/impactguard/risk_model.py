@@ -1,6 +1,40 @@
 import math
 
-# Severity scores for different types of changes (defaults — overridable via config)
+# Severity scores for different types of changes.
+#
+# Rationale (S × E × C model):
+#   Values range from 0.0 (harmless) to 1.0 (guaranteed breakage).  They
+#   represent the *worst-case* probability that a caller breaks if it has not
+#   been updated.  The values below are calibrated against common Python API
+#   patterns:
+#
+#   REMOVED (1.0) — function is gone; every caller breaks unconditionally.
+#   REQUIRED (0.9) — new required positional/keyword argument; callers that
+#       don't pass it raise TypeError at runtime.
+#   POSITIONAL REORDER / KWONLY REMOVED (0.8) — positional callers break
+#       silently (wrong values) or loudly (TypeError), equally severe.
+#   *args/*kwargs REMOVED (0.7) — callers passing extra positional/keyword
+#       args break; callers that never used the variadic param are unaffected.
+#   TYPE CHANGED / DECORATOR REMOVED (0.6) — semantics change; many callers
+#       may break depending on how they use the return value or rely on the
+#       decorator's side-effects.
+#   RETURN TYPE CHANGED (0.5) — callers that inspect or unpack the return
+#       value may break; pure call-and-ignore callers are unaffected.
+#   DECORATOR ADDED (0.4) — adds a layer around the function (e.g. caching,
+#       auth check); only callers that depend on the raw callable break.
+#   OPTIONAL (0.3) — existing required argument gains a default; callers
+#       compiled against the old signature still work but the semantics may
+#       differ if the default is non-trivial.
+#   DEPRECATED REMOVED (0.15) — scheduled removal after a deprecation period;
+#       callers should already have migrated.
+#   ADDED (0.1) — new optional argument or new function; existing callers
+#       are unaffected.
+#   TYPE WIDENED / RETURN TYPE WIDENED (0.05) — accepts/returns more types
+#       than before; existing callers continue to work with the narrower type.
+#
+# These constants can be overridden per-project via impactguard.toml:
+#   [impactguard.severity_scores]
+#   REMOVED = 0.95
 SEVERITY_SCORES = {
     "REMOVED": 1.0,
     "REQUIRED": 0.9,

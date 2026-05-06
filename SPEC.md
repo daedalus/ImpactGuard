@@ -149,6 +149,17 @@ Block the CI pipeline on HIGH risk (or UNKNOWN risk when `--block-unknown` is se
 
 - `--block-unknown`: Treat UNKNOWN risk as a blocking condition.
 
+> **Important — UNKNOWN risk and missing runtime telemetry:**
+> The `UNKNOWN` risk class is assigned when there is insufficient runtime
+> call-count data (confidence < threshold).  This is the **normal state for
+> any new integration** because no runtime data has been collected yet.
+> By default `enforce` passes on UNKNOWN, which means a fresh CI setup
+> silently allows all API changes through until telemetry accumulates.  If
+> you want fail-safe behaviour from day one, add `--block-unknown` to your
+> enforce invocation or set `block_unknown = true` in `impactguard.toml`.
+> Once runtime data has been collected for at least one release cycle the
+> default (warn-only) behaviour becomes appropriate.
+
 #### `impactguard baseline save [files...] [--path PATH]`
 Save current signatures as the new baseline.
 
@@ -342,7 +353,9 @@ Wrapper for `impact_analysis.analyze()`.
 
 ## Edge Cases
 1. **Empty input files list**: `extract([])` returns empty list
-2. **Syntax errors in source**: Files with parse errors are silently skipped
+2. **Syntax errors in source**: Files with parse errors emit a `SyntaxWarning`
+   on stderr and are skipped.  Pass `strict=True` / `--strict` to turn skips
+   into hard errors (recommended for CI).
 3. **Missing JSON files**: `load()` and `compare()` should handle missing files gracefully
 4. **Empty signature snapshots**: Comparison should handle empty old or new snapshots
 5. **Zero runtime samples**: `confidence(0)` returns `0.0`, `exposure(0, N)` returns `0.0`
@@ -358,6 +371,12 @@ Wrapper for `impact_analysis.analyze()`.
 13. **Missing baseline**: `compare_with_baseline()` raises `FileNotFoundError` when no baseline
     has been saved yet.
 14. **Non-semver current_version**: `_increment()` appends `-next` instead of failing.
+15. **FQN basename collision**: When `base_path` is not supplied, fqnames use
+    only the file's basename (e.g. `utils.py:format_output`).  Two files with
+    the same basename in different directories will produce identical fqnames
+    and collide in the keyed dict.  For monorepos or multi-directory projects,
+    always pass `base_path=<project_root>` to `extract()` so that fqnames are
+    project-relative paths (e.g. `a/utils.py:format_output`).
 
 ---
 
@@ -396,9 +415,12 @@ Wrapper for `impact_analysis.analyze()`.
 ### Signature Extraction
 - Output is sorted by `fqname` for stable comparison
 - Handles both `def` and `async def`
-- Skips files that fail to parse (with silent continuation)
+- Skips files that fail to parse with a `SyntaxWarning` on stderr (use
+  `strict=True` in `extract()` or `--strict` on the CLI to turn skips into
+  hard errors in CI)
 
 ### Risk Analysis
-- Coverage requirement: ≥ 80% (currently at 73.33%)
+- Coverage requirement: ≥ 80% (enforced via `--cov-fail-under=80` in
+  `pyproject.toml`)
 - All edge cases listed above have corresponding tests
-- Tests pass with 0 failures (currently 80 passed)
+- Tests pass with 0 failures
