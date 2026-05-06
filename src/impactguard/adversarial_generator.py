@@ -33,8 +33,64 @@ Strategies
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass, field
 from typing import Any
+
+
+# ---------------------------------------------------------------------------
+# Name pools used by randomized strategy factories
+# ---------------------------------------------------------------------------
+
+_MODULES: list[str] = [
+    "myapp", "core", "utils", "service", "api",
+    "backend", "client", "handlers", "models", "auth",
+]
+
+_FUNC_NAMES: list[str] = [
+    "process", "transfer", "render", "connect", "log_event",
+    "fetch_name", "get_config", "create_session", "parse_config",
+    "send_request", "handle", "execute", "validate", "transform",
+    "dispatch", "publish", "query", "update", "delete",
+]
+
+_PARAM_NAMES: list[str] = [
+    "source", "destination", "user_id", "name", "value",
+    "data", "config", "context", "path", "key", "token",
+    "url", "host", "port", "limit", "mode", "version",
+    "payload", "request", "template", "event", "label",
+    "target", "origin", "tag", "scope", "region", "bucket",
+    "index", "cursor",
+]
+
+_SCALAR_TYPES: list[str] = ["str", "int", "float", "bool", "bytes"]
+
+#: Parameter names that *sound* optional but can carry no default in ``required_kwonly_added_with_misleading_name``.
+_MISLEADING_KWONLY_NAMES: list[str] = [
+    "optional_context", "extra_info", "maybe_config",
+    "optional_hints", "supplemental_data", "optional_meta",
+]
+
+_DECORATOR_NAMES: list[str] = ["cache", "lru_cache", "cached_property"]
+
+_VERSION_SUFFIXES: list[str] = ["_v2", "_v3", "_new", "_updated", "_next"]
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _rand_fqname(rng: random.Random) -> str:
+    """Return a random ``module:function`` qualified name."""
+    return f"{rng.choice(_MODULES)}:{rng.choice(_FUNC_NAMES)}"
+
+
+def _rand_params(rng: random.Random, n: int,
+                 exclude: list[str] | None = None) -> list[str]:
+    """Return *n* distinct parameter names chosen without replacement."""
+    pool = [p for p in _PARAM_NAMES if p not in (exclude or [])]
+    return rng.sample(pool, min(n, len(pool)))
 
 
 # ---------------------------------------------------------------------------
@@ -111,27 +167,32 @@ class AdversarialPair:
 # ---------------------------------------------------------------------------
 
 
-def _strategy_required_param_hidden_by_type_annotation() -> AdversarialPair:
+def _strategy_required_param_hidden_by_type_annotation(
+    rng: random.Random,
+) -> AdversarialPair:
     """Add a required positional parameter while also widening a type annotation.
 
-    Widening ``a``'s type from ``str`` to ``str | None`` is a genuine
+    Widening the first parameter's type from ``T`` to ``T | None`` is a genuine
     non-breaking improvement.  A reviewer (or a naive tool) might focus on the
-    TYPE WIDENED entry and miss that ``c`` is required and has no default.
+    TYPE WIDENED entry and miss that a new required parameter has no default.
     """
-    fqname = "mymodule:process"
+    fqname = _rand_fqname(rng)
+    p_a, p_b, p_c = _rand_params(rng, 3)
+    base_type = rng.choice(_SCALAR_TYPES)
+    wide_type = f"{base_type} | None"
     old = [
         _sig(
             fqname,
-            positional=[_param("a", type_="str"), _param("b")],
+            positional=[_param(p_a, type_=base_type), _param(p_b)],
         )
     ]
     new = [
         _sig(
             fqname,
             positional=[
-                _param("a", type_="str | None"),  # widening — non-breaking noise
-                _param("b"),
-                _param("c"),                       # ← BREAKING: required, no default
+                _param(p_a, type_=wide_type),  # widening — non-breaking noise
+                _param(p_b),
+                _param(p_c),                    # ← BREAKING: required, no default
             ],
         )
     ]
@@ -142,9 +203,9 @@ def _strategy_required_param_hidden_by_type_annotation() -> AdversarialPair:
             "type widening on an existing parameter."
         ),
         camouflage_notes=(
-            "Widening 'a' from 'str' to 'str | None' produces a TYPE WIDENED "
+            f"Widening '{p_a}' from '{base_type}' to '{wide_type}' produces a TYPE WIDENED "
             "non-breaking entry that draws attention away from the silent "
-            "introduction of the required 'c'."
+            f"introduction of the required '{p_c}'."
         ),
         old_signatures=old,
         new_signatures=new,
@@ -153,26 +214,29 @@ def _strategy_required_param_hidden_by_type_annotation() -> AdversarialPair:
     )
 
 
-def _strategy_positional_reorder_hidden_by_optional_add() -> AdversarialPair:
+def _strategy_positional_reorder_hidden_by_optional_add(
+    rng: random.Random,
+) -> AdversarialPair:
     """Swap two positional parameters while also adding an optional one.
 
     The optional addition is non-breaking noise that can make the diff look
     like a pure expansion of the API.
     """
-    fqname = "mymodule:transfer"
+    fqname = _rand_fqname(rng)
+    p_src, p_dst, p_opt = _rand_params(rng, 3)
     old = [
         _sig(
             fqname,
-            positional=[_param("source"), _param("destination")],
+            positional=[_param(p_src), _param(p_dst)],
         )
     ]
     new = [
         _sig(
             fqname,
             positional=[
-                _param("destination"),          # ← BREAKING: reorder
-                _param("source"),
-                _param("timeout", has_default=True),  # non-breaking noise
+                _param(p_dst),                         # ← BREAKING: reorder
+                _param(p_src),
+                _param(p_opt, has_default=True),       # non-breaking noise
             ],
         )
     ]
@@ -183,7 +247,7 @@ def _strategy_positional_reorder_hidden_by_optional_add() -> AdversarialPair:
             "third parameter is added simultaneously."
         ),
         camouflage_notes=(
-            "The optional 'timeout' addition produces a NONBREAKING entry, "
+            f"The optional '{p_opt}' addition produces a NONBREAKING entry, "
             "making the diff look like a pure feature addition."
         ),
         old_signatures=old,
@@ -193,62 +257,70 @@ def _strategy_positional_reorder_hidden_by_optional_add() -> AdversarialPair:
     )
 
 
-def _strategy_type_narrowing_disguised_as_cleanup() -> AdversarialPair:
-    """Narrow a parameter type from ``str | None`` to ``str``.
+def _strategy_type_narrowing_disguised_as_cleanup(
+    rng: random.Random,
+) -> AdversarialPair:
+    """Narrow a parameter type from ``T | None`` to ``T``.
 
     This looks like a cleanup or a "we no longer accept None" guarantee, but
     callers that previously passed ``None`` will break at runtime.
     """
-    fqname = "mymodule:render"
+    fqname = _rand_fqname(rng)
+    p_name = rng.choice(_PARAM_NAMES)
+    base_type = rng.choice(_SCALAR_TYPES)
+    wide_type = f"{base_type} | None"
     old = [
         _sig(
             fqname,
-            positional=[_param("template", type_="str | None")],
+            positional=[_param(p_name, type_=wide_type)],
         )
     ]
     new = [
         _sig(
             fqname,
-            positional=[_param("template", type_="str")],  # ← BREAKING: narrowing
+            positional=[_param(p_name, type_=base_type)],  # ← BREAKING: narrowing
         )
     ]
     return AdversarialPair(
         strategy_name="type_narrowing_disguised_as_cleanup",
         description=(
-            "A parameter's type is narrowed from 'str | None' to 'str', "
+            f"A parameter's type is narrowed from '{wide_type}' to '{base_type}', "
             "breaking callers that pass None."
         ),
         camouflage_notes=(
-            "Removing 'None' from a type union reads as a type-safety improvement "
-            "or stricter validation, not as a breaking contract change."
+            f"Removing 'None' from the '{p_name}' type union reads as a type-safety "
+            "improvement or stricter validation, not as a breaking contract change."
         ),
         old_signatures=old,
         new_signatures=new,
-        expected_breaking_patterns=["TYPE CHANGED", fqname, "template"],
+        expected_breaking_patterns=["TYPE CHANGED", fqname, p_name],
         expected_nonbreaking_patterns=[],
     )
 
 
-def _strategy_kwonly_removal_with_optional_addition() -> AdversarialPair:
+def _strategy_kwonly_removal_with_optional_addition(
+    rng: random.Random,
+) -> AdversarialPair:
     """Remove a required keyword-only argument while adding an optional one.
 
     The optional addition emits a NONBREAKING entry, masking the BREAKING
     removal.
     """
-    fqname = "mymodule:connect"
+    fqname = _rand_fqname(rng)
+    p_pos, p_req_kw, p_opt_kw = _rand_params(rng, 3)
     old = [
         _sig(
             fqname,
-            positional=[_param("host")],
-            kwonly=[_param("auth_token")],          # required kwonly
+            positional=[_param(p_pos)],
+            kwonly=[_param(p_req_kw)],              # required kwonly
         )
     ]
     new = [
         _sig(
             fqname,
-            positional=[_param("host")],
-            kwonly=[_param("timeout", has_default=True)],  # optional — noise
-            # auth_token silently removed ← BREAKING
+            positional=[_param(p_pos)],
+            kwonly=[_param(p_opt_kw, has_default=True)],  # optional — noise
+            # p_req_kw silently removed ← BREAKING
         )
     ]
     return AdversarialPair(
@@ -258,8 +330,8 @@ def _strategy_kwonly_removal_with_optional_addition() -> AdversarialPair:
             "keyword argument is added."
         ),
         camouflage_notes=(
-            "The addition of 'timeout' generates a NONBREAKING signal and looks "
-            "like a feature enhancement, hiding the removal of 'auth_token'."
+            f"The addition of '{p_opt_kw}' generates a NONBREAKING signal and looks "
+            f"like a feature enhancement, hiding the removal of '{p_req_kw}'."
         ),
         old_signatures=old,
         new_signatures=new,
@@ -268,18 +340,21 @@ def _strategy_kwonly_removal_with_optional_addition() -> AdversarialPair:
     )
 
 
-def _strategy_vararg_removal_with_kwarg_addition() -> AdversarialPair:
+def _strategy_vararg_removal_with_kwarg_addition(
+    rng: random.Random,
+) -> AdversarialPair:
     """Remove ``*args`` while simultaneously adding ``**kwargs``.
 
     ``**kwargs`` makes the signature look more flexible, but callers relying
     on positional variadic arguments will break.
     """
-    fqname = "mymodule:log_event"
+    fqname = _rand_fqname(rng)
+    (p_first,) = _rand_params(rng, 1)
     old = [
-        _sig(fqname, positional=[_param("event")], vararg=True)
+        _sig(fqname, positional=[_param(p_first)], vararg=True)
     ]
     new = [
-        _sig(fqname, positional=[_param("event")], vararg=False, kwarg=True)
+        _sig(fqname, positional=[_param(p_first)], vararg=False, kwarg=True)
         # *args REMOVED ← BREAKING; **kwargs ADDED ← looks like expansion
     ]
     return AdversarialPair(
@@ -299,24 +374,29 @@ def _strategy_vararg_removal_with_kwarg_addition() -> AdversarialPair:
     )
 
 
-def _strategy_return_type_narrowing_disguised_as_guarantee() -> AdversarialPair:
-    """Narrow the return type from ``str | None`` to ``str``.
+def _strategy_return_type_narrowing_disguised_as_guarantee(
+    rng: random.Random,
+) -> AdversarialPair:
+    """Narrow the return type from ``T | None`` to ``T``.
 
     Callers that branch on ``None`` will now have dead-code paths or runtime
     errors if the implementation ever still returns ``None`` in practice.
     """
-    fqname = "mymodule:fetch_name"
+    fqname = _rand_fqname(rng)
+    (p_first,) = _rand_params(rng, 1)
+    base_type = rng.choice(_SCALAR_TYPES)
+    wide_type = f"{base_type} | None"
     old = [
-        _sig(fqname, positional=[_param("user_id")], return_type="str | None")
+        _sig(fqname, positional=[_param(p_first)], return_type=wide_type)
     ]
     new = [
-        _sig(fqname, positional=[_param("user_id")], return_type="str")
+        _sig(fqname, positional=[_param(p_first)], return_type=base_type)
         # BREAKING: return type narrowed
     ]
     return AdversarialPair(
         strategy_name="return_type_narrowing_disguised_as_guarantee",
         description=(
-            "The return type is narrowed from 'str | None' to 'str', "
+            f"The return type is narrowed from '{wide_type}' to '{base_type}', "
             "appearing as a stronger guarantee while breaking downstream None-checks."
         ),
         camouflage_notes=(
@@ -330,34 +410,38 @@ def _strategy_return_type_narrowing_disguised_as_guarantee() -> AdversarialPair:
     )
 
 
-def _strategy_decorator_removal_hidden_by_optional_kwarg() -> AdversarialPair:
-    """Remove a ``@cache`` decorator while adding an optional ``force`` kwarg.
+def _strategy_decorator_removal_hidden_by_optional_kwarg(
+    rng: random.Random,
+) -> AdversarialPair:
+    """Remove a caching decorator while adding an optional ``force`` kwarg.
 
     The optional kwarg is non-breaking; the decorator removal changes the
     function's caching semantics and calling convention for callers that
     depend on them.
     """
-    fqname = "mymodule:get_config"
+    fqname = _rand_fqname(rng)
+    p_key, p_force = _rand_params(rng, 2)
+    decorator = rng.choice(_DECORATOR_NAMES)
     old = [
-        _sig(fqname, positional=[_param("key")], decorators=["cache"])
+        _sig(fqname, positional=[_param(p_key)], decorators=[decorator])
     ]
     new = [
         _sig(
             fqname,
-            positional=[_param("key")],
-            kwonly=[_param("force", has_default=True)],  # noise
-            decorators=[],  # ← BREAKING: cache decorator removed
+            positional=[_param(p_key)],
+            kwonly=[_param(p_force, has_default=True)],  # noise
+            decorators=[],  # ← BREAKING: decorator removed
         )
     ]
     return AdversarialPair(
         strategy_name="decorator_removal_hidden_by_optional_kwarg",
         description=(
-            "A ``@cache`` decorator is removed while an optional keyword-only "
+            f"A ``@{decorator}`` decorator is removed while an optional keyword-only "
             "argument is added."
         ),
         camouflage_notes=(
-            "The 'force' kwarg looks like a cache-invalidation option being added, "
-            "which could be mistaken for a caching improvement rather than removal."
+            f"The '{p_force}' kwarg looks like a cache-invalidation option being added, "
+            f"which could be mistaken for a caching improvement rather than removal of @{decorator}."
         ),
         old_signatures=old,
         new_signatures=new,
@@ -366,32 +450,36 @@ def _strategy_decorator_removal_hidden_by_optional_kwarg() -> AdversarialPair:
     )
 
 
-def _strategy_required_kwonly_added_with_misleading_name() -> AdversarialPair:
+def _strategy_required_kwonly_added_with_misleading_name(
+    rng: random.Random,
+) -> AdversarialPair:
     """Add a required keyword-only parameter whose name implies optionality.
 
     Naming a required parameter ``optional_context`` or ``extra_info``
     suggests it is supplementary, but the absence of a default makes it
     mandatory.
     """
-    fqname = "mymodule:create_session"
+    fqname = _rand_fqname(rng)
+    (p_pos,) = _rand_params(rng, 1)
+    misleading_name = rng.choice(_MISLEADING_KWONLY_NAMES)
     old = [
-        _sig(fqname, positional=[_param("user_id")])
+        _sig(fqname, positional=[_param(p_pos)])
     ]
     new = [
         _sig(
             fqname,
-            positional=[_param("user_id")],
-            kwonly=[_param("optional_context")],  # ← BREAKING: no default!
+            positional=[_param(p_pos)],
+            kwonly=[_param(misleading_name)],  # ← BREAKING: no default!
         )
     ]
     return AdversarialPair(
         strategy_name="required_kwonly_added_with_misleading_name",
         description=(
-            "A required keyword-only parameter named 'optional_context' is added, "
+            f"A required keyword-only parameter named '{misleading_name}' is added, "
             "breaking callers that do not supply it."
         ),
         camouflage_notes=(
-            "The word 'optional' in the parameter name implies it has a default, "
+            f"The word suggesting optionality in '{misleading_name}' implies it has a default, "
             "leading reviewers to classify it as a safe addition."
         ),
         old_signatures=old,
@@ -401,25 +489,31 @@ def _strategy_required_kwonly_added_with_misleading_name() -> AdversarialPair:
     )
 
 
-def _strategy_function_removal_hidden_by_rename_addition() -> AdversarialPair:
+def _strategy_function_removal_hidden_by_rename_addition(
+    rng: random.Random,
+) -> AdversarialPair:
     """Remove a public function while adding a similarly-named replacement.
 
     From a diff perspective the change looks like a rename / upgrade, but any
     caller importing the old name will get an ``AttributeError``.
     """
-    old_fqname = "mymodule:parse_config"
-    new_fqname = "mymodule:parse_config_v2"
+    old_fqname = _rand_fqname(rng)
+    suffix = rng.choice(_VERSION_SUFFIXES)
+    module, func = old_fqname.split(":")
+    new_fqname = f"{module}:{func}{suffix}"
+    (p_path,) = _rand_params(rng, 1)
+    (p_strict,) = _rand_params(rng, 1, exclude=[p_path])
     old = [
-        _sig(old_fqname, positional=[_param("path")])
+        _sig(old_fqname, positional=[_param(p_path)])
     ]
     new = [
-        _sig(new_fqname, positional=[_param("path"), _param("strict", has_default=True)])
+        _sig(new_fqname, positional=[_param(p_path), _param(p_strict, has_default=True)])
         # old function REMOVED ← BREAKING; new function ADDED ← noise
     ]
     return AdversarialPair(
         strategy_name="function_removal_hidden_by_rename_addition",
         description=(
-            "The original function is removed and a new '_v2' variant is added, "
+            f"The original function is removed and a new '{suffix.lstrip('_')}' variant is added, "
             "appearing as a non-destructive upgrade."
         ),
         camouflage_notes=(
@@ -433,25 +527,28 @@ def _strategy_function_removal_hidden_by_rename_addition() -> AdversarialPair:
     )
 
 
-def _strategy_kwargs_removal_hidden_by_explicit_params() -> AdversarialPair:
+def _strategy_kwargs_removal_hidden_by_explicit_params(
+    rng: random.Random,
+) -> AdversarialPair:
     """Replace ``**kwargs`` with explicit optional parameters.
 
     The change looks like an API clarity improvement, but callers that pass
     arbitrary keyword arguments (not in the explicit list) will get a
     ``TypeError``.
     """
-    fqname = "mymodule:send_request"
+    fqname = _rand_fqname(rng)
+    p_url, p1, p2, p3 = _rand_params(rng, 4)
     old = [
-        _sig(fqname, positional=[_param("url")], kwarg=True)
+        _sig(fqname, positional=[_param(p_url)], kwarg=True)
     ]
     new = [
         _sig(
             fqname,
-            positional=[_param("url")],
+            positional=[_param(p_url)],
             kwonly=[
-                _param("timeout", has_default=True),
-                _param("retries", has_default=True),
-                _param("verify_ssl", has_default=True),
+                _param(p1, has_default=True),
+                _param(p2, has_default=True),
+                _param(p3, has_default=True),
             ],
             kwarg=False,  # ← BREAKING: **kwargs removed
         )
@@ -463,8 +560,9 @@ def _strategy_kwargs_removal_hidden_by_explicit_params() -> AdversarialPair:
             "breaking callers that pass unlisted keyword arguments."
         ),
         camouflage_notes=(
-            "Adding named parameters looks like better documentation and IDE support. "
-            "The loss of forward-compatibility for unknown kwargs is easy to miss."
+            f"Adding named parameters like '{p1}', '{p2}', '{p3}' looks like better "
+            "documentation and IDE support. The loss of forward-compatibility for "
+            "unknown kwargs is easy to miss."
         ),
         old_signatures=old,
         new_signatures=new,
@@ -479,7 +577,7 @@ def _strategy_kwargs_removal_hidden_by_explicit_params() -> AdversarialPair:
 
 from collections.abc import Callable
 
-_STRATEGY_REGISTRY: dict[str, Callable[[], "AdversarialPair"]] = {
+_STRATEGY_REGISTRY: dict[str, Callable[["random.Random"], "AdversarialPair"]] = {
     "required_param_hidden_by_type_annotation": _strategy_required_param_hidden_by_type_annotation,
     "positional_reorder_hidden_by_optional_add": _strategy_positional_reorder_hidden_by_optional_add,
     "type_narrowing_disguised_as_cleanup": _strategy_type_narrowing_disguised_as_cleanup,
@@ -498,13 +596,19 @@ def list_strategies() -> list[str]:
     return list(_STRATEGY_REGISTRY)
 
 
-def generate(strategy_name: str) -> AdversarialPair:
+def generate(strategy_name: str, *, seed: int | str | None = None) -> AdversarialPair:
     """Generate an :class:`AdversarialPair` for the named strategy.
 
     Parameters
     ----------
     strategy_name:
         One of the names returned by :func:`list_strategies`.
+    seed:
+        Optional seed for the internal :class:`random.Random` instance.
+        Passing the same *seed* value guarantees identical output
+        (deterministic / reproducible).  Omitting *seed* (or passing
+        ``None``) draws entropy from the OS, producing a unique result
+        each time.
 
     Returns
     -------
@@ -520,15 +624,26 @@ def generate(strategy_name: str) -> AdversarialPair:
             f"Unknown strategy {strategy_name!r}. "
             f"Available: {list(_STRATEGY_REGISTRY)}"
         )
-    return _STRATEGY_REGISTRY[strategy_name]()
+    rng = random.Random(seed)
+    return _STRATEGY_REGISTRY[strategy_name](rng)
 
 
-def generate_all() -> list[AdversarialPair]:
+def generate_all(*, seed: int | str | None = None) -> list[AdversarialPair]:
     """Generate one :class:`AdversarialPair` for every registered strategy.
+
+    Parameters
+    ----------
+    seed:
+        Optional seed for the internal :class:`random.Random` instance
+        shared across all strategy calls.  Passing the same *seed* always
+        produces the same list (deterministic / reproducible).  Omitting
+        *seed* (or passing ``None``) draws OS entropy, yielding a unique
+        result each time.
 
     Returns
     -------
     list[AdversarialPair]
         One entry per strategy, in registration order.
     """
-    return [factory() for factory in _STRATEGY_REGISTRY.values()]
+    rng = random.Random(seed)
+    return [factory(rng) for factory in _STRATEGY_REGISTRY.values()]
