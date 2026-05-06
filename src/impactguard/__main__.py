@@ -361,25 +361,29 @@ def cmd_check(args: argparse.Namespace) -> int:
     if not watch:
         return _run_once()
 
-    # ── Watch mode — re-run whenever any *.py file in old/new dirs changes ──
+    # ── Watch mode — re-run whenever any supported source file changes ─────
     import glob as _glob
     import time
+
+    from .languages.registry import list_extensions as _list_exts
 
     print("Watch mode enabled. Press Ctrl-C to stop.")
 
     def _mtimes() -> dict[str, float]:
         times: dict[str, float] = {}
-        for pattern in [
-            f"{args.old}/**/*.py",
-            f"{args.new}/**/*.py",
-            f"{args.old}/*.py",
-            f"{args.new}/*.py",
-        ]:
-            for p in _glob.glob(pattern, recursive=True):
-                try:
-                    times[p] = Path(p).stat().st_mtime
-                except OSError:
-                    pass
+        extensions = _list_exts()  # all registered language extensions
+        for ext in extensions:
+            ext_glob = f"*{ext}"
+            for base in (args.old, args.new):
+                for pattern in [
+                    f"{base}/**/{ext_glob}",
+                    f"{base}/{ext_glob}",
+                ]:
+                    for p in _glob.glob(pattern, recursive=True):
+                        try:
+                            times[p] = Path(p).stat().st_mtime
+                        except OSError:
+                            pass
         return times
 
     last_times = _mtimes()
@@ -796,7 +800,11 @@ def cmd_patch(args: argparse.Namespace) -> int:
         print(f"Patch error: {err}", file=sys.stderr)
         return 1
 
-    if args.output:
+    apply: bool = getattr(args, "apply", False)
+    if apply:
+        Path(args.file).write_text(result or "")
+        print(f"Patch applied to {args.file}")
+    elif args.output:
         Path(args.output).write_text(result or "")
     else:
         print(result)
@@ -1083,6 +1091,34 @@ def cmd_baseline_tagged(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_validate_config(args: argparse.Namespace) -> int:
+    """Validate the impactguard.toml configuration file."""
+    from .config import validate_config
+
+    config_path: str | None = getattr(args, "config_path", None)
+    issues = validate_config(config_path)
+
+    if not issues:
+        path_hint = config_path or "impactguard.toml"
+        print(f"✓ Configuration valid ({path_hint})")
+        return 0
+
+    has_errors = False
+    for issue in issues:
+        if issue.startswith("ERROR:"):
+            print(f"✗ {issue[6:].strip()}", file=sys.stderr)
+            has_errors = True
+        elif issue.startswith("WARN:"):
+            print(f"⚠ {issue[5:].strip()}")
+        else:
+            # INFO: or plain
+            print(f"ℹ {issue.removeprefix('INFO:').strip()}")
+
+    if not has_errors:
+        print("✓ Configuration valid (warnings only)")
+    return 1 if has_errors else 0
+
+
 def main() -> int:
     from . import __version__
 
@@ -1226,6 +1262,13 @@ def main() -> int:
         help="Patch type: 'function' adds default, 'call' fixes call site",
     )
     patch_parser.add_argument("-o", "--output", help="Output file (default: stdout)")
+    patch_parser.add_argument(
+        "--apply",
+        "-a",
+        action="store_true",
+        default=False,
+        help="Write the patched content back to the original source file in-place",
+    )
     patch_parser.set_defaults(func=cmd_patch)
 
     # extract-calls subcommand
@@ -1518,6 +1561,18 @@ def main() -> int:
 
     history_parser.set_defaults(func=cmd_baseline_tagged)
 
+    # validate-config subcommand
+    validate_cfg_parser = subparsers.add_parser(
+        "validate-config",
+        help="Validate impactguard.toml for unknown keys and value-type errors",
+    )
+    validate_cfg_parser.add_argument(
+        "--config-path",
+        dest="config_path",
+        help="Path to impactguard.toml (default: auto-discovered from cwd upward)",
+    )
+    validate_cfg_parser.set_defaults(func=cmd_validate_config)
+
     if (
         len(sys.argv) > 1
         and sys.argv[1]
@@ -1544,6 +1599,7 @@ def main() -> int:
             "semver",
             "feedback",
             "history",
+            "validate-config",
         ]
         and not sys.argv[1].startswith("-")
     ):
