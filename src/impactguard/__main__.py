@@ -55,9 +55,39 @@ def cmd_analyze(args: argparse.Namespace) -> int:
 
 def cmd_risk(args: argparse.Namespace) -> int:
     """Run risk analysis pipeline."""
+    import os
+    import tempfile as _tmpmod
     from .risk_gate import run as risk_main
 
-    return risk_main(args.diff, args.runtime, args.output)
+    pipe: bool = getattr(args, "pipe", False)
+    diff_path: str | None = getattr(args, "diff", None)
+    _tmp_path: str | None = None
+
+    if pipe:
+        if not sys.stdin.isatty():
+            diff_text = sys.stdin.read()
+        else:
+            print("Error: --pipe requires data on stdin", file=sys.stderr)
+            return 1
+        with _tmpmod.NamedTemporaryFile(
+            mode="w", suffix=".diff", prefix="impactguard_pipe_", delete=False
+        ) as _tmp:
+            _tmp.write(diff_text)
+            _tmp_path = _tmp.name
+            diff_path = _tmp_path
+
+    if not diff_path:
+        print("Error: provide a diff path or use --pipe", file=sys.stderr)
+        return 1
+
+    try:
+        return risk_main(diff_path, args.runtime, args.output)
+    finally:
+        if _tmp_path is not None:
+            try:
+                os.unlink(_tmp_path)
+            except OSError:
+                pass
 
 
 def cmd_report(args: argparse.Namespace) -> int:
@@ -70,10 +100,41 @@ def cmd_report(args: argparse.Namespace) -> int:
 
 def cmd_enforce(args: argparse.Namespace) -> int:
     """Enforce gate - block on HIGH risk."""
+    import os
+    import tempfile as _tmpmod
     from .enforce_gate import enforce
 
+    pipe: bool = getattr(args, "pipe", False)
+    diff_path: str | None = getattr(args, "diff", None)
+    _tmp_path: str | None = None
+
+    if pipe:
+        if not sys.stdin.isatty():
+            diff_text = sys.stdin.read()
+        else:
+            print("Error: --pipe requires data on stdin", file=sys.stderr)
+            return 1
+        # Write stdin content to a temp file so enforce() can consume it
+        with _tmpmod.NamedTemporaryFile(
+            mode="w", suffix=".diff", prefix="impactguard_pipe_", delete=False
+        ) as _tmp:
+            _tmp.write(diff_text)
+            _tmp_path = _tmp.name
+            diff_path = _tmp_path
+
+    if not diff_path:
+        print("Error: provide a diff path or use --pipe", file=sys.stderr)
+        return 1
+
     block_unknown: bool | None = getattr(args, "block_unknown", None) or None
-    return enforce(args.diff, args.runtime, getattr(args, "output", None), block_unknown=block_unknown)
+    try:
+        return enforce(diff_path, args.runtime, getattr(args, "output", None), block_unknown=block_unknown)
+    finally:
+        if _tmp_path is not None:
+            try:
+                os.unlink(_tmp_path)
+            except OSError:
+                pass
 
 
 def cmd_extract_calls(args: argparse.Namespace) -> int:
@@ -282,19 +343,41 @@ def cmd_check_commits(args: argparse.Namespace) -> int:
 
 def cmd_check_diff(args: argparse.Namespace) -> int:
     """Run ImpactGuard pipeline on a unified diff / patch file."""
-    from .pipeline import run_pipeline_diff
+    from .pipeline import run_pipeline_diff, run_pipeline_diff_content
 
-    print(f"Analyzing diff: {args.diff}")
+    pipe: bool = getattr(args, "pipe", False)
+    diff_path: str | None = getattr(args, "diff", None)
 
-    try:
-        result = run_pipeline_diff(
-            diff_path=args.diff,
-            runtime_path=getattr(args, "runtime", None),
-            output_dir=getattr(args, "output", None),
-        )
-    except (FileNotFoundError, ValueError) as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
+    if pipe:
+        if not sys.stdin.isatty():
+            diff_text = sys.stdin.read()
+        else:
+            print("Error: --pipe requires data on stdin", file=sys.stderr)
+            return 1
+        print("Analyzing diff from stdin")
+        try:
+            result = run_pipeline_diff_content(
+                diff_text=diff_text,
+                runtime_path=getattr(args, "runtime", None),
+                output_dir=getattr(args, "output", None),
+            )
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+    else:
+        if not diff_path:
+            print("Error: provide a diff path or use --pipe", file=sys.stderr)
+            return 1
+        print(f"Analyzing diff: {diff_path}")
+        try:
+            result = run_pipeline_diff(
+                diff_path=diff_path,
+                runtime_path=getattr(args, "runtime", None),
+                output_dir=getattr(args, "output", None),
+            )
+        except (FileNotFoundError, ValueError) as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
 
     print("\n=== Comparison ===")
     comparison = result.get("comparison", {})
@@ -827,9 +910,13 @@ def main() -> int:
 
     # risk subcommand
     risk_parser = subparsers.add_parser("risk", help="Run risk analysis")
-    risk_parser.add_argument("diff", help="Diff text file")
+    risk_parser.add_argument("diff", nargs="?", help="Diff text file (omit with --pipe)")
     risk_parser.add_argument("runtime", help="Runtime data JSON file")
     risk_parser.add_argument("output", help="Output report JSON file")
+    risk_parser.add_argument(
+        "--pipe", action="store_true",
+        help="Read diff from stdin instead of a file (e.g. diff A B | impactguard risk --pipe ...)",
+    )
     risk_parser.set_defaults(func=cmd_risk)
 
     # report subcommand
@@ -842,13 +929,17 @@ def main() -> int:
 
     # enforce subcommand
     enforce_parser = subparsers.add_parser("enforce", help="Enforce gate - block on HIGH risk")
-    enforce_parser.add_argument("diff", help="Diff text file")
+    enforce_parser.add_argument("diff", nargs="?", help="Diff text file (omit with --pipe)")
     enforce_parser.add_argument("runtime", help="Runtime data JSON file")
     enforce_parser.add_argument("-o", "--output", help="Output report JSON file")
     enforce_parser.add_argument(
         "--block-unknown",
         action="store_true",
         help="Treat UNKNOWN risk as a blocking condition (same as HIGH)",
+    )
+    enforce_parser.add_argument(
+        "--pipe", action="store_true",
+        help="Read diff from stdin instead of a file (e.g. diff A B | impactguard enforce --pipe ...)",
     )
     enforce_parser.set_defaults(func=cmd_enforce)
 
@@ -913,12 +1004,18 @@ def main() -> int:
     check_diff_parser = subparsers.add_parser(
         "check-diff", help="Run full pipeline on a unified diff / patch file"
     )
-    check_diff_parser.add_argument("diff", help="Path to unified diff / patch file")
+    check_diff_parser.add_argument(
+        "diff", nargs="?", help="Path to unified diff / patch file (omit with --pipe)"
+    )
     check_diff_parser.add_argument(
         "--runtime", help="Runtime data JSON (optional)"
     )
     check_diff_parser.add_argument(
         "-o", "--output", help="Output directory or HTML report path"
+    )
+    check_diff_parser.add_argument(
+        "--pipe", action="store_true",
+        help="Read diff from stdin instead of a file (e.g. diff A B | impactguard check-diff --pipe)",
     )
     check_diff_parser.set_defaults(func=cmd_check_diff)
 
