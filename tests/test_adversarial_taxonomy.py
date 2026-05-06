@@ -1012,5 +1012,5 @@ class TestCompositionalAttacks:
         levels_with_rt = {r["risk"] for r in report_with_rt}
         # With real runtime data (high count) the level should be HIGH
         assert "HIGH" in levels_with_rt
-        # Without runtime data confidence is low → UNKNOWN
-        assert "UNKNOWN" in levels_no_rt
+        # REMOVED changes are unconditionally HIGH (bypasses confidence check)
+        assert "HIGH" in levels_no_rt

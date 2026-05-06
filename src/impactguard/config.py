@@ -26,7 +26,7 @@ _DEFAULTS: dict[str, Any] = {
             "TYPE CHANGED": 0.6,
             "RETURN TYPE CHANGED": 0.5,
             "DECORATOR REMOVED": 0.6,
-            "DECORATOR ADDED": 0.4,
+            "DECORATOR ADDED": 0.1,  # Adding decorators is typically non-breaking
         },
         "risk": {
             "confidence_threshold": 0.3,

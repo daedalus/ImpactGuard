@@ -167,7 +167,23 @@ def _process_function(
             return_type = _node_text(child, source).strip()
             break
 
+    # Check for async modifier (can be a child, or before 'func' in an ERROR node)
     is_async = _has_modifier(node, source, "async")
+    if not is_async:
+        # Check if there's an 'async' node before this function_declaration
+        # (tree-sitter may put it in an ERROR node before the function)
+        parent = node.parent
+        if parent is not None:
+            found_self = False
+            for child in parent.children:
+                if found_self:
+                    break
+                if child == node:
+                    found_self = True
+                elif child.type == "async" or (child.type == "ERROR" and _node_text(child, source).strip() == "async"):
+                    is_async = True
+                    break
+    
     exported = _has_modifier(node, source, "public") or _has_modifier(node, source, "open")
     class_name = _class_name_for_method(node, source)
 

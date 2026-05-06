@@ -150,18 +150,30 @@ def analyze(
         argc = call.get("args", 0)
 
         if argc < min_args or argc > max_args:
+            # Try multiple key formats to match runtime data:
+            # 1. target (fqname like "module:func" or "file:Class.method")
+            # 2. func_name (bare name)
+            # 3. normalized module.func_name form
             func_name = f.get("name", target)
-            count = runtime.get(f"{func_name}", 1)
+            count = runtime.get(target, runtime.get(func_name, runtime.get(f"{func_name}", 1)))
             exp = exposure(count, max_count)
-
+            
+            # Determine change type for proper risk classification
+            change_type = "missing args" if argc < min_args else "too many args"
             severity = 0.9 if argc < min_args else 0.3
-            risk_level = (
-                "HIGH"
-                if severity > 0.8 and exp > 0.1
-                else "MEDIUM"
-                if severity > 0.5
-                else "LOW"
-            )
+            
+            # REMOVED and REQIARED changes are unconditionally HIGH
+            # (bypass confidence check since these are guaranteed breaking)
+            if argc < min_args:
+                risk_level = "HIGH"
+            else:
+                risk_level = (
+                    "HIGH"
+                    if severity > 0.8 and exp > 0.1
+                    else "MEDIUM"
+                    if severity > 0.5
+                    else "LOW"
+                )
 
             directly_affected.add(target)
             issues.append(
