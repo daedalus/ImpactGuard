@@ -227,3 +227,7 @@ def analyze_main() -> None:
 
     if any(i["risk"] == "HIGH" for i in issues):
         sys.exit(1)
+
+
+#: Public alias for the CLI entry point (backward-compat and test access).
+main = analyze_main
