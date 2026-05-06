@@ -7,7 +7,10 @@ from .risk_model import SEVERITY_SCORES, get_severity, exposure, confidence, cla
 
 
 def run(
-    diff_path: str, runtime_path: str, output_path: str | None = None
+    diff_path: str,
+    runtime_path: str,
+    output_path: str | None = None,
+    lambda_: float = 1.0,
 ) -> list[dict[str, Any]]:
     """Run risk analysis pipeline.
 
@@ -15,6 +18,8 @@ def run(
         diff_path: Path to diff text file.
         runtime_path: Path to runtime data JSON.
         output_path: Optional output path for report JSON.
+        lambda_: Sensitivity multiplier (default 1.0). Values >1 increase
+            sensitivity (more changes flagged HIGH/MEDIUM); values <1 decrease it.
 
     Returns:
         List of risk report items.
@@ -52,7 +57,7 @@ def run(
 
             count = runtime.get(func_name.strip(), 0)
             severity = get_severity(line)
-            risk, exp, conf = classify(severity, count, max_count, count)
+            risk, exp, conf = classify(severity, count, max_count, count, lambda_)
 
             report.append(
                 {
