@@ -98,6 +98,12 @@ from .schema import (
 from .schema import (
     validate_signatures as validate_signatures_data,
 )
+from .adversarial_generator import (
+    AdversarialPair,
+    generate as generate_adversarial,
+    generate_all as generate_all_adversarial,
+    list_strategies as list_adversarial_strategies,
+)
 from .semver import format_semver_recommendation, suggest_semver
 from .suggest_fixes import enrich_with_fixes, get_line, suggest
 from .trace_calls import dump as dump_trace
@@ -204,6 +210,11 @@ __all__ = [
     "get_feedback_stats",
     "compute_calibrated_weights",
     "apply_weights_to_config",
+    # Adversarial generator
+    "AdversarialPair",
+    "generate_adversarial",
+    "generate_all_adversarial",
+    "list_adversarial_strategies",
     # Language registry
     "LanguageExtractor",
     "register_language",
