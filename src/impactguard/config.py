@@ -66,6 +66,7 @@ _DEFAULTS: dict[str, Any] = {
         "analysis": {
             "include_private": False,
             "transitive_depth": 0,
+            "suppress": [],
         },
     }
 }
