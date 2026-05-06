@@ -35,6 +35,7 @@ It provides a quantitative risk framework to help developers understand the cons
 | Runtime Tracing | `trace_calls.py`, `trace_calls_prod.py` | Development and production tracers |
 | Patch Generation | `cst_patch.py`, `patch_generator.py` | Format-preserving automated fixes |
 | Reporting | `generate_report.py` | Static HTML report generation |
+| Robustness Evaluation | `tools/robustness_evaluator.py` | Composite robustness score, fragility index, diversity |
 | CLI | `cli.py` | Command-line interface |
 
 ---
@@ -650,6 +651,129 @@ The table below compares ImpactGuard against the tools most commonly used for Py
 4. **CST-based patch generation** — Suggests and previews source patches that preserve original formatting; no competitor does this in the API-change domain.
 5. **Patch confidence scoring** — Quantifies how safe an automated fix is before applying it.
 6. **Fully offline** — No network access, no database; embeds entirely in a Python project.
+
+---
+
+## Robustness Evaluator (`tools/robustness_evaluator.py`)
+
+The **Robustness Evaluator** computes a composite project-level **Robustness Score (R)** from test-suite metrics, placing extra emphasis on adversarial test performance.  It also reports an **Adversarial Fragility Index (F)** that isolates how much adversarial inputs specifically degrade the system.
+
+### Metrics
+
+| Metric | Formula | Description |
+|--------|---------|-------------|
+| **R** | `C × (α × P_a + (1−α) × P_n)` | Composite Robustness Score — overall health in [0, 1] |
+| **R_d** | `C × D × (α × P_a + (1−α) × P_n)` | R with category diversity penalty |
+| **F** | `1 − (P_a / P_n)` | Fragility Index — how much adversarial conditions hurt you |
+| **D** | `categories_with_≥1_pass / total_categories` | Diversity ratio |
+
+**Input symbols:**
+
+| Symbol | Meaning |
+|--------|---------|
+| `C` | Coverage ratio (0 – 1) |
+| `α` | Adversarial weight; recommended 0.5 (general), 0.65 (security), 0.75 (red-team) |
+| `P_a` | Adversarial pass rate (`passing_adv / n_adversarial`) |
+| `P_n` | Normal pass rate (`passing_norm / n_normal`) |
+
+**Robustness labels:** EXCELLENT (≥ 0.80) · GOOD (≥ 0.65) · FAIR (≥ 0.45) · POOR (< 0.45)
+
+**Fragility labels:** ROBUST (F ≤ 0.10) · MODERATE (≤ 0.25) · BRITTLE (≤ 0.50) · VERY_BRITTLE (> 0.50)
+
+The tool enforces a **minimum 25% adversarial coverage** requirement (exits with code 1 when unmet).
+
+### Adversarial Budget Allocation
+
+| Category | Target % of adversarial budget | Example |
+|----------|--------------------------------|---------|
+| Boundary/edge cases | 30% | Inputs at decision boundaries |
+| Semantic perturbation | 25% | Same meaning, different form |
+| Evasion/obfuscation | 25% | Encoding tricks, reformulation |
+| Compositional attacks | 20% | Multi-step, chained inputs |
+
+### Usage
+
+**Python API:**
+
+```python
+from tools.robustness_evaluator import evaluate_robustness, CategoryStats
+
+result = evaluate_robustness(
+    n_total=100,
+    n_adversarial=30,
+    passing_adv=18,
+    passing_norm=63,
+    coverage=0.80,
+    alpha=0.65,            # security context
+    categories=[
+        CategoryStats("boundary",       9, 6),
+        CategoryStats("semantic",       8, 5),
+        CategoryStats("evasion",        8, 4),
+        CategoryStats("compositional",  5, 3),
+    ],
+)
+
+print(f"R  = {result.robustness_score:.4f}  [{result.robustness_label}]")
+print(f"F  = {result.fragility_index:.4f}  [{result.fragility_label}]")
+print(f"R_d = {result.robustness_score_with_diversity:.4f}  (with diversity)")
+```
+
+**CLI (human-readable report):**
+
+```bash
+python tools/robustness_evaluator.py \
+  --n-total 100 \
+  --n-adversarial 30 \
+  --passing-adv 18 \
+  --passing-norm 63 \
+  --coverage 0.80 \
+  --alpha 0.65 \
+  --categories '[{"name":"boundary","total":9,"passing":6},
+                 {"name":"semantic","total":8,"passing":5},
+                 {"name":"evasion","total":8,"passing":4},
+                 {"name":"compositional","total":5,"passing":3}]'
+```
+
+**CLI (JSON output for CI pipelines):**
+
+```bash
+python tools/robustness_evaluator.py --n-total 100 --n-adversarial 30 \
+  --passing-adv 18 --passing-norm 63 --coverage 0.80 --json
+```
+
+**Example output:**
+
+```
+============================================================
+  ImpactGuard — Robustness Evaluation Report
+============================================================
+
+── Test Composition ──────────────────────────────────────
+  Total tests        : 100
+  Adversarial tests  : 30
+  Normal tests       : 70
+  Adversarial ratio  : 30.0%  ✓
+
+── Pass Rates ────────────────────────────────────────────
+  P_adversarial (P_a): 0.600
+  P_normal      (P_n): 0.900
+  Coverage      (C)  : 0.800
+  Alpha         (α)  : 0.65
+  Diversity     (D)  : 1.000
+
+── Primary Metrics ───────────────────────────────────────
+  Robustness Score (R)          : 0.5640  [FAIR]
+  Robustness + Diversity (R_d)  : 0.5640
+  Fragility Index (F)           : 0.3333  [BRITTLE]
+
+── Category Breakdown ────────────────────────────────────
+  boundary               6/9   (67%)  ●●●●●●○○○
+  semantic               5/8   (62%)  ●●●●●○○○
+  evasion                4/8   (50%)  ●●●●○○○○
+  compositional          3/5   (60%)  ●●●○○
+
+============================================================
+```
 
 ---
 
