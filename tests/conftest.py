@@ -114,8 +114,8 @@ def pytest_terminal_summary(
 
     from robustness_evaluator import (  # type: ignore[import]
         CategoryStats,
-        _format_report,
         evaluate_robustness,
+        format_report,
     )
 
     coverage_ratio = _read_coverage()
@@ -132,14 +132,14 @@ def pytest_terminal_summary(
             passing_adv=adv["passed"],
             passing_norm=norm["passed"],
             coverage=coverage_ratio,
-            categories=cats or None,
+            categories=cats if cats else None,
         )
     except ValueError as exc:
         terminalreporter.write_line(f"[robustness evaluator] skipped: {exc}")
         return
 
     terminalreporter.write_sep("=", "Robustness Evaluation")
-    terminalreporter.write_line(_format_report(result))
+    terminalreporter.write_line(format_report(result))
 
 
 @pytest.fixture
