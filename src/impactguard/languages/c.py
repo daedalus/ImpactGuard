@@ -29,7 +29,7 @@ from typing import Any
 # ── Optional tree-sitter dependencies ────────────────────────────────────────
 
 try:
-    import tree_sitter_c as _c_lang  # type: ignore[import-untyped]
+    import tree_sitter_c as _c_lang
     from tree_sitter import Language as _CLanguage
     from tree_sitter import Parser as _CParser
 
@@ -39,7 +39,7 @@ except ImportError:  # pragma: no cover
     _C_TREE_SITTER_AVAILABLE = False
 
 try:
-    import tree_sitter_cpp as _cpp_lang  # type: ignore[import-untyped]
+    import tree_sitter_cpp as _cpp_lang
     from tree_sitter import Language as _CppLanguage
     from tree_sitter import Parser as _CppParser
 

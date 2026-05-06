@@ -230,7 +230,7 @@ def cmd_extract_calls(args: argparse.Namespace) -> int:
 
 def cmd_runtime_impact(args: argparse.Namespace) -> int:
     """Analyze runtime impact of signature changes."""
-    from .runtime_impact import analyze  # type: ignore[import-not-found]
+    from .runtime_impact import analyze
 
     issues = analyze(args.signatures, args.calls)
     print(json.dumps(issues, indent=2))
@@ -551,7 +551,7 @@ def cmd_install_hooks(args: argparse.Namespace) -> int:
     # Ensure .pre-commit-config.yaml exists with full pipeline (use YAML formatter)
     config_path = repo_path / ".pre-commit-config.yaml"
     try:
-        import yaml  # type: ignore[import-untyped]
+        import yaml
 
         yaml_available = True
     except ImportError:
