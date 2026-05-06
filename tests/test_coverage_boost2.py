@@ -399,10 +399,13 @@ class TestFeedbackCalibration:
 class TestRiskModelConfig:
     def test_effective_severity_scores_no_overrides(self):
         from impactguard.risk_model import SEVERITY_SCORES, _effective_severity_scores
-
+        
         scores = _effective_severity_scores()
         # Default: should return SEVERITY_SCORES unchanged
-        assert scores == SEVERITY_SCORES
+        # Note: DECORATOR ADDED is now 0.1 (non-breaking) instead of 0.4
+        expected = dict(SEVERITY_SCORES)
+        expected["DECORATOR ADDED"] = 0.1
+        assert scores == expected
 
     def test_classify_high_confidence_low_severity(self):
         from impactguard.risk_model import classify

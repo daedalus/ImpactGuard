@@ -62,7 +62,7 @@ def run(
                     normalized = normalized.replace(".py:", ".")
                     count = runtime.get(normalized, 0)
             severity = get_severity(line)
-            risk, exp, conf = classify(severity, count, max_count, count, lambda_)
+            risk, exp, conf = classify(severity, count, max_count, count, lambda_, current_change)
 
             report.append(
                 {

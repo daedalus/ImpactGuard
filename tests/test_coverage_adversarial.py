@@ -1505,6 +1505,9 @@ class TestJavaExtractor:
         assert e.parse_union_members("String") == frozenset({"String"})
 
     def test_extract_multiple_files(self):
+        from impactguard.languages.java import _TREE_SITTER_AVAILABLE
+        if not _TREE_SITTER_AVAILABLE:
+            pytest.skip("tree-sitter-java not installed")
         src1 = self._write_java("public class A {\n  public void foo() {}\n}\n")
         src2 = self._write_java("public class B {\n  public void bar(int x) {}\n}\n")
         e = self._extractor()

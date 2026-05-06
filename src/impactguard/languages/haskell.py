@@ -139,19 +139,29 @@ def _extract_with_tree_sitter(
 
         # First pass: collect type signatures
         type_sigs: dict[str, str] = {}
-        for child in tree.root_node.children:
-            if child.type == "type_signature":
+
+        def collect_sigs(node: Any) -> None:
+            if node.type == "type_signature":
                 # name :: Type
-                parts = _node_text(child, source).split("::", 1)
+                parts = _node_text(node, source).split("::", 1)
                 if len(parts) == 2:
                     sig_name = parts[0].strip()
                     sig_type = parts[1].strip()
                     type_sigs[sig_name] = sig_type
+            for child in node.children:
+                collect_sigs(child)
+
+        collect_sigs(tree.root_node)
 
         seen: set[str] = set()
-        for child in tree.root_node.children:
-            if child.type in ("function", "bind", "top_splice"):
-                _process_function(child, source, fq_file, funcs, type_sigs)
+
+        def find_funcs(node: Any) -> None:
+            if node.type in ("function", "bind", "top_splice"):
+                _process_function(node, source, fq_file, funcs, type_sigs)
+            for child in node.children:
+                find_funcs(child)
+
+        find_funcs(tree.root_node)
 
         # Deduplicate (multiple equations for same function)
         for sig in funcs:

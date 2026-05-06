@@ -87,7 +87,7 @@ def _class_name_for_method(node: Any, source: bytes) -> str | None:
     parent = node.parent
     while parent is not None:
         if parent.type == "class_declaration":
-            name_node = _child_of_type(parent, "type_identifier", "simple_identifier")
+            name_node = _child_of_type(parent, "type_identifier", "identifier")
             if name_node is not None:
                 return _node_text(name_node, source)
         parent = parent.parent
@@ -108,18 +108,15 @@ def _parse_function_params(
     for child in params_node.children:
         if child.type in ("(", ")", ","):
             continue
-        if child.type == "function_value_parameter":
-            param = _child_of_type(child, "parameter")
-            if param is None:
-                continue
-            name_node = _child_of_type(param, "simple_identifier")
+        if child.type == "parameter":
+            name_node = _child_of_type(child, "identifier")
             name = _node_text(name_node, source) if name_node else "_"
-            type_node = _child_of_type(param, "type_reference", "nullable_type", "user_type")
+            type_node = _child_of_type(child, "type_reference", "nullable_type", "user_type")
             type_str: str | None = None
             if type_node is not None:
                 type_str = _node_text(type_node, source).strip()
             # Check for default value
-            has_default = _child_of_type(child, "=") is not None
+            has_default = any(c.type == "=" for c in child.children)
             # Check for vararg modifier
             is_vararg = _has_modifier(child, source, "vararg")
             if is_vararg:
@@ -136,7 +133,7 @@ def _process_function(
     funcs: list[dict[str, Any]],
 ) -> None:
     """Extract a signature from a Kotlin function declaration."""
-    name_node = _child_of_type(node, "simple_identifier")
+    name_node = _child_of_type(node, "identifier")
     if name_node is None:
         return
 
@@ -242,11 +239,11 @@ def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
             func_node = node.children[0] if node.children else None
             name: str | None = None
             if func_node is not None:
-                if func_node.type == "simple_identifier":
+                if func_node.type == "identifier":
                     name = _node_text(func_node, source)
                 elif func_node.type == "navigation_expression":
                     for c in reversed(func_node.children):
-                        if c.type == "simple_identifier":
+                        if c.type == "identifier":
                             name = _node_text(c, source)
                             break
             if name is not None:
