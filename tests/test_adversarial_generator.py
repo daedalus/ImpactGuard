@@ -132,6 +132,90 @@ class TestRegistry:
 
 
 # ---------------------------------------------------------------------------
+# Seeding / reproducibility tests
+# ---------------------------------------------------------------------------
+
+
+class TestSeeding:
+    """Verify that the generator is deterministic when seeded and random-looking."""
+
+    def test_same_seed_produces_identical_pair(self):
+        """Identical seeds must produce byte-for-byte identical pairs."""
+        for name in list_strategies():
+            p1 = generate(name, seed=42)
+            p2 = generate(name, seed=42)
+            assert p1.old_signatures == p2.old_signatures, name
+            assert p1.new_signatures == p2.new_signatures, name
+            assert p1.description == p2.description, name
+            assert p1.camouflage_notes == p2.camouflage_notes, name
+            assert p1.expected_breaking_patterns == p2.expected_breaking_patterns, name
+
+    def test_different_seeds_produce_different_pairs(self):
+        """Different seeds must yield at least one differing pair (across all strategies)."""
+        differs = False
+        for name in list_strategies():
+            p1 = generate(name, seed=0)
+            p2 = generate(name, seed=999)
+            if p1.old_signatures != p2.old_signatures or p1.new_signatures != p2.new_signatures:
+                differs = True
+                break
+        assert differs, (
+            "All strategies produced identical pairs for seed=0 and seed=999 — "
+            "randomisation is not working."
+        )
+
+    def test_generate_all_same_seed_is_reproducible(self):
+        """generate_all with same seed returns an identical list."""
+        pairs_a = generate_all(seed=7)
+        pairs_b = generate_all(seed=7)
+        assert len(pairs_a) == len(pairs_b)
+        for a, b in zip(pairs_a, pairs_b):
+            assert a.old_signatures == b.old_signatures
+            assert a.new_signatures == b.new_signatures
+
+    def test_generate_all_different_seeds_differ(self):
+        """generate_all with different seeds must produce at least one differing entry."""
+        pairs_a = generate_all(seed=1)
+        pairs_b = generate_all(seed=2)
+        differs = any(
+            a.old_signatures != b.old_signatures or a.new_signatures != b.new_signatures
+            for a, b in zip(pairs_a, pairs_b)
+        )
+        assert differs, (
+            "generate_all produced identical results for seed=1 and seed=2 — "
+            "randomisation is not working."
+        )
+
+    def test_no_seed_returns_valid_pair(self):
+        """Unseeded generate() must still return a well-formed pair."""
+        for name in list_strategies():
+            pair = generate(name)
+            assert isinstance(pair, AdversarialPair)
+            assert pair.old_signatures
+            assert pair.new_signatures
+
+    def test_string_seed_is_accepted(self):
+        """Seeds may be strings; same string seed must be reproducible."""
+        p1 = generate("type_narrowing_disguised_as_cleanup", seed="hello")
+        p2 = generate("type_narrowing_disguised_as_cleanup", seed="hello")
+        assert p1.old_signatures == p2.old_signatures
+        assert p1.new_signatures == p2.new_signatures
+
+    def test_seeded_fqnames_vary_across_seeds(self):
+        """The randomised fqname must differ for at least two distinct seeds."""
+        seen_fqnames: set[str] = set()
+        strategy = list_strategies()[0]
+        for s in range(20):
+            pair = generate(strategy, seed=s)
+            fqname = pair.old_signatures[0]["fqname"]
+            seen_fqnames.add(fqname)
+        assert len(seen_fqnames) > 1, (
+            "All 20 different seeds produced the same fqname — "
+            "names are not being randomised."
+        )
+
+
+# ---------------------------------------------------------------------------
 # AdversarialPair.verify() unit tests
 # ---------------------------------------------------------------------------
 
