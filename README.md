@@ -43,10 +43,10 @@ It provides a quantitative risk framework to help developers understand the cons
 
 | Language | Extensions | Extraction Backend | Signature Extraction | Call-Site Extraction | Type Annotations | Optional Dependency | Status |
 |----------|------------|--------------------|:--------------------:|:--------------------:|:----------------:|---------------------|--------|
-| **Python** | `.py` | `ast` (stdlib) | ✅ | ✅ | ✅ | — | Stable |
-| **TypeScript** | `.ts`, `.tsx` | tree-sitter (preferred) / regex fallback | ✅ | ✅ | ✅ / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **Python** | `.py` | `ast` (stdlib) | Yes | Yes | Yes | — | Stable |
+| **TypeScript** | `.ts`, `.tsx` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
 
-> **Note:** The TypeScript tree-sitter backend requires `tree-sitter>=0.23` and `tree-sitter-typescript>=0.23`, installed via `pip install "impactguard[languages]"`.  When those packages are absent, ImpactGuard automatically falls back to regex-based extraction and emits a `UserWarning`.
+> **Note:** The TypeScript tree-sitter backend requires `tree-sitter>=0.23` and `tree-sitter-typescript>=0.23`, installed via `pip install "impactguard[languages]"`. When those packages are absent, ImpactGuard automatically falls back to regex-based extraction and emits a `UserWarning`.
 >
 > To add support for a new language, implement the [`LanguageExtractor`](src/impactguard/languages/base.py) protocol and register the extractor with [`register()`](src/impactguard/languages/registry.py).
 
