@@ -2,13 +2,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .patch_confidence import classify_with_factors, compute_confidence
 from ._pathutils import is_safe_path
+from .patch_confidence import classify_with_factors
 
 
-def suggest(
-    func: dict[str, Any], issues: list[dict[str, Any]]
-) -> list[str]:
+def suggest(func: dict[str, Any], issues: list[dict[str, Any]]) -> list[str]:
     suggestions: list[str] = []
 
     if not issues:
@@ -25,9 +23,7 @@ def suggest(
         )
 
     if issues:
-        callsites = [
-            f"{i.get('file', '?')}:{i.get('lineno', '?')}" for i in issues[:5]
-        ]
+        callsites = [f"{i.get('file', '?')}:{i.get('lineno', '?')}" for i in issues[:5]]
         if callsites:
             suggestions.append("Update call sites:\n  " + "\n  ".join(callsites))
 
@@ -36,7 +32,10 @@ def suggest(
 
 def get_line(file: str, lineno: int) -> str:
     if not is_safe_path(file):
-        print(f"Warning: impactguard: unsafe file path rejected: '{file}'", file=sys.stderr)
+        print(
+            f"Warning: impactguard: unsafe file path rejected: '{file}'",
+            file=sys.stderr,
+        )
         return ""
     try:
         with open(file) as f:
@@ -70,7 +69,9 @@ def enrich_with_fixes(
             semantic = 0.7  # based on change type
             complexity = 1.0  # default
 
-            level, factors = classify_with_factors(target, structural, semantic, complexity)
+            level, factors = classify_with_factors(
+                target, structural, semantic, complexity
+            )
 
             fixes.append(
                 {
@@ -146,9 +147,7 @@ def enrich_with_fixes(
                         # Fallback to text-based patch
                         from .patch_generator import patch_add_default
 
-                        gen_patch = patch_add_default(
-                            report_item, {"name": param_name}
-                        )
+                        gen_patch = patch_add_default(report_item, param_name)
                         if gen_patch:
                             fixes.append(
                                 {

@@ -3,12 +3,12 @@
 import json
 from pathlib import Path
 from tempfile import mkdtemp
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 
 def test_suggest_fixes_missing_lines(tmp_path):
     """Target missing lines 20, 24-31, 39-41, 79-156 in suggest_fixes.py."""
-    from impactguard.suggest_fixes import suggest, enrich_with_fixes
+    from impactguard.suggest_fixes import enrich_with_fixes, suggest
 
     # Test with various configurations to hit missing lines
     items = [
@@ -37,6 +37,7 @@ def test_suggest_fixes_missing_lines(tmp_path):
 def test_main_missing_lines(tmp_path):
     """Target missing lines in __main__.py - functions 79-96, 101-105, 110-126, etc."""
     import sys
+
     from impactguard.__main__ import main
 
     # Test extract command (covers lines 12-28)
@@ -52,12 +53,34 @@ def test_main_missing_lines(tmp_path):
     # Test compare command (covers lines 31-43)
     old_path = tmp_path / "old.json"
     new_path = tmp_path / "new.json"
-    old_path.write_text(json.dumps([{"fqname": "test:foo", "name": "foo",
-                                     "positional": [], "kwonly": [],
-                                     "vararg": False, "kwarg": False}]))
-    new_path.write_text(json.dumps([{"fqname": "test:foo", "name": "foo",
-                                     "positional": [{"name": "a", "has_default": True}],
-                                     "kwonly": [], "vararg": False, "kwarg": False}]))
+    old_path.write_text(
+        json.dumps(
+            [
+                {
+                    "fqname": "test:foo",
+                    "name": "foo",
+                    "positional": [],
+                    "kwonly": [],
+                    "vararg": False,
+                    "kwarg": False,
+                }
+            ]
+        )
+    )
+    new_path.write_text(
+        json.dumps(
+            [
+                {
+                    "fqname": "test:foo",
+                    "name": "foo",
+                    "positional": [{"name": "a", "has_default": True}],
+                    "kwonly": [],
+                    "vararg": False,
+                    "kwarg": False,
+                }
+            ]
+        )
+    )
 
     sys.argv = ["impactguard", "compare", str(old_path), str(new_path)]
     try:
@@ -69,6 +92,7 @@ def test_main_missing_lines(tmp_path):
 def test_main_cmd_check_commits(tmp_path):
     """Target cmd_check_commits (lines 171-204)."""
     import sys
+
     from impactguard.__main__ import main
 
     # Test check-commits command
@@ -82,6 +106,7 @@ def test_main_cmd_check_commits(tmp_path):
 def test_main_cmd_install_hooks(tmp_path):
     """Target cmd_install_hooks (lines 209-284)."""
     import sys
+
     from impactguard.__main__ import main
 
     # Test install-hooks command
@@ -95,6 +120,7 @@ def test_main_cmd_install_hooks(tmp_path):
 def test_main_cmd_generate_changelog(tmp_path):
     """Target cmd_generate_changelog."""
     import sys
+
     from impactguard.__main__ import main
 
     old_file = tmp_path / "old.py"
@@ -102,9 +128,14 @@ def test_main_cmd_generate_changelog(tmp_path):
     new_file = tmp_path / "new.py"
     new_file.write_text("def foo(x): pass\n")
 
-    sys.argv = ["impactguard", "generate-changelog",
-                "--old-files", str(old_file),
-                "--new-files", str(new_file)]
+    sys.argv = [
+        "impactguard",
+        "generate-changelog",
+        "--old-files",
+        str(old_file),
+        "--new-files",
+        str(new_file),
+    ]
     try:
         main()
     except SystemExit as e:
@@ -159,13 +190,29 @@ def test_impactguard_class_all_methods(tmp_path):
     assert isinstance(sigs, list)
 
     # Test compare
-    old_sigs = [{"fqname": "test:foo", "name": "foo",
-                 "positional": [{"name": "a", "has_default": False}],
-                 "kwonly": [], "vararg": False, "kwarg": False}]
-    new_sigs = [{"fqname": "test:foo", "name": "foo",
-                 "positional": [{"name": "a", "has_default": False},
-                                {"name": "b", "has_default": True}],
-                 "kwonly": [], "vararg": False, "kwarg": False}]
+    old_sigs = [
+        {
+            "fqname": "test:foo",
+            "name": "foo",
+            "positional": [{"name": "a", "has_default": False}],
+            "kwonly": [],
+            "vararg": False,
+            "kwarg": False,
+        }
+    ]
+    new_sigs = [
+        {
+            "fqname": "test:foo",
+            "name": "foo",
+            "positional": [
+                {"name": "a", "has_default": False},
+                {"name": "b", "has_default": True},
+            ],
+            "kwonly": [],
+            "vararg": False,
+            "kwarg": False,
+        }
+    ]
 
     old_path = tmp_path / "old.json"
     new_path = tmp_path / "new.json"

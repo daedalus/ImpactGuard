@@ -7,18 +7,14 @@ from tempfile import mkdtemp
 
 def test_suggest_fixes_complete(tmp_path):
     """Test suggest_fixes with complete data."""
-    from impactguard.suggest_fixes import suggest, enrich_with_fixes
+    from impactguard.suggest_fixes import enrich_with_fixes, suggest
 
     risk_item = {
         "fqname": "test.py:foo",
         "change": "OPTIONAL POSITIONAL ADDED: test.py:foo",
         "risk_level": "MEDIUM",
-        "callsites": [
-            {"file": "main.py", "lineno": 10, "args": 2}
-        ],
-        "patches": [
-            {"type": "add_default", "param": "x", "default": "None"}
-        ],
+        "callsites": [{"file": "main.py", "lineno": 10, "args": 2}],
+        "patches": [{"type": "add_default", "param": "x", "default": "None"}],
     }
 
     # Test suggest
@@ -91,16 +87,25 @@ def test_impact_analysis_with_complex_data(tmp_path):
     from impactguard.impact_analysis import analyze
 
     sigs_path = tmp_path / "sigs.json"
-    sigs_path.write_text(json.dumps([
-        {"fqname": "test:foo", "name": "foo",
-         "positional": [{"name": "a", "has_default": False}],
-         "kwonly": [], "vararg": False, "kwarg": False}
-    ]))
+    sigs_path.write_text(
+        json.dumps(
+            [
+                {
+                    "fqname": "test:foo",
+                    "name": "foo",
+                    "positional": [{"name": "a", "has_default": False}],
+                    "kwonly": [],
+                    "vararg": False,
+                    "kwarg": False,
+                }
+            ]
+        )
+    )
 
     calls_path = tmp_path / "calls.json"
-    calls_path.write_text(json.dumps([
-        {"fqname": "test:foo", "file": "main.py", "lineno": 10}
-    ]))
+    calls_path.write_text(
+        json.dumps([{"fqname": "test:foo", "file": "main.py", "lineno": 10}])
+    )
 
     result = analyze(str(sigs_path), str(calls_path))
     assert isinstance(result, list)
@@ -114,9 +119,9 @@ def test_risk_gate_with_complex_data(tmp_path):
     diff_path.write_text("POSITIONAL REMOVED: test.py:foo\n")
 
     runtime_path = tmp_path / "runtime.json"
-    runtime_path.write_text(json.dumps([
-        {"function": "foo", "args_count": 1, "kwargs": []}
-    ]))
+    runtime_path.write_text(
+        json.dumps([{"function": "foo", "args_count": 1, "kwargs": []}])
+    )
 
     output_path = tmp_path / "risk.json"
 
@@ -223,20 +228,45 @@ def test_compare_signatures_complex(tmp_path):
     from impactguard.compare_signatures import compare
 
     old = [
-        {"fqname": "test:foo", "name": "foo",
-         "positional": [{"name": "a", "has_default": False}],
-         "kwonly": [], "vararg": False, "kwarg": False},
-        {"fqname": "test:bar", "name": "bar",
-         "positional": [], "kwonly": [], "vararg": False, "kwarg": False},
+        {
+            "fqname": "test:foo",
+            "name": "foo",
+            "positional": [{"name": "a", "has_default": False}],
+            "kwonly": [],
+            "vararg": False,
+            "kwarg": False,
+        },
+        {
+            "fqname": "test:bar",
+            "name": "bar",
+            "positional": [],
+            "kwonly": [],
+            "vararg": False,
+            "kwarg": False,
+        },
     ]
 
     new = [
-        {"fqname": "test:foo", "name": "foo",
-         "positional": [{"name": "a", "has_default": False}, {"name": "b", "has_default": True}],
-         "kwonly": [], "vararg": False, "kwarg": False},
+        {
+            "fqname": "test:foo",
+            "name": "foo",
+            "positional": [
+                {"name": "a", "has_default": False},
+                {"name": "b", "has_default": True},
+            ],
+            "kwonly": [],
+            "vararg": False,
+            "kwarg": False,
+        },
         # bar removed - breaking
-        {"fqname": "test:baz", "name": "baz",
-         "positional": [], "kwonly": [], "vararg": False, "kwarg": False},
+        {
+            "fqname": "test:baz",
+            "name": "baz",
+            "positional": [],
+            "kwonly": [],
+            "vararg": False,
+            "kwarg": False,
+        },
     ]
 
     old_path = tmp_path / "old.json"

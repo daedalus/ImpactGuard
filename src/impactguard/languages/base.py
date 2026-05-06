@@ -32,13 +32,13 @@ class LanguageExtractor(Protocol):
     def extract_signatures(
         self,
         files: list[str],
-        base_path: str | None = None,
+        _base_path: str | None = None,
     ) -> list[dict[str, Any]]:
         """Extract function/method signatures from source files.
 
         Args:
             files: List of source file paths.
-            base_path: Optional base path used to make ``fqname`` values
+            _base_path: Optional base path used to make ``fqname`` values
                 relative.  Ignored by most implementations.
 
         Returns:

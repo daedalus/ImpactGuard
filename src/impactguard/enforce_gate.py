@@ -25,13 +25,15 @@ def enforce(
     Returns:
         1 if HIGH risk detected (or UNKNOWN when blocking), 0 otherwise.
     """
-    from .risk_gate import run
     from .config import get as cfg_get
+    from .risk_gate import run
 
     if block_unknown is None:
         block_unknown = bool(cfg_get("risk", "block_unknown", False))
 
-    report: list[dict[str, Any]] = run(diff_path, runtime_path, output_path, lambda_=lambda_)
+    report: list[dict[str, Any]] = run(
+        diff_path, runtime_path, output_path, lambda_=lambda_
+    )
 
     has_high = False
     has_unknown = False

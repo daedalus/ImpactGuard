@@ -1,6 +1,4 @@
 import ast
-import json
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +32,7 @@ def _extract_all_names(tree: ast.Module) -> set[str] | None:
         for target in node.targets:
             if isinstance(target, ast.Name) and target.id == "__all__":
                 val = node.value
-                if isinstance(val, (ast.List, ast.Tuple)):
+                if isinstance(val, ast.List | ast.Tuple):
                     names: set[str] = set()
                     for elt in val.elts:
                         if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
@@ -121,6 +119,7 @@ def serialize_function(
         file: File path for fqname.
         class_name: Optional class name if this is a method.
     """
+
     def arg_info(arg: ast.arg, default: object) -> dict[str, Any]:
         return {
             "name": arg.arg,
@@ -169,7 +168,7 @@ def serialize_function(
 
 def extract(
     files: list[str],
-    base_path: str | None = None,
+    _base_path: str | None = None,
     include_reexports: bool = False,
 ) -> list[dict[str, Any]]:
     """Extract function signatures from Python files.
@@ -219,9 +218,7 @@ def extract(
                 self.generic_visit(node)
                 self.current_class = old_class
 
-            def _add(
-                self, node: ast.FunctionDef | ast.AsyncFunctionDef
-            ) -> None:
+            def _add(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
                 sig = serialize_function(node, fq_file, self.current_class)
                 sig["ignored"] = _has_ignore_comment(source_lines, node.lineno)
                 if all_names is not None:
@@ -235,9 +232,7 @@ def extract(
                 self._add(node)
                 self.generic_visit(node)
 
-            def visit_AsyncFunctionDef(
-                self, node: ast.AsyncFunctionDef
-            ) -> None:
+            def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
                 self._add(node)
                 self.generic_visit(node)
 

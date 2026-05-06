@@ -16,11 +16,12 @@ import json
 import sys
 import warnings
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _write(tmp_path: Path, name: str, content: str) -> Path:
     p = tmp_path / name
@@ -34,69 +35,81 @@ def _write(tmp_path: Path, name: str, content: str) -> Path:
 class TestRegistry:
     def test_get_extractor_python(self) -> None:
         from impactguard.languages.registry import get_extractor
+
         ext = get_extractor("mymodule.py")
         assert ext is not None
         assert ext.language == "python"
 
     def test_get_extractor_typescript(self) -> None:
         from impactguard.languages.registry import get_extractor
+
         ext = get_extractor("api.ts")
         assert ext is not None
         assert ext.language == "typescript"
 
     def test_get_extractor_tsx(self) -> None:
         from impactguard.languages.registry import get_extractor
+
         ext = get_extractor("Component.tsx")
         assert ext is not None
         assert ext.language == "typescript"
 
     def test_get_extractor_unknown(self) -> None:
         from impactguard.languages.registry import get_extractor
+
         assert get_extractor("file.cobol") is None
 
     def test_get_extractor_by_language_python(self) -> None:
         from impactguard.languages.registry import get_extractor_by_language
+
         ext = get_extractor_by_language("python")
         assert ext is not None
         assert ext.language == "python"
 
     def test_get_extractor_by_language_typescript(self) -> None:
         from impactguard.languages.registry import get_extractor_by_language
+
         ext = get_extractor_by_language("typescript")
         assert ext is not None
 
     def test_get_extractor_by_language_unknown(self) -> None:
         from impactguard.languages.registry import get_extractor_by_language
+
         assert get_extractor_by_language("cobol") is None
 
     def test_detect_language_python(self) -> None:
         from impactguard.languages.registry import detect_language
+
         assert detect_language("foo.py") == "python"
 
     def test_detect_language_typescript(self) -> None:
         from impactguard.languages.registry import detect_language
+
         assert detect_language("foo.ts") == "typescript"
         assert detect_language("foo.tsx") == "typescript"
 
     def test_detect_language_unknown(self) -> None:
         from impactguard.languages.registry import detect_language
+
         assert detect_language("foo.cobol") is None
 
     def test_list_languages(self) -> None:
         from impactguard.languages.registry import list_languages
+
         langs = list_languages()
         assert "python" in langs
         assert "typescript" in langs
 
     def test_list_extensions(self) -> None:
         from impactguard.languages.registry import list_extensions
+
         exts = list_extensions()
         assert ".py" in exts
         assert ".ts" in exts
         assert ".tsx" in exts
 
     def test_register_custom_language(self) -> None:
-        from impactguard.languages.registry import register, get_extractor_by_language
+        from impactguard.languages.registry import get_extractor_by_language, register
 
         class FakeLang:
             language = "fake"
@@ -118,6 +131,7 @@ class TestRegistry:
 
     def test_case_insensitive_lookup(self) -> None:
         from impactguard.languages.registry import get_extractor_by_language
+
         assert get_extractor_by_language("PYTHON") is not None
         assert get_extractor_by_language("TypeScript") is not None
 
@@ -129,11 +143,13 @@ class TestLanguageExtractorProtocol:
     def test_python_satisfies_protocol(self) -> None:
         from impactguard.languages.base import LanguageExtractor
         from impactguard.languages.python import PythonExtractor
+
         assert isinstance(PythonExtractor(), LanguageExtractor)
 
     def test_typescript_satisfies_protocol(self) -> None:
         from impactguard.languages.base import LanguageExtractor
         from impactguard.languages.typescript import TypeScriptExtractor
+
         assert isinstance(TypeScriptExtractor(), LanguageExtractor)
 
 
@@ -144,6 +160,7 @@ class TestPythonExtractor:
     def test_extract_signatures_basic(self, tmp_path: Path) -> None:
         f = _write(tmp_path, "mod.py", "def foo(x: int, y: str = 'hi') -> None: pass\n")
         from impactguard.languages.python import PythonExtractor
+
         sigs = PythonExtractor().extract_signatures([str(f)])
         assert len(sigs) == 1
         sig = sigs[0]
@@ -159,41 +176,49 @@ class TestPythonExtractor:
     def test_extract_calls(self, tmp_path: Path) -> None:
         f = _write(tmp_path, "mod.py", "bar(1, 2)\n")
         from impactguard.languages.python import PythonExtractor
+
         calls = PythonExtractor().extract_calls(f)
         assert any(c["name"] == "bar" for c in calls)
 
     def test_parse_union_members_optional(self) -> None:
         from impactguard.languages.python import PythonExtractor
+
         result = PythonExtractor().parse_union_members("Optional[str]")
         assert result == frozenset({"str", "None"})
 
     def test_parse_union_members_union(self) -> None:
         from impactguard.languages.python import PythonExtractor
+
         result = PythonExtractor().parse_union_members("Union[int, str]")
         assert result == frozenset({"int", "str"})
 
     def test_parse_union_members_pep604(self) -> None:
         from impactguard.languages.python import PythonExtractor
+
         result = PythonExtractor().parse_union_members("int | None")
         assert result == frozenset({"int", "None"})
 
     def test_parse_union_members_scalar(self) -> None:
         from impactguard.languages.python import PythonExtractor
+
         result = PythonExtractor().parse_union_members("int")
         assert result == frozenset({"int"})
 
     def test_extensions(self) -> None:
         from impactguard.languages.python import PythonExtractor
+
         assert ".py" in PythonExtractor().extensions
 
     def test_empty_file(self, tmp_path: Path) -> None:
         f = _write(tmp_path, "empty.py", "")
         from impactguard.languages.python import PythonExtractor
+
         sigs = PythonExtractor().extract_signatures([str(f)])
         assert sigs == []
 
     def test_nonexistent_file(self) -> None:
         from impactguard.languages.python import PythonExtractor
+
         sigs = PythonExtractor().extract_signatures(["/nonexistent/path/file.py"])
         assert sigs == []
 
@@ -206,7 +231,11 @@ class TestTypeScriptExtractorTreeSitter:
 
     @pytest.fixture
     def ts_ext(self):
-        from impactguard.languages.typescript import TypeScriptExtractor, _TREE_SITTER_AVAILABLE
+        from impactguard.languages.typescript import (
+            _TREE_SITTER_AVAILABLE,
+            TypeScriptExtractor,
+        )
+
         if not _TREE_SITTER_AVAILABLE:
             pytest.skip("tree-sitter-typescript not installed")
         return TypeScriptExtractor()
@@ -225,7 +254,11 @@ class TestTypeScriptExtractorTreeSitter:
         assert sig["is_async"] is False
 
     def test_async_function(self, tmp_path: Path, ts_ext) -> None:
-        f = _write(tmp_path, "svc.ts", "async function fetch(url: string): Promise<string> {}\n")
+        f = _write(
+            tmp_path,
+            "svc.ts",
+            "async function fetch(url: string): Promise<string> {}\n",
+        )
         sigs = ts_ext.extract_signatures([str(f)])
         assert len(sigs) == 1
         assert sigs[0]["is_async"] is True
@@ -263,12 +296,18 @@ class TestTypeScriptExtractorTreeSitter:
         assert sigs[0]["is_async"] is True
 
     def test_exported_function(self, tmp_path: Path, ts_ext) -> None:
-        f = _write(tmp_path, "api.ts", "export function pub(x: number): string { return ''; }\n")
+        f = _write(
+            tmp_path,
+            "api.ts",
+            "export function pub(x: number): string { return ''; }\n",
+        )
         sigs = ts_ext.extract_signatures([str(f)])
         assert sigs[0]["exported"] is True
 
     def test_non_exported_function(self, tmp_path: Path, ts_ext) -> None:
-        f = _write(tmp_path, "api.ts", "function priv(x: number): string { return ''; }\n")
+        f = _write(
+            tmp_path, "api.ts", "function priv(x: number): string { return ''; }\n"
+        )
         sigs = ts_ext.extract_signatures([str(f)])
         assert sigs[0]["exported"] is False
 
@@ -323,7 +362,11 @@ class TestTypeScriptExtractorTreeSitter:
         assert greet_calls[0]["args"] == 2
 
     def test_tsx_extension(self, tmp_path: Path, ts_ext) -> None:
-        f = _write(tmp_path, "comp.tsx", "function render(props: object): string { return ''; }\n")
+        f = _write(
+            tmp_path,
+            "comp.tsx",
+            "function render(props: object): string { return ''; }\n",
+        )
         sigs = ts_ext.extract_signatures([str(f)])
         assert len(sigs) == 1
 
@@ -338,8 +381,10 @@ class TestTypeScriptExtractorRegexFallback:
     def ts_regex(self):
         """Return TypeScript extractor with tree-sitter patched out."""
         import impactguard.languages.typescript as ts_mod
+
         with patch.object(ts_mod, "_TREE_SITTER_AVAILABLE", False):
             from impactguard.languages.typescript import TypeScriptExtractor
+
             yield TypeScriptExtractor()
 
     def test_basic_function(self, tmp_path: Path, ts_regex) -> None:
@@ -351,7 +396,9 @@ class TestTypeScriptExtractorRegexFallback:
         assert "greet" in names
 
     def test_async_function(self, tmp_path: Path, ts_regex) -> None:
-        f = _write(tmp_path, "a.ts", "async function load(url: string): Promise<void> {}\n")
+        f = _write(
+            tmp_path, "a.ts", "async function load(url: string): Promise<void> {}\n"
+        )
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
             sigs = ts_regex.extract_signatures([str(f)])
@@ -384,6 +431,7 @@ class TestTypeScriptExtractorRegexFallback:
     def test_warns_when_tree_sitter_missing(self, tmp_path: Path) -> None:
         import impactguard.languages.typescript as ts_mod
         from impactguard.languages.typescript import TypeScriptExtractor
+
         f = _write(tmp_path, "a.ts", "function f(): void {}\n")
         inst = TypeScriptExtractor()  # fresh instance — _warned starts False
         with patch.object(ts_mod, "_TREE_SITTER_AVAILABLE", False):
@@ -394,6 +442,7 @@ class TestTypeScriptExtractorRegexFallback:
         """Warning fires at most once per extractor instance."""
         import impactguard.languages.typescript as ts_mod
         from impactguard.languages.typescript import TypeScriptExtractor
+
         f = _write(tmp_path, "a.ts", "function f(): void {}\n")
         inst = TypeScriptExtractor()  # fresh instance — _warned starts False
         with patch.object(ts_mod, "_TREE_SITTER_AVAILABLE", False):
@@ -421,6 +470,7 @@ class TestTypeScriptExtractorRegexFallback:
 
     def test_parse_union_members(self) -> None:
         from impactguard.languages.typescript import TypeScriptExtractor
+
         ext = TypeScriptExtractor()
         assert ext.parse_union_members("string | null") == frozenset({"string", "null"})
         assert ext.parse_union_members("number") == frozenset({"number"})
@@ -435,6 +485,7 @@ class TestTypeScriptExtractorRegexFallback:
 class TestTypeScriptRegexHelpers:
     def test_parse_params_basic(self) -> None:
         from impactguard.languages.typescript import _parse_ts_params_regex
+
         pos, vararg = _parse_ts_params_regex("a: string, b: number")
         assert len(pos) == 2
         assert pos[0] == {"name": "a", "has_default": False, "type": "string"}
@@ -443,34 +494,40 @@ class TestTypeScriptRegexHelpers:
 
     def test_parse_params_optional(self) -> None:
         from impactguard.languages.typescript import _parse_ts_params_regex
+
         pos, _ = _parse_ts_params_regex("a: string, b?: number")
         assert pos[1]["has_default"] is True
 
     def test_parse_params_default(self) -> None:
         from impactguard.languages.typescript import _parse_ts_params_regex
+
         pos, _ = _parse_ts_params_regex("x: number = 5")
         assert pos[0]["has_default"] is True
 
     def test_parse_params_rest(self) -> None:
         from impactguard.languages.typescript import _parse_ts_params_regex
+
         pos, vararg = _parse_ts_params_regex("...args: string[]")
         assert vararg is True
         assert len(pos) == 0
 
     def test_parse_params_empty(self) -> None:
         from impactguard.languages.typescript import _parse_ts_params_regex
+
         pos, vararg = _parse_ts_params_regex("")
         assert pos == []
         assert vararg is False
 
     def test_top_level_split(self) -> None:
         from impactguard.languages.typescript import _top_level_split
+
         # Should not split inside angle brackets
         parts = _top_level_split("a: Map<string, number>, b: string")
         assert len(parts) == 2
 
     def test_top_level_split_nested_parens(self) -> None:
         from impactguard.languages.typescript import _top_level_split
+
         parts = _top_level_split("cb: (x: string) => void, y: number")
         assert len(parts) == 2
 
@@ -486,7 +543,9 @@ class TestTypeScriptTypeCompat:
         p.write_text(json.dumps(sigs), encoding="utf-8")
         return str(p)
 
-    def _make_sig(self, fqname: str, args: list[dict], return_type: str | None = None) -> dict:
+    def _make_sig(
+        self, fqname: str, args: list[dict], return_type: str | None = None
+    ) -> dict:
         return {
             "fqname": fqname,
             "name": fqname.split(":")[-1],
@@ -500,8 +559,13 @@ class TestTypeScriptTypeCompat:
     def test_typescript_widening_null(self, tmp_path: Path) -> None:
         """string → string | null is widening in TypeScript (non-breaking)."""
         from impactguard.compare_signatures import compare
-        old_sig = self._make_sig("f.ts:fn", [{"name": "x", "has_default": False, "type": "string"}])
-        new_sig = self._make_sig("f.ts:fn", [{"name": "x", "has_default": False, "type": "string | null"}])
+
+        old_sig = self._make_sig(
+            "f.ts:fn", [{"name": "x", "has_default": False, "type": "string"}]
+        )
+        new_sig = self._make_sig(
+            "f.ts:fn", [{"name": "x", "has_default": False, "type": "string | null"}]
+        )
         old_path = self._write_sigs(tmp_path, "old.json", [old_sig])
         new_path = self._write_sigs(tmp_path, "new.json", [new_sig])
         result = compare(old_path, new_path, language="typescript")
@@ -511,8 +575,13 @@ class TestTypeScriptTypeCompat:
     def test_typescript_narrowing_null(self, tmp_path: Path) -> None:
         """string | null → string is narrowing (breaking)."""
         from impactguard.compare_signatures import compare
-        old_sig = self._make_sig("f.ts:fn", [{"name": "x", "has_default": False, "type": "string | null"}])
-        new_sig = self._make_sig("f.ts:fn", [{"name": "x", "has_default": False, "type": "string"}])
+
+        old_sig = self._make_sig(
+            "f.ts:fn", [{"name": "x", "has_default": False, "type": "string | null"}]
+        )
+        new_sig = self._make_sig(
+            "f.ts:fn", [{"name": "x", "has_default": False, "type": "string"}]
+        )
         old_path = self._write_sigs(tmp_path, "old.json", [old_sig])
         new_path = self._write_sigs(tmp_path, "new.json", [new_sig])
         result = compare(old_path, new_path, language="typescript")
@@ -521,8 +590,13 @@ class TestTypeScriptTypeCompat:
     def test_python_compat_unchanged(self, tmp_path: Path) -> None:
         """Without language param, Python union parsing is used (backward compat)."""
         from impactguard.compare_signatures import compare
-        old_sig = self._make_sig("m.py:fn", [{"name": "x", "has_default": False, "type": "int"}])
-        new_sig = self._make_sig("m.py:fn", [{"name": "x", "has_default": False, "type": "int | None"}])
+
+        old_sig = self._make_sig(
+            "m.py:fn", [{"name": "x", "has_default": False, "type": "int"}]
+        )
+        new_sig = self._make_sig(
+            "m.py:fn", [{"name": "x", "has_default": False, "type": "int | None"}]
+        )
         old_path = self._write_sigs(tmp_path, "old.json", [old_sig])
         new_path = self._write_sigs(tmp_path, "new.json", [new_sig])
         result = compare(old_path, new_path)  # no language param
@@ -531,8 +605,13 @@ class TestTypeScriptTypeCompat:
     def test_unknown_language_falls_back_to_python(self, tmp_path: Path) -> None:
         """An unregistered language name falls back to Python union parsing."""
         from impactguard.compare_signatures import compare
-        old_sig = self._make_sig("m.py:fn", [{"name": "x", "has_default": False, "type": "int"}])
-        new_sig = self._make_sig("m.py:fn", [{"name": "x", "has_default": False, "type": "int | None"}])
+
+        old_sig = self._make_sig(
+            "m.py:fn", [{"name": "x", "has_default": False, "type": "int"}]
+        )
+        new_sig = self._make_sig(
+            "m.py:fn", [{"name": "x", "has_default": False, "type": "int | None"}]
+        )
         old_path = self._write_sigs(tmp_path, "old.json", [old_sig])
         new_path = self._write_sigs(tmp_path, "new.json", [new_sig])
         result = compare(old_path, new_path, language="nonexistent_lang")
@@ -541,6 +620,7 @@ class TestTypeScriptTypeCompat:
 
     def test_return_type_widening_typescript(self, tmp_path: Path) -> None:
         from impactguard.compare_signatures import compare
+
         old_sig = self._make_sig("f.ts:fn", [], return_type="string")
         new_sig = self._make_sig("f.ts:fn", [], return_type="string | undefined")
         old_path = self._write_sigs(tmp_path, "old.json", [old_sig])
@@ -560,19 +640,27 @@ class TestTypeChangeKindWithParser:
 
     def test_custom_parser_widening(self) -> None:
         from impactguard.compare_signatures import _type_change_kind
-        assert _type_change_kind("string", "string | null", self._ts_parse) == "widening"
+
+        assert (
+            _type_change_kind("string", "string | null", self._ts_parse) == "widening"
+        )
 
     def test_custom_parser_narrowing(self) -> None:
         from impactguard.compare_signatures import _type_change_kind
-        assert _type_change_kind("string | null", "string", self._ts_parse) == "narrowing"
+
+        assert (
+            _type_change_kind("string | null", "string", self._ts_parse) == "narrowing"
+        )
 
     def test_no_parser_uses_python_defaults(self) -> None:
         from impactguard.compare_signatures import _type_change_kind
+
         # int → int | None is widening with the default Python parser
         assert _type_change_kind("int", "int | None") == "widening"
 
     def test_changed_incompatible_types(self) -> None:
         from impactguard.compare_signatures import _type_change_kind
+
         assert _type_change_kind("number", "string", self._ts_parse) == "changed"
 
 
@@ -582,6 +670,7 @@ class TestTypeChangeKindWithParser:
 class TestLanguagesConfig:
     def test_languages_enabled_default(self) -> None:
         from impactguard.config import load_config
+
         cfg = load_config()
         langs_cfg = cfg.get("impactguard", {}).get("languages", {})
         assert "python" in langs_cfg.get("enabled", [])
@@ -589,12 +678,18 @@ class TestLanguagesConfig:
 
     def test_extension_overrides_default_empty(self) -> None:
         from impactguard.config import load_config
+
         cfg = load_config()
-        overrides = cfg.get("impactguard", {}).get("languages", {}).get("extension_overrides", {})
+        overrides = (
+            cfg.get("impactguard", {})
+            .get("languages", {})
+            .get("extension_overrides", {})
+        )
         assert isinstance(overrides, dict)
 
     def test_languages_section_accessible_via_get(self) -> None:
         from impactguard.config import get
+
         enabled = get("languages", "enabled", [])
         assert "python" in enabled
 
@@ -605,8 +700,10 @@ class TestLanguagesConfig:
 class TestCLILanguageFlag:
     def test_extract_python_files(self, tmp_path: Path, capsys) -> None:
         f = _write(tmp_path, "m.py", "def foo(): pass\n")
-        from impactguard.__main__ import cmd_extract
         import argparse
+
+        from impactguard.__main__ import cmd_extract
+
         args = argparse.Namespace(files=[str(f)], language=None)
         rc = cmd_extract(args)
         assert rc == 0
@@ -616,8 +713,10 @@ class TestCLILanguageFlag:
 
     def test_extract_with_explicit_language(self, tmp_path: Path, capsys) -> None:
         f = _write(tmp_path, "m.py", "def bar(): pass\n")
-        from impactguard.__main__ import cmd_extract
         import argparse
+
+        from impactguard.__main__ import cmd_extract
+
         args = argparse.Namespace(files=[str(f)], language="python")
         rc = cmd_extract(args)
         assert rc == 0
@@ -625,17 +724,23 @@ class TestCLILanguageFlag:
         data = json.loads(out)
         assert any(s["name"] == "bar" for s in data)
 
-    def test_extract_unknown_language_returns_error(self, tmp_path: Path, capsys) -> None:
+    def test_extract_unknown_language_returns_error(
+        self, tmp_path: Path, capsys
+    ) -> None:
         f = _write(tmp_path, "m.py", "def foo(): pass\n")
-        from impactguard.__main__ import cmd_extract
         import argparse
+
+        from impactguard.__main__ import cmd_extract
+
         args = argparse.Namespace(files=[str(f)], language="cobol")
         rc = cmd_extract(args)
         assert rc == 1
 
     def test_extract_no_files_returns_error(self, capsys) -> None:
-        from impactguard.__main__ import cmd_extract
         import argparse
+
+        from impactguard.__main__ import cmd_extract
+
         # Patch stdin to avoid blocking
         with patch("sys.stdin") as mock_stdin:
             mock_stdin.read.return_value = ""
@@ -645,8 +750,10 @@ class TestCLILanguageFlag:
 
     def test_extract_unknown_extension_warns(self, tmp_path: Path, capsys) -> None:
         f = _write(tmp_path, "script.xyz123", "NOTHING HERE\n")
-        from impactguard.__main__ import cmd_extract
         import argparse
+
+        from impactguard.__main__ import cmd_extract
+
         args = argparse.Namespace(files=[str(f)], language=None)
         rc = cmd_extract(args)
         assert rc == 0  # Still succeeds, just skips unknown files
@@ -655,25 +762,33 @@ class TestCLILanguageFlag:
 
     def test_extract_calls_python(self, tmp_path: Path, capsys) -> None:
         f = _write(tmp_path, "m.py", "bar(1, 2)\n")
-        from impactguard.__main__ import cmd_extract_calls
         import argparse
+
+        from impactguard.__main__ import cmd_extract_calls
+
         args = argparse.Namespace(files=[str(f)], language=None)
         rc = cmd_extract_calls(args)
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert any(c["name"] == "bar" for c in data)
 
-    def test_extract_calls_unknown_language_returns_error(self, tmp_path: Path, capsys) -> None:
+    def test_extract_calls_unknown_language_returns_error(
+        self, tmp_path: Path, capsys
+    ) -> None:
         f = _write(tmp_path, "m.py", "bar(1)\n")
-        from impactguard.__main__ import cmd_extract_calls
         import argparse
+
+        from impactguard.__main__ import cmd_extract_calls
+
         args = argparse.Namespace(files=[str(f)], language="cobol")
         rc = cmd_extract_calls(args)
         assert rc == 1
 
     def test_extract_calls_no_files_returns_error(self, capsys) -> None:
-        from impactguard.__main__ import cmd_extract_calls
         import argparse
+
+        from impactguard.__main__ import cmd_extract_calls
+
         with patch("sys.stdin") as mock_stdin:
             mock_stdin.read.return_value = ""
             args = argparse.Namespace(files=[], language=None)
@@ -682,11 +797,14 @@ class TestCLILanguageFlag:
 
     def test_extract_typescript_via_registry(self, tmp_path: Path, capsys) -> None:
         from impactguard.languages.typescript import _TREE_SITTER_AVAILABLE
+
         if not _TREE_SITTER_AVAILABLE:
             pytest.skip("tree-sitter-typescript not installed")
         f = _write(tmp_path, "api.ts", "export function hello(name: string): void {}\n")
-        from impactguard.__main__ import cmd_extract
         import argparse
+
+        from impactguard.__main__ import cmd_extract
+
         args = argparse.Namespace(files=[str(f)], language=None)
         rc = cmd_extract(args)
         assert rc == 0
@@ -700,30 +818,37 @@ class TestCLILanguageFlag:
 class TestPublicExports:
     def test_language_extractor_exported(self) -> None:
         import impactguard
+
         assert hasattr(impactguard, "LanguageExtractor")
 
     def test_register_language_exported(self) -> None:
         import impactguard
+
         assert callable(impactguard.register_language)
 
     def test_get_extractor_exported(self) -> None:
         import impactguard
+
         assert callable(impactguard.get_extractor)
 
     def test_get_extractor_by_language_exported(self) -> None:
         import impactguard
+
         assert callable(impactguard.get_extractor_by_language)
 
     def test_detect_language_exported(self) -> None:
         import impactguard
+
         assert callable(impactguard.detect_language)
 
     def test_list_languages_exported(self) -> None:
         import impactguard
+
         assert callable(impactguard.list_languages)
 
     def test_list_language_extensions_exported(self) -> None:
         import impactguard
+
         assert callable(impactguard.list_language_extensions)
 
 
@@ -734,74 +859,106 @@ class TestRegistryNewLanguages:
     """Verify that all new language extractors are registered correctly."""
 
     def test_java_registered(self) -> None:
-        from impactguard.languages.registry import get_extractor, get_extractor_by_language
+        from impactguard.languages.registry import (
+            get_extractor,
+            get_extractor_by_language,
+        )
+
         assert get_extractor("Foo.java") is not None
         assert get_extractor_by_language("java") is not None
 
     def test_go_registered(self) -> None:
-        from impactguard.languages.registry import get_extractor, get_extractor_by_language
+        from impactguard.languages.registry import (
+            get_extractor,
+            get_extractor_by_language,
+        )
+
         assert get_extractor("main.go") is not None
         assert get_extractor_by_language("go") is not None
 
     def test_rust_registered(self) -> None:
-        from impactguard.languages.registry import get_extractor, get_extractor_by_language
+        from impactguard.languages.registry import (
+            get_extractor,
+            get_extractor_by_language,
+        )
+
         assert get_extractor("lib.rs") is not None
         assert get_extractor_by_language("rust") is not None
 
     def test_c_registered(self) -> None:
-        from impactguard.languages.registry import get_extractor, get_extractor_by_language
+        from impactguard.languages.registry import (
+            get_extractor,
+            get_extractor_by_language,
+        )
+
         assert get_extractor("util.c") is not None
         assert get_extractor("header.h") is not None
         assert get_extractor_by_language("c") is not None
 
     def test_cpp_registered(self) -> None:
-        from impactguard.languages.registry import get_extractor, get_extractor_by_language
+        from impactguard.languages.registry import (
+            get_extractor,
+            get_extractor_by_language,
+        )
+
         assert get_extractor("app.cpp") is not None
         assert get_extractor("app.hpp") is not None
         assert get_extractor("app.cc") is not None
         assert get_extractor_by_language("cpp") is not None
 
     def test_ruby_registered(self) -> None:
-        from impactguard.languages.registry import get_extractor, get_extractor_by_language
+        from impactguard.languages.registry import (
+            get_extractor,
+            get_extractor_by_language,
+        )
+
         assert get_extractor("script.rb") is not None
         assert get_extractor_by_language("ruby") is not None
 
     def test_list_languages_includes_all_new(self) -> None:
         from impactguard.languages.registry import list_languages
+
         langs = list_languages()
         for lang in ("java", "go", "rust", "c", "cpp", "ruby"):
             assert lang in langs, f"{lang} missing from list_languages()"
 
     def test_list_extensions_includes_new(self) -> None:
         from impactguard.languages.registry import list_extensions
+
         exts = list_extensions()
         for ext in (".java", ".go", ".rs", ".c", ".h", ".cpp", ".hpp", ".cc", ".rb"):
             assert ext in exts, f"{ext} missing from list_extensions()"
 
     def test_detect_language_java(self) -> None:
         from impactguard.languages.registry import detect_language
+
         assert detect_language("Foo.java") == "java"
 
     def test_detect_language_go(self) -> None:
         from impactguard.languages.registry import detect_language
+
         assert detect_language("main.go") == "go"
 
     def test_detect_language_rust(self) -> None:
         from impactguard.languages.registry import detect_language
+
         assert detect_language("lib.rs") == "rust"
 
     def test_detect_language_c(self) -> None:
         from impactguard.languages.registry import detect_language
+
         assert detect_language("util.c") == "c"
         assert detect_language("header.h") == "c"
 
     def test_detect_language_cpp(self) -> None:
         from impactguard.languages.registry import detect_language
+
         assert detect_language("app.cpp") == "cpp"
         assert detect_language("app.cc") == "cpp"
 
     def test_detect_language_ruby(self) -> None:
         from impactguard.languages.registry import detect_language
+
         assert detect_language("script.rb") == "ruby"
 
 
@@ -812,31 +969,37 @@ class TestNewExtractorsProtocol:
     def test_java_satisfies_protocol(self) -> None:
         from impactguard.languages.base import LanguageExtractor
         from impactguard.languages.java import JavaExtractor
+
         assert isinstance(JavaExtractor(), LanguageExtractor)
 
     def test_go_satisfies_protocol(self) -> None:
         from impactguard.languages.base import LanguageExtractor
         from impactguard.languages.go import GoExtractor
+
         assert isinstance(GoExtractor(), LanguageExtractor)
 
     def test_rust_satisfies_protocol(self) -> None:
         from impactguard.languages.base import LanguageExtractor
         from impactguard.languages.rust import RustExtractor
+
         assert isinstance(RustExtractor(), LanguageExtractor)
 
     def test_c_satisfies_protocol(self) -> None:
         from impactguard.languages.base import LanguageExtractor
         from impactguard.languages.c import CExtractor
+
         assert isinstance(CExtractor(), LanguageExtractor)
 
     def test_cpp_satisfies_protocol(self) -> None:
         from impactguard.languages.base import LanguageExtractor
         from impactguard.languages.c import CppExtractor
+
         assert isinstance(CppExtractor(), LanguageExtractor)
 
     def test_ruby_satisfies_protocol(self) -> None:
         from impactguard.languages.base import LanguageExtractor
         from impactguard.languages.ruby import RubyExtractor
+
         assert isinstance(RubyExtractor(), LanguageExtractor)
 
 
@@ -846,14 +1009,18 @@ class TestNewExtractorsProtocol:
 class TestJavaExtractor:
     @pytest.fixture
     def ext(self):
-        from impactguard.languages.java import JavaExtractor, _TREE_SITTER_AVAILABLE
+        from impactguard.languages.java import _TREE_SITTER_AVAILABLE, JavaExtractor
+
         if not _TREE_SITTER_AVAILABLE:
             pytest.skip("tree-sitter-java not installed")
         return JavaExtractor()
 
     def test_basic_method(self, tmp_path: Path, ext) -> None:
-        f = _write(tmp_path, "Foo.java",
-                   "public class Foo { public int bar(String x, int y) { return 0; } }")
+        f = _write(
+            tmp_path,
+            "Foo.java",
+            "public class Foo { public int bar(String x, int y) { return 0; } }",
+        )
         sigs = ext.extract_signatures([str(f)])
         assert len(sigs) == 1
         sig = sigs[0]
@@ -878,8 +1045,11 @@ class TestJavaExtractor:
         assert "Service.stop" in names
 
     def test_vararg_method(self, tmp_path: Path, ext) -> None:
-        f = _write(tmp_path, "Util.java",
-                   "public class Util { public void log(String msg, Object... args) {} }")
+        f = _write(
+            tmp_path,
+            "Util.java",
+            "public class Util { public void log(String msg, Object... args) {} }",
+        )
         sigs = ext.extract_signatures([str(f)])
         assert sigs[0]["vararg"] is True
 
@@ -900,19 +1070,18 @@ class TestJavaExtractor:
 
     def test_parse_union_members_scalar(self) -> None:
         from impactguard.languages.java import JavaExtractor
+
         assert JavaExtractor().parse_union_members("String") == frozenset({"String"})
 
     def test_parse_union_members_multi_catch(self) -> None:
         from impactguard.languages.java import JavaExtractor
+
         result = JavaExtractor().parse_union_members("IOException | RuntimeException")
         assert result == frozenset({"IOException", "RuntimeException"})
 
     def test_ignore_comment(self, tmp_path: Path, ext) -> None:
         src = (
-            "public class X {\n"
-            "  // impactguard: ignore\n"
-            "  public void secret() {}\n"
-            "}\n"
+            "public class X {\n  // impactguard: ignore\n  public void secret() {}\n}\n"
         )
         f = _write(tmp_path, "X.java", src)
         sigs = ext.extract_signatures([str(f)])
@@ -933,12 +1102,16 @@ class TestJavaExtractorRegexFallback:
     @pytest.fixture
     def ext(self):
         import impactguard.languages.java as java_mod
+
         with patch.object(java_mod, "_TREE_SITTER_AVAILABLE", False):
             from impactguard.languages.java import JavaExtractor
+
             yield JavaExtractor()
 
     def test_basic_method(self, tmp_path: Path, ext) -> None:
-        f = _write(tmp_path, "Foo.java", "public int bar(String x, int y) { return 0; }")
+        f = _write(
+            tmp_path, "Foo.java", "public int bar(String x, int y) { return 0; }"
+        )
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
             sigs = ext.extract_signatures([str(f)])
@@ -947,6 +1120,7 @@ class TestJavaExtractorRegexFallback:
     def test_warns_when_tree_sitter_missing(self, tmp_path: Path) -> None:
         import impactguard.languages.java as java_mod
         from impactguard.languages.java import JavaExtractor
+
         f = _write(tmp_path, "Foo.java", "public void foo() {}")
         inst = JavaExtractor()
         with patch.object(java_mod, "_TREE_SITTER_AVAILABLE", False):
@@ -967,13 +1141,18 @@ class TestJavaExtractorRegexFallback:
 class TestGoExtractor:
     @pytest.fixture
     def ext(self):
-        from impactguard.languages.go import GoExtractor, _TREE_SITTER_AVAILABLE
+        from impactguard.languages.go import _TREE_SITTER_AVAILABLE, GoExtractor
+
         if not _TREE_SITTER_AVAILABLE:
             pytest.skip("tree-sitter-go not installed")
         return GoExtractor()
 
     def test_basic_function(self, tmp_path: Path, ext) -> None:
-        f = _write(tmp_path, "main.go", "package main\nfunc Add(x int, y int) int { return x + y }")
+        f = _write(
+            tmp_path,
+            "main.go",
+            "package main\nfunc Add(x int, y int) int { return x + y }",
+        )
         sigs = ext.extract_signatures([str(f)])
         assert len(sigs) == 1
         sig = sigs[0]
@@ -985,12 +1164,16 @@ class TestGoExtractor:
         assert sig["positional"][0]["type"] == "int"
 
     def test_unexported_function(self, tmp_path: Path, ext) -> None:
-        f = _write(tmp_path, "util.go", "package util\nfunc helper(n int) bool { return true }")
+        f = _write(
+            tmp_path, "util.go", "package util\nfunc helper(n int) bool { return true }"
+        )
         sigs = ext.extract_signatures([str(f)])
         assert sigs[0]["exported"] is False
 
     def test_method_with_receiver(self, tmp_path: Path, ext) -> None:
-        src = "package main\nfunc (r *Receiver) Method(name string) error { return nil }"
+        src = (
+            "package main\nfunc (r *Receiver) Method(name string) error { return nil }"
+        )
         f = _write(tmp_path, "srv.go", src)
         sigs = ext.extract_signatures([str(f)])
         assert len(sigs) == 1
@@ -998,7 +1181,9 @@ class TestGoExtractor:
         assert "Method" in sigs[0]["name"]
 
     def test_variadic_function(self, tmp_path: Path, ext) -> None:
-        f = _write(tmp_path, "util.go", "package util\nfunc Sum(nums ...int) int { return 0 }")
+        f = _write(
+            tmp_path, "util.go", "package util\nfunc Sum(nums ...int) int { return 0 }"
+        )
         sigs = ext.extract_signatures([str(f)])
         assert sigs[0]["vararg"] is True
 
@@ -1019,10 +1204,12 @@ class TestGoExtractor:
 
     def test_parse_union_members_scalar(self) -> None:
         from impactguard.languages.go import GoExtractor
+
         assert GoExtractor().parse_union_members("int") == frozenset({"int"})
 
     def test_parse_union_members_generic_constraint(self) -> None:
         from impactguard.languages.go import GoExtractor
+
         result = GoExtractor().parse_union_members("int | string")
         assert result == frozenset({"int", "string"})
 
@@ -1041,12 +1228,16 @@ class TestGoExtractorRegexFallback:
     @pytest.fixture
     def ext(self):
         import impactguard.languages.go as go_mod
+
         with patch.object(go_mod, "_TREE_SITTER_AVAILABLE", False):
             from impactguard.languages.go import GoExtractor
+
             yield GoExtractor()
 
     def test_basic_function(self, tmp_path: Path, ext) -> None:
-        f = _write(tmp_path, "main.go", "func Add(x int, y int) int {\n  return x + y\n}")
+        f = _write(
+            tmp_path, "main.go", "func Add(x int, y int) int {\n  return x + y\n}"
+        )
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
             sigs = ext.extract_signatures([str(f)])
@@ -1055,6 +1246,7 @@ class TestGoExtractorRegexFallback:
     def test_warns_when_tree_sitter_missing(self, tmp_path: Path) -> None:
         import impactguard.languages.go as go_mod
         from impactguard.languages.go import GoExtractor
+
         f = _write(tmp_path, "main.go", "func Foo() {}")
         inst = GoExtractor()
         with patch.object(go_mod, "_TREE_SITTER_AVAILABLE", False):
@@ -1075,7 +1267,8 @@ class TestGoExtractorRegexFallback:
 class TestRustExtractor:
     @pytest.fixture
     def ext(self):
-        from impactguard.languages.rust import RustExtractor, _TREE_SITTER_AVAILABLE
+        from impactguard.languages.rust import _TREE_SITTER_AVAILABLE, RustExtractor
+
         if not _TREE_SITTER_AVAILABLE:
             pytest.skip("tree-sitter-rust not installed")
         return RustExtractor()
@@ -1128,10 +1321,12 @@ class TestRustExtractor:
 
     def test_parse_union_members_scalar(self) -> None:
         from impactguard.languages.rust import RustExtractor
+
         assert RustExtractor().parse_union_members("i32") == frozenset({"i32"})
 
     def test_parse_union_members_split(self) -> None:
         from impactguard.languages.rust import RustExtractor
+
         result = RustExtractor().parse_union_members("A | B")
         assert result == frozenset({"A", "B"})
 
@@ -1150,12 +1345,16 @@ class TestRustExtractorRegexFallback:
     @pytest.fixture
     def ext(self):
         import impactguard.languages.rust as rust_mod
+
         with patch.object(rust_mod, "_TREE_SITTER_AVAILABLE", False):
             from impactguard.languages.rust import RustExtractor
+
             yield RustExtractor()
 
     def test_basic_function(self, tmp_path: Path, ext) -> None:
-        f = _write(tmp_path, "lib.rs", "pub fn add(x: i32, y: i32) -> i32 {\n  x + y\n}")
+        f = _write(
+            tmp_path, "lib.rs", "pub fn add(x: i32, y: i32) -> i32 {\n  x + y\n}"
+        )
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
             sigs = ext.extract_signatures([str(f)])
@@ -1164,6 +1363,7 @@ class TestRustExtractorRegexFallback:
     def test_warns_when_tree_sitter_missing(self, tmp_path: Path) -> None:
         import impactguard.languages.rust as rust_mod
         from impactguard.languages.rust import RustExtractor
+
         f = _write(tmp_path, "lib.rs", "fn foo() {}")
         inst = RustExtractor()
         with patch.object(rust_mod, "_TREE_SITTER_AVAILABLE", False):
@@ -1184,7 +1384,8 @@ class TestRustExtractorRegexFallback:
 class TestCExtractor:
     @pytest.fixture
     def ext(self):
-        from impactguard.languages.c import CExtractor, _C_TREE_SITTER_AVAILABLE
+        from impactguard.languages.c import _C_TREE_SITTER_AVAILABLE, CExtractor
+
         if not _C_TREE_SITTER_AVAILABLE:
             pytest.skip("tree-sitter-c not installed")
         return CExtractor()
@@ -1226,6 +1427,7 @@ class TestCExtractor:
 
     def test_parse_union_members(self) -> None:
         from impactguard.languages.c import CExtractor
+
         assert CExtractor().parse_union_members("int") == frozenset({"int"})
 
     def test_sorted_output(self, tmp_path: Path, ext) -> None:
@@ -1243,8 +1445,10 @@ class TestCExtractorRegexFallback:
     @pytest.fixture
     def ext(self):
         import impactguard.languages.c as c_mod
+
         with patch.object(c_mod, "_C_TREE_SITTER_AVAILABLE", False):
             from impactguard.languages.c import CExtractor
+
             yield CExtractor()
 
     def test_basic_function(self, tmp_path: Path, ext) -> None:
@@ -1257,6 +1461,7 @@ class TestCExtractorRegexFallback:
     def test_warns_when_tree_sitter_missing(self, tmp_path: Path) -> None:
         import impactguard.languages.c as c_mod
         from impactguard.languages.c import CExtractor
+
         f = _write(tmp_path, "util.c", "void foo() {}")
         inst = CExtractor()
         with patch.object(c_mod, "_C_TREE_SITTER_AVAILABLE", False):
@@ -1270,7 +1475,8 @@ class TestCExtractorRegexFallback:
 class TestCppExtractor:
     @pytest.fixture
     def ext(self):
-        from impactguard.languages.c import CppExtractor, _CPP_TREE_SITTER_AVAILABLE
+        from impactguard.languages.c import _CPP_TREE_SITTER_AVAILABLE, CppExtractor
+
         if not _CPP_TREE_SITTER_AVAILABLE:
             pytest.skip("tree-sitter-cpp not installed")
         return CppExtractor()
@@ -1322,6 +1528,7 @@ class TestCppExtractor:
 
     def test_parse_union_members(self) -> None:
         from impactguard.languages.c import CppExtractor
+
         assert CppExtractor().parse_union_members("int") == frozenset({"int"})
 
 
@@ -1332,8 +1539,10 @@ class TestCppExtractorRegexFallback:
     @pytest.fixture
     def ext(self):
         import impactguard.languages.c as c_mod
+
         with patch.object(c_mod, "_CPP_TREE_SITTER_AVAILABLE", False):
             from impactguard.languages.c import CppExtractor
+
             yield CppExtractor()
 
     def test_basic_function(self, tmp_path: Path, ext) -> None:
@@ -1346,6 +1555,7 @@ class TestCppExtractorRegexFallback:
     def test_warns_when_tree_sitter_missing(self, tmp_path: Path) -> None:
         import impactguard.languages.c as c_mod
         from impactguard.languages.c import CppExtractor
+
         f = _write(tmp_path, "util.cpp", "void foo() {}")
         inst = CppExtractor()
         with patch.object(c_mod, "_CPP_TREE_SITTER_AVAILABLE", False):
@@ -1359,13 +1569,14 @@ class TestCppExtractorRegexFallback:
 class TestRubyExtractor:
     @pytest.fixture
     def ext(self):
-        from impactguard.languages.ruby import RubyExtractor, _TREE_SITTER_AVAILABLE
+        from impactguard.languages.ruby import _TREE_SITTER_AVAILABLE, RubyExtractor
+
         if not _TREE_SITTER_AVAILABLE:
             pytest.skip("tree-sitter-ruby not installed")
         return RubyExtractor()
 
     def test_basic_method(self, tmp_path: Path, ext) -> None:
-        f = _write(tmp_path, "greet.rb", 'def greet(name)\n  puts name\nend\n')
+        f = _write(tmp_path, "greet.rb", "def greet(name)\n  puts name\nend\n")
         sigs = ext.extract_signatures([str(f)])
         assert len(sigs) == 1
         sig = sigs[0]
@@ -1375,7 +1586,11 @@ class TestRubyExtractor:
         assert sig["positional"][0]["has_default"] is False
 
     def test_optional_parameter(self, tmp_path: Path, ext) -> None:
-        f = _write(tmp_path, "greet.rb", 'def greet(name, greeting = "Hello")\n  puts greeting\nend\n')
+        f = _write(
+            tmp_path,
+            "greet.rb",
+            'def greet(name, greeting = "Hello")\n  puts greeting\nend\n',
+        )
         sigs = ext.extract_signatures([str(f)])
         params = sigs[0]["positional"]
         assert params[0]["has_default"] is False
@@ -1405,13 +1620,7 @@ class TestRubyExtractor:
         assert all(s["class_name"] == "Animal" for s in sigs)
 
     def test_singleton_method(self, tmp_path: Path, ext) -> None:
-        src = (
-            "class Config\n"
-            "  def self.load(path)\n"
-            "    new(path)\n"
-            "  end\n"
-            "end\n"
-        )
+        src = "class Config\n  def self.load(path)\n    new(path)\n  end\nend\n"
         f = _write(tmp_path, "Config.rb", src)
         sigs = ext.extract_signatures([str(f)])
         assert any("load" in s["name"] for s in sigs)
@@ -1432,10 +1641,12 @@ class TestRubyExtractor:
 
     def test_parse_union_members_scalar(self) -> None:
         from impactguard.languages.ruby import RubyExtractor
+
         assert RubyExtractor().parse_union_members("String") == frozenset({"String"})
 
     def test_parse_union_members_sorbet(self) -> None:
         from impactguard.languages.ruby import RubyExtractor
+
         result = RubyExtractor().parse_union_members("String | NilClass")
         assert result == frozenset({"String", "NilClass"})
 
@@ -1460,8 +1671,10 @@ class TestRubyExtractorRegexFallback:
     @pytest.fixture
     def ext(self):
         import impactguard.languages.ruby as ruby_mod
+
         with patch.object(ruby_mod, "_TREE_SITTER_AVAILABLE", False):
             from impactguard.languages.ruby import RubyExtractor
+
             yield RubyExtractor()
 
     def test_basic_method(self, tmp_path: Path, ext) -> None:
@@ -1472,7 +1685,7 @@ class TestRubyExtractorRegexFallback:
         assert any(s["name"] == "greet" for s in sigs)
 
     def test_optional_parameter(self, tmp_path: Path, ext) -> None:
-        f = _write(tmp_path, "util.rb", 'def foo(a, b = 1)\nend\n')
+        f = _write(tmp_path, "util.rb", "def foo(a, b = 1)\nend\n")
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
             sigs = ext.extract_signatures([str(f)])
@@ -1482,6 +1695,7 @@ class TestRubyExtractorRegexFallback:
     def test_warns_when_tree_sitter_missing(self, tmp_path: Path) -> None:
         import impactguard.languages.ruby as ruby_mod
         from impactguard.languages.ruby import RubyExtractor
+
         f = _write(tmp_path, "greet.rb", "def hi; end\n")
         inst = RubyExtractor()
         with patch.object(ruby_mod, "_TREE_SITTER_AVAILABLE", False):

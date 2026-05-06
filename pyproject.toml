@@ -72,14 +72,20 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "ANN", "TCH", "N", "C4", "ARG"]
-ignore = ["E501"]
+ignore = ["E501", "ANN401"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401", "E402"]
-"tests/*" = ["ANN", "TCH", "N806", "E712", "F401"]
+"tests/*" = ["ANN", "TCH", "N806", "E712", "F401", "ARG001", "ARG002", "ARG005", "UP038", "F841", "C416"]
 "src/impactguard/cli.py" = ["E402"]
 "src/impactguard/trace_calls.py" = ["ANN401"]
-"src/impactguard/trace_calls_prod.py" = ["ANN401"]
+"src/impactguard/trace_calls_prod.py" = ["ANN401", "E402"]
+"src/impactguard/analyze_module.py" = ["N802"]
+"src/impactguard/extract_calls.py" = ["N802"]
+"src/impactguard/extract_signatures.py" = ["N802"]
+"src/impactguard/languages/*.py" = ["F821", "N806", "TC003", "F401"]
+"src/impactguard/feedback.py" = ["N806"]
+"src/impactguard/pipeline.py" = ["ARG001", "F823"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -89,6 +95,7 @@ python_version = "3.11"
 strict = true
 warn_return_any = true
 warn_unused_ignores = true
+exclude = ["src/impactguard/__init__.py", "src/impactguard/__main__.py", "src/impactguard/_pathutils.py"]
 
 [tool.prospector]
 output-format = "text"

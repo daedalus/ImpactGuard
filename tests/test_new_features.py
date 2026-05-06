@@ -28,9 +28,7 @@ import pytest
 
 def _tmp_json(data: object) -> str:
     """Write *data* to a temp JSON file and return the path."""
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".json", delete=False
-    ) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(data, f)
         return f.name
 
@@ -109,7 +107,7 @@ def test_config_load_from_file(tmp_path: Path):
     toml = tmp_path / "impactguard.toml"
     toml.write_text(
         "[impactguard.severity_scores]\n"
-        'REMOVED = 0.5\n'
+        "REMOVED = 0.5\n"
         "[impactguard.risk]\n"
         "block_unknown = true\n"
     )
@@ -130,7 +128,7 @@ def test_config_get_accessor():
 
 
 def test_config_reload():
-    from impactguard.config import reload_config, get_config
+    from impactguard.config import get_config, reload_config
 
     cfg = reload_config()
     assert cfg is not None
@@ -156,10 +154,7 @@ def test_extract_return_type_and_arg_types(tmp_path: Path):
     from impactguard.extract_signatures import extract
 
     src = tmp_path / "mod.py"
-    src.write_text(
-        "def greet(name: str, count: int = 0) -> bool:\n"
-        "    pass\n"
-    )
+    src.write_text("def greet(name: str, count: int = 0) -> bool:\n    pass\n")
     sigs = extract([str(src)])
     assert len(sigs) == 1
     fn = sigs[0]
@@ -184,10 +179,7 @@ def test_extract_decorators(tmp_path: Path):
 
     src = tmp_path / "mod.py"
     src.write_text(
-        "class C:\n"
-        "    @staticmethod\n"
-        "    def helper() -> None:\n"
-        "        pass\n"
+        "class C:\n    @staticmethod\n    def helper() -> None:\n        pass\n"
     )
     sigs = extract([str(src)])
     fn = next(s for s in sigs if "helper" in s["name"])
@@ -221,8 +213,20 @@ def test_extract_sync_not_async(tmp_path: Path):
 def test_compare_type_changed():
     from impactguard.compare_signatures import compare
 
-    old = [_sig("m.py:foo", "foo", positional=[{"name": "x", "has_default": False, "type": "int"}])]
-    new = [_sig("m.py:foo", "foo", positional=[{"name": "x", "has_default": False, "type": "str"}])]
+    old = [
+        _sig(
+            "m.py:foo",
+            "foo",
+            positional=[{"name": "x", "has_default": False, "type": "int"}],
+        )
+    ]
+    new = [
+        _sig(
+            "m.py:foo",
+            "foo",
+            positional=[{"name": "x", "has_default": False, "type": "str"}],
+        )
+    ]
     old_p, new_p = _tmp_json(old), _tmp_json(new)
     try:
         result = compare(old_p, new_p, include_private=True)
@@ -316,8 +320,20 @@ def test_compare_private_included_when_opt_in():
 def test_compare_type_unchanged_no_false_positive():
     from impactguard.compare_signatures import compare
 
-    old = [_sig("m.py:foo", "foo", positional=[{"name": "x", "has_default": False, "type": "int"}])]
-    new = [_sig("m.py:foo", "foo", positional=[{"name": "x", "has_default": False, "type": "int"}])]
+    old = [
+        _sig(
+            "m.py:foo",
+            "foo",
+            positional=[{"name": "x", "has_default": False, "type": "int"}],
+        )
+    ]
+    new = [
+        _sig(
+            "m.py:foo",
+            "foo",
+            positional=[{"name": "x", "has_default": False, "type": "int"}],
+        )
+    ]
     old_p, new_p = _tmp_json(old), _tmp_json(new)
     try:
         result = compare(old_p, new_p, include_private=True)
@@ -333,7 +349,7 @@ def test_compare_type_unchanged_no_false_positive():
 
 
 def test_risk_model_new_change_types():
-    from impactguard.risk_model import get_severity, SEVERITY_SCORES
+    from impactguard.risk_model import SEVERITY_SCORES, get_severity
 
     # New change types should be in defaults
     assert "TYPE CHANGED" in SEVERITY_SCORES
@@ -358,6 +374,7 @@ def test_risk_model_config_override(tmp_path: Path):
     cfg = reload_config(str(toml))
 
     from impactguard.risk_model import get_severity
+
     # Should use overridden value
     sev = get_severity("REMOVED: some_func")
     assert sev == 0.42
@@ -375,6 +392,7 @@ def test_risk_model_classify_uses_config_thresholds(tmp_path: Path):
     reload_config(str(toml))
 
     from impactguard.risk_model import classify
+
     # count=50, max=100 → exposure ≈ 0.85 < 0.99 → not HIGH → MEDIUM
     risk2, _e2, _c2 = classify(0.9, 50, 100, 50)
     assert risk2 == "MEDIUM"
@@ -392,8 +410,8 @@ def test_risk_model_classify_uses_config_thresholds(tmp_path: Path):
 
 
 def test_patch_confidence_get_target_certainty_defaults():
-    from impactguard.patch_confidence import get_target_certainty
     from impactguard.config import reload_config
+    from impactguard.patch_confidence import get_target_certainty
 
     reload_config()
     assert get_target_certainty(True, True, False) == 1.0
@@ -409,6 +427,7 @@ def test_patch_confidence_config_override(tmp_path: Path):
     reload_config(str(toml))
 
     from impactguard.patch_confidence import get_target_certainty
+
     assert get_target_certainty(False, False, True) == 0.9
 
     reload_config()
@@ -564,7 +583,7 @@ def test_semver_format_with_current_version():
 
 
 def test_baseline_save_and_load(tmp_path: Path):
-    from impactguard.baseline import save_baseline, load_baseline
+    from impactguard.baseline import load_baseline, save_baseline
 
     src = tmp_path / "app.py"
     src.write_text("def hello(name: str) -> str:\n    pass\n")
@@ -580,7 +599,7 @@ def test_baseline_save_and_load(tmp_path: Path):
 
 
 def test_baseline_save_with_metadata(tmp_path: Path):
-    from impactguard.baseline import save_baseline, load_baseline
+    from impactguard.baseline import load_baseline, save_baseline
 
     src = tmp_path / "app.py"
     src.write_text("def foo(): pass\n")
@@ -599,7 +618,7 @@ def test_baseline_load_missing_raises(tmp_path: Path):
 
 
 def test_baseline_exists(tmp_path: Path):
-    from impactguard.baseline import save_baseline, baseline_exists
+    from impactguard.baseline import baseline_exists, save_baseline
 
     src = tmp_path / "app.py"
     src.write_text("def foo(): pass\n")
@@ -611,7 +630,7 @@ def test_baseline_exists(tmp_path: Path):
 
 
 def test_baseline_compare_no_changes(tmp_path: Path):
-    from impactguard.baseline import save_baseline, compare_with_baseline
+    from impactguard.baseline import compare_with_baseline, save_baseline
 
     src = tmp_path / "app.py"
     src.write_text("def hello(name: str) -> str:\n    pass\n")
@@ -627,7 +646,7 @@ def test_baseline_compare_no_changes(tmp_path: Path):
 
 
 def test_baseline_compare_detects_breaking(tmp_path: Path):
-    from impactguard.baseline import save_baseline, compare_with_baseline
+    from impactguard.baseline import compare_with_baseline, save_baseline
 
     old_src = tmp_path / "app_old.py"
     old_src.write_text("def process(data: list) -> bool:\n    pass\n")
@@ -723,8 +742,8 @@ def test_find_transitive_callers_depth2():
 
 def test_analyze_transitive_opt_in(tmp_path: Path):
     """When transitive_depth=1, analyze() includes transitive entries."""
-    from impactguard.impact_analysis import analyze
     from impactguard.config import reload_config
+    from impactguard.impact_analysis import analyze
 
     toml = tmp_path / "impactguard.toml"
     toml.write_text("[impactguard.analysis]\ntransitive_depth = 1\n")
@@ -766,8 +785,8 @@ def test_analyze_transitive_opt_in(tmp_path: Path):
 
 def test_analyze_transitive_default_disabled(tmp_path: Path):
     """When transitive_depth=0 (default), no transitive entries appear."""
-    from impactguard.impact_analysis import analyze
     from impactguard.config import reload_config
+    from impactguard.impact_analysis import analyze
 
     reload_config()  # default: transitive_depth=0
 
@@ -807,7 +826,7 @@ def test_analyze_transitive_default_disabled(tmp_path: Path):
 
 
 def test_generate_html_summary_stats():
-    from impactguard.generate_report import generate_html, _summary_stats
+    from impactguard.generate_report import _summary_stats, generate_html
 
     data = [
         {"risk": "HIGH", "function": "a", "change": "REMOVED"},
@@ -830,7 +849,15 @@ def test_generate_html_summary_stats():
 def test_generate_html_has_table():
     from impactguard.generate_report import generate_html
 
-    data = [{"risk": "HIGH", "function": "foo", "change": "REMOVED", "exposure": 0.9, "confidence": 0.8}]
+    data = [
+        {
+            "risk": "HIGH",
+            "function": "foo",
+            "change": "REMOVED",
+            "exposure": 0.9,
+            "confidence": 0.8,
+        }
+    ]
     html = generate_html(data)
     assert "<table" in html
     assert "sortTable" in html  # sorting JS
@@ -841,8 +868,14 @@ def test_generate_html_transitive_tag():
     from impactguard.generate_report import generate_html
 
     data = [
-        {"risk": "LOW", "function": "bar", "change": "indirect impact (hop 1)",
-         "exposure": 0.0, "confidence": 0.0, "transitive": True}
+        {
+            "risk": "LOW",
+            "function": "bar",
+            "change": "indirect impact (hop 1)",
+            "exposure": 0.0,
+            "confidence": 0.0,
+            "transitive": True,
+        }
     ]
     html = generate_html(data)
     assert "indirect" in html
@@ -851,7 +884,15 @@ def test_generate_html_transitive_tag():
 def test_generate_html_from_file(tmp_path: Path):
     from impactguard.generate_report import generate_html_from_file
 
-    data = [{"risk": "LOW", "function": "x", "change": "ADDED", "exposure": 0.0, "confidence": 0.0}]
+    data = [
+        {
+            "risk": "LOW",
+            "function": "x",
+            "change": "ADDED",
+            "exposure": 0.0,
+            "confidence": 0.0,
+        }
+    ]
     rp = tmp_path / "report.json"
     rp.write_text(json.dumps(data))
     op = tmp_path / "out.html"
@@ -940,8 +981,8 @@ def test_cli_baseline_status_no_baseline(tmp_path: Path, capsys: pytest.CaptureF
 
 
 def test_cli_baseline_status_exists(tmp_path: Path, capsys: pytest.CaptureFixture):
-    from impactguard.baseline import save_baseline
     from impactguard.__main__ import main
+    from impactguard.baseline import save_baseline
 
     src = tmp_path / "app.py"
     src.write_text("def foo(): pass\n")
@@ -955,8 +996,8 @@ def test_cli_baseline_status_exists(tmp_path: Path, capsys: pytest.CaptureFixtur
 
 
 def test_cli_baseline_compare_no_changes(tmp_path: Path, capsys: pytest.CaptureFixture):
-    from impactguard.baseline import save_baseline
     from impactguard.__main__ import main
+    from impactguard.baseline import save_baseline
 
     src = tmp_path / "app.py"
     src.write_text("def foo(): pass\n")
@@ -1020,8 +1061,9 @@ def test_cli_enforce_block_unknown_flag(tmp_path: Path):
 def test_cli_check_has_watch_attribute():
     """The check subcommand exposes --watch without errors during parse."""
     import argparse
-    from impactguard.__main__ import main
     import io
+
+    from impactguard.__main__ import main
 
     # Just parse help — don't actually run watch mode
     sys.argv = ["impactguard", "check", "--help"]

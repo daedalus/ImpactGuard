@@ -84,6 +84,7 @@ _DEFAULTS: dict[str, Any] = {
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     """Return a new dict that is *override* deep-merged on top of *base*."""
     result: dict[str, Any] = dict(base)
@@ -106,6 +107,7 @@ def _find_config_file(start: Path | None = None) -> Path | None:
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
+
 
 def load_config(config_path: str | None = None) -> dict[str, Any]:
     """Load ImpactGuard configuration, merging with built-in defaults.

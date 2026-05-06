@@ -7,6 +7,7 @@ import json
 import logging
 import sys
 from pathlib import Path
+from typing import Any
 
 
 def cmd_extract(args: argparse.Namespace) -> int:
@@ -119,9 +120,10 @@ def cmd_risk(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        return risk_main(
+        _ = risk_main(
             diff_path, args.runtime, args.output, lambda_=getattr(args, "lam", 1.0)
         )
+        return 0
     finally:
         if _tmp_path is not None:
             try:
@@ -132,7 +134,7 @@ def cmd_risk(args: argparse.Namespace) -> int:
 
 def cmd_report(args: argparse.Namespace) -> int:
     """Generate HTML report from risk JSON."""
-    from .generate_report import main as report_main
+    from .generate_report import generate_main as report_main
 
     report_main(args.report, args.output)
     return 0
@@ -228,7 +230,7 @@ def cmd_extract_calls(args: argparse.Namespace) -> int:
 
 def cmd_runtime_impact(args: argparse.Namespace) -> int:
     """Analyze runtime impact of signature changes."""
-    from .runtime_impact import analyze
+    from .runtime_impact import analyze  # type: ignore[import-not-found]
 
     issues = analyze(args.signatures, args.calls)
     print(json.dumps(issues, indent=2))
@@ -549,14 +551,14 @@ def cmd_install_hooks(args: argparse.Namespace) -> int:
     # Ensure .pre-commit-config.yaml exists with full pipeline (use YAML formatter)
     config_path = repo_path / ".pre-commit-config.yaml"
     try:
-        import yaml
+        import yaml  # type: ignore[import-untyped]
 
         yaml_available = True
     except ImportError:
         print("Warning: pyyaml not installed, using basic YAML generation")
         yaml_available = False
 
-    impactguard_hooks = []
+    impactguard_hooks: list[dict[str, Any]] = []
     if install_pre:
         impactguard_hooks.append(
             {

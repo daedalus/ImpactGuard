@@ -3,12 +3,12 @@
 import json
 from pathlib import Path
 from tempfile import mkdtemp
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 
 def test_suggest_fixes_deep_coverage(tmp_path):
     """Cover more lines in suggest_fixes.py."""
-    from impactguard.suggest_fixes import suggest, enrich_with_fixes
+    from impactguard.suggest_fixes import enrich_with_fixes, suggest
 
     # Test with various configurations
     items = [
@@ -31,6 +31,7 @@ def test_suggest_fixes_deep_coverage(tmp_path):
 def test_main_deep_coverage(tmp_path):
     """Cover more lines in __main__.py."""
     import sys
+
     from impactguard.__main__ import main
 
     # Test check-commits command
@@ -46,9 +47,14 @@ def test_main_deep_coverage(tmp_path):
     new_file = tmp_path / "new.py"
     new_file.write_text("def foo(x): pass\n")
 
-    sys.argv = ["impactguard", "generate-changelog",
-                "--old-files", str(old_file),
-                "--new-files", str(new_file)]
+    sys.argv = [
+        "impactguard",
+        "generate-changelog",
+        "--old-files",
+        str(old_file),
+        "--new-files",
+        str(new_file),
+    ]
     try:
         main()
     except SystemExit as e:
@@ -57,8 +63,8 @@ def test_main_deep_coverage(tmp_path):
 
 def test_pipeline_deep_coverage(tmp_path):
     """Cover more lines in pipeline.py."""
-    from impactguard.pipeline import run_pipeline, quick_check
     from impactguard import ImpactGuard
+    from impactguard.pipeline import quick_check, run_pipeline
 
     # Test ImpactGuard.analyze
     guard = ImpactGuard()
@@ -144,14 +150,27 @@ def test_compare_signatures_deep_coverage(tmp_path):
     from impactguard.compare_signatures import compare
 
     # Test with kwonly changes
-    old = [{"fqname": "test:foo", "name": "foo",
+    old = [
+        {
+            "fqname": "test:foo",
+            "name": "foo",
             "positional": [{"name": "a", "has_default": False}],
-            "kwonly": [], "vararg": False, "kwarg": False}]
+            "kwonly": [],
+            "vararg": False,
+            "kwarg": False,
+        }
+    ]
 
-    new = [{"fqname": "test:foo", "name": "foo",
+    new = [
+        {
+            "fqname": "test:foo",
+            "name": "foo",
             "positional": [{"name": "a", "has_default": False}],
             "kwonly": [{"name": "x", "has_default": True}],
-            "vararg": False, "kwarg": False}]
+            "vararg": False,
+            "kwarg": False,
+        }
+    ]
 
     old_path = tmp_path / "old.json"
     new_path = tmp_path / "new.json"

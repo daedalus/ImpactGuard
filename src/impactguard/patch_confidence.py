@@ -2,6 +2,7 @@ def _cfg(key: str, default: float) -> float:
     """Read a patch-confidence weight from config with a fallback default."""
     try:
         from .config import get as cfg_get
+
         value = cfg_get("patches", key, default)
         return float(value)
     except Exception:

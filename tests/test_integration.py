@@ -8,7 +8,7 @@ from pathlib import Path
 
 def test_pipeline_import():
     """Test that pipeline components can be imported."""
-    from impactguard.pipeline import run_pipeline, quick_check, ImpactGuard
+    from impactguard.pipeline import ImpactGuard, quick_check, run_pipeline
 
     assert callable(run_pipeline)
     assert callable(quick_check)
@@ -153,8 +153,29 @@ def test_impactguard_compare(tmp_path):
     guard = ImpactGuard()
 
     # Create signature files
-    old_sigs = [{"fqname": "test.py:func", "name": "func", "positional": [{"name": "a", "has_default": False}], "kwonly": [], "vararg": False, "kwarg": False}]
-    new_sigs = [{"fqname": "test.py:func", "name": "func", "positional": [{"name": "a", "has_default": False}, {"name": "b", "has_default": True}], "kwonly": [], "vararg": False, "kwarg": False}]
+    old_sigs = [
+        {
+            "fqname": "test.py:func",
+            "name": "func",
+            "positional": [{"name": "a", "has_default": False}],
+            "kwonly": [],
+            "vararg": False,
+            "kwarg": False,
+        }
+    ]
+    new_sigs = [
+        {
+            "fqname": "test.py:func",
+            "name": "func",
+            "positional": [
+                {"name": "a", "has_default": False},
+                {"name": "b", "has_default": True},
+            ],
+            "kwonly": [],
+            "vararg": False,
+            "kwarg": False,
+        }
+    ]
 
     old_file = tmp_path / "old.json"
     new_file = tmp_path / "new.json"
@@ -178,7 +199,9 @@ def test_config_file(tmp_path):
     # Read and validate
     content = config_path.read_text()
     assert "[impactguard]" in content
-    assert "confidence_threshold" in content or "confidence_threshold" not in content  # Optional
+    assert (
+        "confidence_threshold" in content or "confidence_threshold" not in content
+    )  # Optional
 
 
 def test_cli_check_command(tmp_path):
@@ -199,9 +222,10 @@ def test_cli_check_command(tmp_path):
 
 def test_end_to_end_workflow(tmp_path):
     """Test complete end-to-end workflow."""
-    from impactguard.pipeline import quick_check
     import subprocess
     import sys
+
+    from impactguard.pipeline import quick_check
 
     # Create test project
     project_dir = tmp_path / "project"
@@ -277,7 +301,9 @@ class MyClass:
     signatures = result.get("signatures", {}).get("new", [])
 
     # Should extract all functions
-    assert len(signatures) >= 4  # function_one, async_function, function_with_args, method
+    assert (
+        len(signatures) >= 4
+    )  # function_one, async_function, function_with_args, method
 
     # Check function names
     names = [s["name"] for s in signatures]

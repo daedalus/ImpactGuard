@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
+
 def _write_tmp(content: str, suffix: str = ".py") -> str:
     """Write *content* to a named temp file and return its path."""
     with tempfile.NamedTemporaryFile(
@@ -45,11 +46,13 @@ def _write_tmp_bytes(data: bytes, suffix: str = ".json") -> str:
 # 1. extract_signatures — adversarial Python source
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestExtractSignaturesAdversarial:
     """Feed hostile Python source to extract_signatures.extract()."""
 
     def _extract(self, *paths):
         from impactguard.extract_signatures import extract
+
         return extract(list(paths))
 
     # ------------------------------------------------------------------
@@ -119,8 +122,9 @@ class TestExtractSignaturesAdversarial:
         """Functions nested 50 levels deep should all be extracted."""
         depth = 50
         code = "\n".join(
-            ["def level_0():"] + [f"{'  ' * (i+1)}def level_{i+1}():" for i in range(depth)] +
-            [f"{'  ' * (depth+1)}pass"]
+            ["def level_0():"]
+            + [f"{'  ' * (i + 1)}def level_{i + 1}():" for i in range(depth)]
+            + [f"{'  ' * (depth + 1)}pass"]
         )
         p = _write_tmp(code)
         try:
@@ -166,11 +170,7 @@ class TestExtractSignaturesAdversarial:
 
     def test_deeply_nested_class_inside_function(self):
         """Class defined inside a function should still extract its methods."""
-        code = (
-            "def outer():\n"
-            "    class Inner:\n"
-            "        def method(self): pass\n"
-        )
+        code = "def outer():\n    class Inner:\n        def method(self): pass\n"
         p = _write_tmp(code)
         try:
             result = self._extract(p)
@@ -199,12 +199,14 @@ class TestExtractSignaturesAdversarial:
     def test_extract_empty_list(self):
         """extract([]) must return []."""
         from impactguard.extract_signatures import extract
+
         assert extract([]) == []
 
     def test_only_comments_no_functions(self):
         p = _write_tmp("# just a comment\n# another line\n")
         try:
             from impactguard.extract_signatures import extract
+
             assert extract([p]) == []
         finally:
             os.unlink(p)
@@ -214,11 +216,13 @@ class TestExtractSignaturesAdversarial:
 # 2. compare_signatures — adversarial JSON inputs
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestCompareSignaturesAdversarial:
     """Feed malformed JSON to compare_signatures.compare()."""
 
     def _compare(self, old_data, new_data, **kwargs):
         from impactguard.compare_signatures import compare
+
         old_p = _write_tmp_json(old_data)
         new_p = _write_tmp_json(new_data)
         try:
@@ -227,7 +231,9 @@ class TestCompareSignaturesAdversarial:
             os.unlink(old_p)
             os.unlink(new_p)
 
-    def _mk_sig(self, fqname, positional=None, kwonly=None, vararg=False, kwarg=False, **extra):
+    def _mk_sig(
+        self, fqname, positional=None, kwonly=None, vararg=False, kwarg=False, **extra
+    ):
         return {
             "fqname": fqname,
             "name": fqname.split(":")[-1],
@@ -247,6 +253,7 @@ class TestCompareSignaturesAdversarial:
         bad_p = _write_tmp("this is not json", suffix=".json")
         good_p = _write_tmp_json([])
         from impactguard.compare_signatures import compare
+
         try:
             with pytest.raises(Exception):
                 compare(bad_p, good_p)
@@ -258,6 +265,7 @@ class TestCompareSignaturesAdversarial:
         good_p = _write_tmp_json([])
         bad_p = _write_tmp("{{invalid}", suffix=".json")
         from impactguard.compare_signatures import compare
+
         try:
             with pytest.raises(Exception):
                 compare(good_p, bad_p)
@@ -267,6 +275,7 @@ class TestCompareSignaturesAdversarial:
 
     def test_nonexistent_old_path_raises(self):
         from impactguard.compare_signatures import compare
+
         good_p = _write_tmp_json([])
         try:
             with pytest.raises(Exception):
@@ -276,6 +285,7 @@ class TestCompareSignaturesAdversarial:
 
     def test_nonexistent_new_path_raises(self):
         from impactguard.compare_signatures import compare
+
         good_p = _write_tmp_json([])
         try:
             with pytest.raises(Exception):
@@ -308,7 +318,13 @@ class TestCompareSignaturesAdversarial:
 
     def test_missing_positional_key_does_not_crash(self):
         """Signatures missing 'positional' should raise KeyError, not silently mangle."""
-        bad_sig = {"fqname": "t.py:bad", "name": "bad", "kwonly": [], "vararg": False, "kwarg": False}
+        bad_sig = {
+            "fqname": "t.py:bad",
+            "name": "bad",
+            "kwonly": [],
+            "vararg": False,
+            "kwarg": False,
+        }
         with pytest.raises(Exception):
             self._compare([bad_sig], [bad_sig])
 
@@ -396,47 +412,57 @@ class TestCompareSignaturesAdversarial:
 # 3. risk_model — boundary & invalid numeric inputs
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestRiskModelAdversarial:
     """Boundary and extreme values for risk_model functions."""
 
     def test_exposure_zero_count(self):
         from impactguard.risk_model import exposure
+
         assert exposure(0, 100) == 0.0
 
     def test_exposure_zero_max_with_zero_count(self):
         """exposure(0, 0) — the count==0 guard fires before the division; must return 0."""
         from impactguard.risk_model import exposure
+
         assert exposure(0, 0) == 0
 
     def test_exposure_positive_count_zero_max_raises(self):
         """exposure(1, 0) exposes a division-by-zero: log(1+0)==0 is used as divisor."""
         from impactguard.risk_model import exposure
+
         with pytest.raises(ZeroDivisionError):
             exposure(1, 0)
 
     def test_exposure_count_equals_max(self):
         from impactguard.risk_model import exposure
+
         assert exposure(100, 100) == 1.0
 
     def test_exposure_count_exceeds_max(self):
         from impactguard.risk_model import exposure
+
         assert exposure(9999, 100) == 1.0
 
     def test_exposure_very_large_counts(self):
         from impactguard.risk_model import exposure
+
         result = exposure(10**12, 10**12)
         assert result == 1.0
 
     def test_confidence_zero(self):
         from impactguard.risk_model import confidence
+
         assert confidence(0) == 0.0
 
     def test_confidence_at_threshold(self):
         from impactguard.risk_model import confidence
+
         assert confidence(100) == 1.0
 
     def test_confidence_above_threshold_clamped(self):
         from impactguard.risk_model import confidence
+
         assert confidence(10_000) == 1.0
 
     def test_confidence_negative_samples_not_clamped(self):
@@ -446,22 +472,26 @@ class TestRiskModelAdversarial:
         the current (unclamped) behaviour so that any future fix is visible.
         """
         from impactguard.risk_model import confidence
+
         result = confidence(-1)
         assert result < 0  # current: not clamped to 0
         assert result <= 1.0  # still never above 1
 
     def test_classify_all_zeros(self):
         from impactguard.risk_model import classify
+
         risk, exp, conf = classify(0.0, 0, 0, 0)
         assert risk in ("LOW", "UNKNOWN", "MEDIUM", "HIGH")
 
     def test_classify_max_severity(self):
         from impactguard.risk_model import classify
+
         risk, _, _ = classify(1.0, 10000, 10000, 10000)
         assert risk == "HIGH"
 
     def test_classify_very_high_counts(self):
         from impactguard.risk_model import classify
+
         risk, exp, conf = classify(0.9, 10**9, 10**9, 10**9)
         assert risk == "HIGH"
         assert 0.0 <= exp <= 1.0
@@ -469,24 +499,29 @@ class TestRiskModelAdversarial:
 
     def test_compute_risk_zero_inputs(self):
         from impactguard.risk_model import compute_risk
+
         assert compute_risk(0.0, 0.0, 0.0) == 0.0
 
     def test_compute_risk_one_inputs(self):
         from impactguard.risk_model import compute_risk
+
         assert compute_risk(1.0, 1.0, 1.0) == 1.0
 
     def test_get_severity_empty_string(self):
         from impactguard.risk_model import get_severity
+
         result = get_severity("")
         assert isinstance(result, float)
 
     def test_get_severity_unknown_change(self):
         from impactguard.risk_model import get_severity
+
         assert get_severity("COMPLETELY UNKNOWN CHANGE TYPE") == 0.5
 
     def test_get_severity_longest_key_wins(self):
         """'RETURN TYPE CHANGED' must not match the shorter 'TYPE CHANGED' key."""
-        from impactguard.risk_model import get_severity, SEVERITY_SCORES
+        from impactguard.risk_model import SEVERITY_SCORES, get_severity
+
         ret_severity = get_severity("RETURN TYPE CHANGED: m.py:foo str -> int")
         type_severity = SEVERITY_SCORES["TYPE CHANGED"]
         return_type_severity = SEVERITY_SCORES["RETURN TYPE CHANGED"]
@@ -496,6 +531,7 @@ class TestRiskModelAdversarial:
     def test_get_severity_repeated_keyword(self):
         """A change type string containing a keyword multiple times must not error."""
         from impactguard.risk_model import get_severity
+
         result = get_severity("REMOVED REMOVED REMOVED")
         assert isinstance(result, float)
 
@@ -504,11 +540,13 @@ class TestRiskModelAdversarial:
 # 4. risk_gate — adversarial diff text
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestRiskGateAdversarial:
     """Feed hostile diff and runtime data to risk_gate.run()."""
 
     def _run(self, diff_text: str, runtime_data: list) -> list:
         from impactguard.risk_gate import run
+
         diff_p = _write_tmp(diff_text, suffix=".txt")
         rt_p = _write_tmp_json(runtime_data)
         try:
@@ -560,6 +598,7 @@ class TestRiskGateAdversarial:
     def test_nonexistent_diff_path(self):
         """Missing diff file must raise OSError so CI fails loudly."""
         from impactguard.risk_gate import run
+
         rt_p = _write_tmp_json([])
         try:
             with pytest.raises(OSError, match="Cannot read diff file"):
@@ -570,6 +609,7 @@ class TestRiskGateAdversarial:
     def test_nonexistent_runtime_path(self):
         """Missing runtime file should return a report with UNKNOWN risk."""
         from impactguard.risk_gate import run
+
         diff_p = _write_tmp("REMOVED: m.py:foo\n", suffix=".txt")
         try:
             result = run(diff_p, "/no/such/runtime.json")
@@ -581,6 +621,7 @@ class TestRiskGateAdversarial:
     def test_corrupt_runtime_json(self):
         """Corrupt runtime JSON should be ignored and not crash."""
         from impactguard.risk_gate import run
+
         diff_p = _write_tmp("REMOVED: m.py:foo\n", suffix=".txt")
         rt_p = _write_tmp("{not valid json}", suffix=".json")
         try:
@@ -611,6 +652,7 @@ class TestRiskGateAdversarial:
     def test_output_written_to_file(self):
         """When output_path is given, a valid JSON file must be written."""
         from impactguard.risk_gate import run
+
         diff_p = _write_tmp("REMOVED: m.py:foo\n", suffix=".txt")
         rt_p = _write_tmp_json([{"function": "m.py:foo", "count": 5}])
         out_p = tempfile.mktemp(suffix=".json")
@@ -630,11 +672,13 @@ class TestRiskGateAdversarial:
 # 5. enforce_gate — adversarial report JSON
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestEnforceGateAdversarial:
     """Feed hostile data to enforce_gate.enforce_report()."""
 
     def _enforce(self, report_data, **kwargs):
         from impactguard.enforce_gate import enforce_report
+
         p = _write_tmp_json(report_data)
         try:
             return enforce_report(p, **kwargs)
@@ -666,22 +710,28 @@ class TestEnforceGateAdversarial:
         assert self._enforce(report) == 1
 
     def test_block_unknown_false(self):
-        result = self._enforce([{"function": "m.py:foo", "risk": "UNKNOWN"}], block_unknown=False)
+        result = self._enforce(
+            [{"function": "m.py:foo", "risk": "UNKNOWN"}], block_unknown=False
+        )
         assert result == 0
 
     def test_block_unknown_true(self):
-        result = self._enforce([{"function": "m.py:foo", "risk": "UNKNOWN"}], block_unknown=True)
+        result = self._enforce(
+            [{"function": "m.py:foo", "risk": "UNKNOWN"}], block_unknown=True
+        )
         assert result == 1
 
     def test_nonexistent_report_path(self):
         """Missing report file must return non-zero so CI fails loudly."""
         from impactguard.enforce_gate import enforce_report
+
         result = enforce_report("/no/such/report.json")
         assert result == 2  # fail loudly, not silently pass
 
     def test_corrupt_report_json(self):
         """Corrupt report JSON must return non-zero so CI fails loudly."""
         from impactguard.enforce_gate import enforce_report
+
         p = _write_tmp("{not: valid}", suffix=".json")
         try:
             result = enforce_report(p)
@@ -698,6 +748,7 @@ class TestEnforceGateAdversarial:
         future defensive fix is visible.
         """
         from impactguard.enforce_gate import enforce_report
+
         p = _write_tmp_json({"function": "m.py:foo", "risk": "HIGH"})
         try:
             with pytest.raises(AttributeError):
@@ -710,74 +761,89 @@ class TestEnforceGateAdversarial:
 # 6. patch_confidence — boundary values
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestPatchConfidenceAdversarial:
     """Boundary and extreme values for patch_confidence functions."""
 
     def test_all_zeros(self):
         from impactguard.patch_confidence import compute_confidence
+
         assert compute_confidence(0.0, 0.0, 0.0, 0.0) == 0.0
 
     def test_all_ones(self):
         from impactguard.patch_confidence import compute_confidence
+
         assert compute_confidence(1.0, 1.0, 1.0, 1.0) == 1.0
 
     def test_classify_boundary_high(self):
         from impactguard.patch_confidence import classify
+
         assert classify(0.75) == "HIGH"
         assert classify(0.749) == "MEDIUM"
 
     def test_classify_boundary_medium(self):
         from impactguard.patch_confidence import classify
+
         assert classify(0.40) == "MEDIUM"
         assert classify(0.399) == "LOW"
 
     def test_classify_boundary_low(self):
         from impactguard.patch_confidence import classify
+
         assert classify(0.20) == "LOW"
         assert classify(0.199) == "UNKNOWN"
 
     def test_classify_negative_value(self):
         from impactguard.patch_confidence import classify
+
         result = classify(-1.0)
         assert result == "UNKNOWN"
 
     def test_classify_above_one(self):
         from impactguard.patch_confidence import classify
+
         result = classify(2.0)
         assert result == "HIGH"
 
     def test_get_target_certainty_all_false(self):
         from impactguard.patch_confidence import get_target_certainty
+
         result = get_target_certainty(False, False, False)
         assert 0.0 <= result <= 1.0
 
     def test_get_structural_safety_empty_string(self):
         from impactguard.patch_confidence import get_structural_safety
+
         result = get_structural_safety("")
         assert isinstance(result, float)
 
     def test_get_semantic_risk_empty_string(self):
         from impactguard.patch_confidence import get_semantic_risk
+
         result = get_semantic_risk("")
         assert isinstance(result, float)
 
     def test_complexity_all_flags_set(self):
         from impactguard.patch_confidence import get_complexity_penalty
+
         result = get_complexity_penalty(True, True, True, True)
         assert 0.0 <= result <= 1.0
 
     def test_complexity_no_flags(self):
         from impactguard.patch_confidence import get_complexity_penalty
+
         assert get_complexity_penalty(False, False, False, False) == 1.0
 
     def test_classify_with_factors_all_ones(self):
         from impactguard.patch_confidence import classify_with_factors
+
         level, factors = classify_with_factors(1.0, 1.0, 1.0, 1.0)
         assert level == "HIGH"
         assert factors["final"] == 1.0
 
     def test_classify_with_factors_all_zeros(self):
         from impactguard.patch_confidence import classify_with_factors
+
         level, factors = classify_with_factors(0.0, 0.0, 0.0, 0.0)
         assert level == "UNKNOWN"
         assert factors["final"] == 0.0
@@ -787,17 +853,20 @@ class TestPatchConfidenceAdversarial:
 # 7. config — hostile config files
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestConfigAdversarial:
     """Feed bad config files to config.load_config()."""
 
     def test_nonexistent_path_returns_defaults(self):
         from impactguard.config import load_config
+
         result = load_config("/no/such/impactguard.toml")
         # Should fall back to defaults
         assert "impactguard" in result
 
     def test_empty_toml_returns_defaults(self):
         from impactguard.config import load_config
+
         p = _write_tmp("", suffix=".toml")
         try:
             result = load_config(p)
@@ -807,6 +876,7 @@ class TestConfigAdversarial:
 
     def test_invalid_toml_returns_defaults(self):
         from impactguard.config import load_config
+
         p = _write_tmp("[[not valid toml\n", suffix=".toml")
         try:
             result = load_config(p)
@@ -816,6 +886,7 @@ class TestConfigAdversarial:
 
     def test_toml_with_extra_unknown_keys_merged(self):
         from impactguard.config import load_config
+
         toml_content = "[impactguard.risk]\nconfidence_threshold = 0.99\n"
         p = _write_tmp(toml_content, suffix=".toml")
         try:
@@ -827,13 +898,15 @@ class TestConfigAdversarial:
             os.unlink(p)
 
     def test_get_with_missing_section(self):
-        from impactguard.config import reload_config, get
+        from impactguard.config import get, reload_config
+
         reload_config()
         result = get("nonexistent_section", "nonexistent_key", "default_val")
         assert result == "default_val"
 
     def test_singleton_reloads_cleanly(self):
         from impactguard import config as cfg_mod
+
         cfg_mod.reload_config()
         c1 = cfg_mod.get_config()
         cfg_mod.reload_config()
@@ -845,15 +918,18 @@ class TestConfigAdversarial:
 # 8. serialize_function — adversarial AST nodes
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class TestSerializeFunctionAdversarial:
     """Directly test serialize_function with crafted AST nodes."""
 
     def _parse_func(self, code: str):
         import ast
+
         return ast.parse(code).body[0]
 
     def test_no_args_no_returns(self):
         from impactguard.extract_signatures import serialize_function
+
         node = self._parse_func("def f(): pass")
         result = serialize_function(node, "test.py")
         assert result["positional"] == []
@@ -861,12 +937,14 @@ class TestSerializeFunctionAdversarial:
 
     def test_return_annotation_preserved(self):
         from impactguard.extract_signatures import serialize_function
+
         node = self._parse_func("def f() -> list[int]: pass")
         result = serialize_function(node, "test.py")
         assert result["return_type"] == "list[int]"
 
     def test_class_context_in_fqname(self):
         from impactguard.extract_signatures import serialize_function
+
         node = self._parse_func("def method(self): pass")
         result = serialize_function(node, "test.py", class_name="MyClass")
         assert result["fqname"] == "test.py:MyClass.method"
@@ -874,6 +952,7 @@ class TestSerializeFunctionAdversarial:
 
     def test_vararg_and_kwarg_flags(self):
         from impactguard.extract_signatures import serialize_function
+
         node = self._parse_func("def f(*args, **kwargs): pass")
         result = serialize_function(node, "test.py")
         assert result["vararg"] is True
@@ -881,6 +960,7 @@ class TestSerializeFunctionAdversarial:
 
     def test_kwonly_args(self):
         from impactguard.extract_signatures import serialize_function
+
         node = self._parse_func("def f(*, key=None): pass")
         result = serialize_function(node, "test.py")
         assert len(result["kwonly"]) == 1
@@ -889,7 +969,9 @@ class TestSerializeFunctionAdversarial:
 
     def test_async_flag(self):
         import ast
+
         from impactguard.extract_signatures import serialize_function
+
         code = "async def f(): pass"
         node = ast.parse(code).body[0]
         result = serialize_function(node, "test.py")

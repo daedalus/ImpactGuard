@@ -10,7 +10,6 @@ import ast
 from pathlib import Path
 from typing import Any
 
-
 # ── Data structures ───────────────────────────────────────────────────────────
 
 # {class_name: {"bases": [str, ...], "file": str,
@@ -21,6 +20,7 @@ Hierarchy = dict[str, ClassInfo]
 
 
 # ── AST helpers ───────────────────────────────────────────────────────────────
+
 
 def _base_names(bases: list[ast.expr]) -> list[str]:
     """Return string names for each base class expression."""
@@ -43,6 +43,7 @@ def _is_abstract(base_names: list[str]) -> tuple[bool, bool]:
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
+
 
 def extract_class_hierarchy(files: list[str]) -> Hierarchy:
     """Parse Python files and build a class-hierarchy map.
@@ -77,7 +78,7 @@ def extract_class_hierarchy(files: list[str]) -> Hierarchy:
 
             methods: list[str] = []
             for child in ast.walk(node):
-                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
                     # Only direct methods (not nested class methods)
                     methods.append(child.name)
 
@@ -102,7 +103,8 @@ def find_implementations(hierarchy: Hierarchy) -> dict[str, list[str]]:
         Dictionary ``{abstract_class_name: [concrete_class_name, ...]}``.
     """
     abstract_classes = {
-        name for name, info in hierarchy.items()
+        name
+        for name, info in hierarchy.items()
         if info["is_protocol"] or info["is_abc"]
     }
 

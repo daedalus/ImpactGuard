@@ -1,11 +1,12 @@
 import difflib
-from pathlib import Path
 from typing import Any
 
 from ._pathutils import is_safe_path
 
 
-def patch_add_default(func: dict[str, Any], param_name: str) -> tuple[str | None, str | None]:
+def patch_add_default(
+    func: dict[str, Any], param_name: str
+) -> tuple[str | None, str | None]:
     """Generate patch to add default value to parameter."""
     file = func.get("file", "")
     lineno = func.get("lineno", 0)
@@ -41,7 +42,9 @@ def patch_add_default(func: dict[str, Any], param_name: str) -> tuple[str | None
         return None, str(e)
 
 
-def patch_call_site(call: dict[str, Any], _func: dict[str, Any]) -> tuple[str | None, str | None]:  # noqa: ARG001
+def patch_call_site(
+    call: dict[str, Any], _func: dict[str, Any]
+) -> tuple[str | None, str | None]:  # noqa: ARG001
     """Generate patch for call site."""
     file = call.get("file", "")
     lineno = call.get("lineno", 0)

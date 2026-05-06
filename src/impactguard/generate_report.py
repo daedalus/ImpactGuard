@@ -85,7 +85,7 @@ def generate_html(report_data: list[dict[str, Any]]) -> str:
         count = stats.get(level, 0)
         html.append(
             f'<span class="badge {level}" onclick="filterLevel(\'{level}\')">'
-            f'{level} ({count})</span>'
+            f"{level} ({count})</span>"
         )
     html.append("</div>")
 
@@ -134,9 +134,11 @@ def generate_html(report_data: list[dict[str, Any]]) -> str:
 
         details_html = _html.escape(str(details)) if details else ""
         if fixes:
-            details_html += "<ul>" + "".join(
-                f"<li>{_html.escape(str(f))}</li>" for f in fixes
-            ) + "</ul>"
+            details_html += (
+                "<ul>"
+                + "".join(f"<li>{_html.escape(str(f))}</li>" for f in fixes)
+                + "</ul>"
+            )
         if patches:
             for p in patches:
                 details_html += f"<pre>{_html.escape(str(p))}</pre>"
@@ -199,6 +201,7 @@ def generate_html(report_data: list[dict[str, Any]]) -> str:
 
     return "\n".join(html)
 
+
 def generate_markdown(
     report_data: list[dict[str, Any]],
     semver_rec: dict[str, Any] | None = None,
@@ -228,7 +231,12 @@ def generate_markdown(
 
     # Summary badges row
     badge_parts: list[str] = [f"**Total:** {total}"]
-    for level, emoji in [("HIGH", "🔴"), ("MEDIUM", "🟡"), ("LOW", "🟢"), ("UNKNOWN", "⚪")]:
+    for level, emoji in [
+        ("HIGH", "🔴"),
+        ("MEDIUM", "🟡"),
+        ("LOW", "🟢"),
+        ("UNKNOWN", "⚪"),
+    ]:
         count = stats.get(level, 0)
         if count:
             badge_parts.append(f"{emoji} **{level}:** {count}")
@@ -307,9 +315,7 @@ def generate_markdown_from_file(
     return md
 
 
-def generate_html_from_file(
-    risk_json_path: str, output_path: str | None = None
-) -> str:
+def generate_html_from_file(risk_json_path: str, output_path: str | None = None) -> str:
     """Generate HTML report from JSON file path (matches SPEC file-based API).
 
     Args:
@@ -330,7 +336,7 @@ def generate_html_from_file(
     return html
 
 
-def main(report_path: str, output_path: str | None = None) -> None:
+def generate_main(report_path: str, output_path: str | None = None) -> None:
     with open(report_path) as f:
         report = json.load(f)
     html = generate_html(report)
@@ -341,4 +347,3 @@ def main(report_path: str, output_path: str | None = None) -> None:
         f.write(html)
 
     print(f"Report written to {output_path}")
-

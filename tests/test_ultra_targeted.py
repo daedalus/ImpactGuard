@@ -7,7 +7,7 @@ from tempfile import mkdtemp
 
 def test_suggest_fixes_lines_79_156(tmp_path):
     """Target missing lines 79-156 in suggest_fixes.py."""
-    from impactguard.suggest_fixes import suggest, enrich_with_fixes
+    from impactguard.suggest_fixes import enrich_with_fixes, suggest
 
     # Test with various configurations to hit missing lines
     test_items = [

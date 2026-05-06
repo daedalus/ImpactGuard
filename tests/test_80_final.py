@@ -3,12 +3,12 @@
 import json
 from pathlib import Path
 from tempfile import mkdtemp
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 
 def test_suggest_fixes_final(tmp_path):
     """Final coverage push for suggest_fixes.py."""
-    from impactguard.suggest_fixes import suggest, enrich_with_fixes
+    from impactguard.suggest_fixes import enrich_with_fixes, suggest
 
     items = [
         {
@@ -29,6 +29,7 @@ def test_suggest_fixes_final(tmp_path):
 def test_main_final(tmp_path):
     """Final coverage push for __main__.py."""
     import sys
+
     from impactguard.__main__ import main
 
     # Test extract command
@@ -61,7 +62,7 @@ def test_risk_gate_final(tmp_path):
 
 def test_pipeline_final(tmp_path):
     """Final coverage push for pipeline.py."""
-    from impactguard.pipeline import run_pipeline, quick_check
+    from impactguard.pipeline import quick_check, run_pipeline
 
     # Test quick_check
     test_file = tmp_path / "module.py"
@@ -98,14 +99,27 @@ def test_compare_signatures_final(tmp_path):
     """Final coverage push for compare_signatures.py."""
     from impactguard.compare_signatures import compare
 
-    old = [{"fqname": "test:foo", "name": "foo",
+    old = [
+        {
+            "fqname": "test:foo",
+            "name": "foo",
             "positional": [{"name": "a", "has_default": False}],
-            "kwonly": [], "vararg": False, "kwarg": False}]
+            "kwonly": [],
+            "vararg": False,
+            "kwarg": False,
+        }
+    ]
 
-    new = [{"fqname": "test:foo", "name": "foo",
+    new = [
+        {
+            "fqname": "test:foo",
+            "name": "foo",
             "positional": [{"name": "a", "has_default": False}],
             "kwonly": [{"name": "x", "has_default": True}],
-            "vararg": False, "kwarg": False}]
+            "vararg": False,
+            "kwarg": False,
+        }
+    ]
 
     old_path = tmp_path / "old.json"
     new_path = tmp_path / "new.json"
@@ -121,16 +135,23 @@ def test_impact_analysis_final(tmp_path):
     from impactguard.impact_analysis import analyze
 
     sigs = tmp_path / "sigs.json"
-    sigs.write_text(json.dumps([
-        {"fqname": "test:foo", "name": "foo",
-         "positional": [{"name": "a", "has_default": False}],
-         "kwonly": [], "vararg": False, "kwarg": False}
-    ]))
+    sigs.write_text(
+        json.dumps(
+            [
+                {
+                    "fqname": "test:foo",
+                    "name": "foo",
+                    "positional": [{"name": "a", "has_default": False}],
+                    "kwonly": [],
+                    "vararg": False,
+                    "kwarg": False,
+                }
+            ]
+        )
+    )
 
     calls = tmp_path / "calls.json"
-    calls.write_text(json.dumps([
-        {"fqname": "test:foo", "file": "main.py"}
-    ]))
+    calls.write_text(json.dumps([{"fqname": "test:foo", "file": "main.py"}]))
 
     result = analyze(str(sigs), str(calls))
     assert isinstance(result, list)
