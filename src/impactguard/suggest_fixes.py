@@ -1,18 +1,9 @@
+import sys
 from pathlib import Path
 from typing import Any
 
 from .patch_confidence import classify_with_factors, compute_confidence
-
-
-def _is_safe_path(file: str) -> bool:
-    """Return True only when *file* is a safe relative path with no traversal."""
-    if not file:
-        return False
-    p = Path(file)
-    # Reject absolute paths and path-traversal sequences.
-    if p.is_absolute() or ".." in p.parts:
-        return False
-    return True
+from ._pathutils import is_safe_path
 
 
 def suggest(
@@ -44,7 +35,8 @@ def suggest(
 
 
 def get_line(file: str, lineno: int) -> str:
-    if not _is_safe_path(file):
+    if not is_safe_path(file):
+        print(f"Warning: impactguard: unsafe file path rejected: '{file}'", file=sys.stderr)
         return ""
     try:
         with open(file) as f:

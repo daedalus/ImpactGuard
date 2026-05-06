@@ -2,16 +2,7 @@ import difflib
 from pathlib import Path
 from typing import Any
 
-
-def _is_safe_path(file: str) -> bool:
-    """Return True only when *file* is a safe relative path with no traversal."""
-    if not file:
-        return False
-    p = Path(file)
-    # Reject absolute paths and path-traversal sequences.
-    if p.is_absolute() or ".." in p.parts:
-        return False
-    return True
+from ._pathutils import is_safe_path
 
 
 def patch_add_default(func: dict[str, Any], param_name: str) -> tuple[str | None, str | None]:
@@ -22,8 +13,8 @@ def patch_add_default(func: dict[str, Any], param_name: str) -> tuple[str | None
     if not file or lineno < 1:
         return None, "Invalid function data"
 
-    if not _is_safe_path(file):
-        return None, f"Unsafe file path rejected: {file}"
+    if not is_safe_path(file):
+        return None, "Unsafe file path rejected"
 
     try:
         lines = open(file).read().splitlines()
@@ -58,8 +49,8 @@ def patch_call_site(call: dict[str, Any], _func: dict[str, Any]) -> tuple[str | 
     if not file or lineno < 1:
         return None, "Invalid call data"
 
-    if not _is_safe_path(file):
-        return None, f"Unsafe file path rejected: {file}"
+    if not is_safe_path(file):
+        return None, "Unsafe file path rejected"
 
     try:
         lines = open(file).read().splitlines()
