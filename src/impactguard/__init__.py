@@ -43,6 +43,8 @@ from .pipeline import (
     run_pipeline,
     quick_check,
     run_pipeline_git,
+    run_pipeline_diff,
+    run_pipeline_commit,
     ImpactGuard,
 )
 from .config import get_config, load_config, reload_config, get as get_config_value
@@ -133,6 +135,8 @@ __all__ = [
     "run_pipeline",
     "quick_check",
     "run_pipeline_git",
+    "run_pipeline_diff",
+    "run_pipeline_commit",
     "ImpactGuard",
     # Config
     "get_config",
