@@ -11,9 +11,11 @@ from pathlib import Path
 
 
 def cmd_extract(args: argparse.Namespace) -> int:
-    """Extract function signatures from Python files."""
-    from .extract_signatures import extract
+    """Extract function signatures from source files.
 
+    Supports all registered languages (Python, TypeScript, …).  Language is
+    detected from the file extension unless ``--language`` is specified.
+    """
     files = (
         args.files
         if args.files
@@ -24,7 +26,42 @@ def cmd_extract(args: argparse.Namespace) -> int:
         print("Error: No input files provided", file=sys.stderr)
         return 1
 
-    result = extract(files)
+    language: str | None = getattr(args, "language", None)
+
+    from .languages.registry import get_extractor, get_extractor_by_language
+
+    if language:
+        extractor = get_extractor_by_language(language)
+        if extractor is None:
+            print(f"Error: Unknown language '{language}'", file=sys.stderr)
+            return 1
+        result = extractor.extract_signatures(files)
+    else:
+        # Group files by language extractor, fall back to Python for .py
+        from collections import defaultdict
+        by_extractor: dict[str, list[str]] = defaultdict(list)
+        unknown: list[str] = []
+        for f in files:
+            ext = get_extractor(f)
+            if ext is not None:
+                by_extractor[ext.language].append(f)
+            else:
+                unknown.append(f)
+
+        if unknown:
+            print(
+                f"Warning: no extractor for {len(unknown)} file(s); skipping: "
+                + ", ".join(unknown[:5]),
+                file=sys.stderr,
+            )
+
+        result = []
+        for lang, lang_files in by_extractor.items():
+            lang_ext = get_extractor_by_language(lang)
+            if lang_ext is not None:
+                result.extend(lang_ext.extract_signatures(lang_files))
+        result.sort(key=lambda x: x.get("fqname", ""))
+
     print(json.dumps(result, indent=2))
     return 0
 
@@ -138,9 +175,11 @@ def cmd_enforce(args: argparse.Namespace) -> int:
 
 
 def cmd_extract_calls(args: argparse.Namespace) -> int:
-    """Extract call sites from Python files."""
-    from .extract_calls import extract
+    """Extract call sites from source files.
 
+    Supports all registered languages (Python, TypeScript, …).  Language is
+    detected from the file extension unless ``--language`` is specified.
+    """
     files = (
         args.files
         if args.files
@@ -151,9 +190,26 @@ def cmd_extract_calls(args: argparse.Namespace) -> int:
         print("Error: No input files provided", file=sys.stderr)
         return 1
 
+    language: str | None = getattr(args, "language", None)
+
+    from .languages.registry import get_extractor, get_extractor_by_language
+
     all_calls = []
     for f in files:
-        all_calls.extend(extract(Path(f)))
+        if language:
+            lang_ext = get_extractor_by_language(language)
+            if lang_ext is None:
+                print(f"Error: Unknown language '{language}'", file=sys.stderr)
+                return 1
+        else:
+            lang_ext = get_extractor(f)
+            if lang_ext is None:
+                print(
+                    f"Warning: no extractor for '{f}'; skipping",
+                    file=sys.stderr,
+                )
+                continue
+        all_calls.extend(lang_ext.extract_calls(Path(f)))
 
     print(json.dumps(all_calls, indent=2))
     return 0
@@ -888,8 +944,18 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # extract subcommand
-    extract_parser = subparsers.add_parser("extract", help="Extract function signatures")
-    extract_parser.add_argument("files", nargs="*", help="Python files to analyze")
+    extract_parser = subparsers.add_parser(
+        "extract", help="Extract function signatures from source files"
+    )
+    extract_parser.add_argument(
+        "files", nargs="*",
+        help="Source files to analyze (Python, TypeScript, …)",
+    )
+    extract_parser.add_argument(
+        "--language", "-l",
+        help="Force a specific language (e.g. python, typescript); "
+             "auto-detected from extension when omitted",
+    )
     extract_parser.set_defaults(func=cmd_extract)
 
     # compare subcommand
@@ -963,10 +1029,15 @@ def main() -> int:
 
     # extract-calls subcommand
     extract_calls_parser = subparsers.add_parser(
-        "extract-calls", help="Extract call sites from Python files"
+        "extract-calls", help="Extract call sites from source files"
     )
     extract_calls_parser.add_argument(
-        "files", nargs="*", help="Python files to analyze"
+        "files", nargs="*",
+        help="Source files to analyze (Python, TypeScript, …)",
+    )
+    extract_calls_parser.add_argument(
+        "--language", "-l",
+        help="Force a specific language; auto-detected from extension when omitted",
     )
     extract_calls_parser.set_defaults(func=cmd_extract_calls)
 

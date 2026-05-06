@@ -78,3 +78,17 @@ verbose = false
 
 # Auto-open reports after generation
 auto_open = false
+
+# Language support settings
+[impactguard.languages]
+# Languages to enable.  "python" is always built-in.
+# "typescript" requires: pip install "impactguard[languages]"
+enabled = ["python", "typescript"]
+
+# Override which language handles a given file extension.
+# Useful for non-standard extensions (.mts, .cts, etc.).
+# Example:
+# [impactguard.languages.extension_overrides]
+# ".mts" = "typescript"
+# ".cts" = "typescript"
+[impactguard.languages.extension_overrides]
