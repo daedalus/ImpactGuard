@@ -91,7 +91,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_risk(args: argparse.Namespace):
+def cmd_risk(args: argparse.Namespace) -> "int | list[dict[str, Any]]":
     """Run risk analysis pipeline."""
     import os
     import tempfile as _tmpmod
@@ -1555,7 +1555,7 @@ def main() -> int:
         return 1
 
     if hasattr(args, "func"):
-        result = args.func(args)
+        result: "int | list[dict[str, Any]]" = args.func(args)
         return result
     else:
         parser.print_help()

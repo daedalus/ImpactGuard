@@ -29,7 +29,7 @@ def score(
     Returns:
         Final confidence score in [0, 1].
     """
-    return target * structural * semantic * complexity
+    return compute_confidence(target, structural, semantic, complexity)
 
 
 def _classify_strict(conf: float) -> str:
