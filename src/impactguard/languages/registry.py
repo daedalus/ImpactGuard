@@ -39,6 +39,11 @@ def _auto_populate(fn: Callable[..., _T]) -> Callable[..., _T]:
             # Import triggers self-registration at module level
             from . import python as _py_mod  # noqa: F401
             from . import typescript as _ts_mod  # noqa: F401
+            from . import java as _java_mod  # noqa: F401
+            from . import go as _go_mod  # noqa: F401
+            from . import rust as _rust_mod  # noqa: F401
+            from . import c as _c_mod  # noqa: F401
+            from . import ruby as _ruby_mod  # noqa: F401
         return fn(*args, **kwargs)
     return wrapper  # type: ignore[return-value]
 
