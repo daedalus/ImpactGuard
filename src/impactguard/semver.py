@@ -94,6 +94,22 @@ def format_semver_recommendation(
 _MIN_SEMVER_PARTS = 3  # major.minor.patch
 
 
+def bump(version: str, level: str) -> str:
+    """Bump a semver string by the given level.
+
+    Alias for :func:`_increment` with a public, user-friendly name.
+
+    Args:
+        version: Current version string (e.g. ``"1.2.3"`` or ``"v1.2.3"``).
+        level: One of ``"major"``, ``"minor"``, or ``"patch"``.
+
+    Returns:
+        New version string, or the original string with ``"-next"`` appended
+        when *version* cannot be parsed as semver.
+    """
+    return _increment(version, level)
+
+
 def _increment(version: str, bump: str) -> str:
     """Increment a semver string by *bump* level.
 
