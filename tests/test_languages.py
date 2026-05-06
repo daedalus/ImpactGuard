@@ -385,8 +385,7 @@ class TestTypeScriptExtractorRegexFallback:
         import impactguard.languages.typescript as ts_mod
         from impactguard.languages.typescript import TypeScriptExtractor
         f = _write(tmp_path, "a.ts", "function f(): void {}\n")
-        inst = TypeScriptExtractor()
-        inst._warned = False  # reset class-level flag
+        inst = TypeScriptExtractor()  # fresh instance — _warned starts False
         with patch.object(ts_mod, "_TREE_SITTER_AVAILABLE", False):
             with pytest.warns(UserWarning, match="tree-sitter"):
                 inst.extract_signatures([str(f)])
@@ -396,8 +395,7 @@ class TestTypeScriptExtractorRegexFallback:
         import impactguard.languages.typescript as ts_mod
         from impactguard.languages.typescript import TypeScriptExtractor
         f = _write(tmp_path, "a.ts", "function f(): void {}\n")
-        inst = TypeScriptExtractor()
-        inst._warned = False
+        inst = TypeScriptExtractor()  # fresh instance — _warned starts False
         with patch.object(ts_mod, "_TREE_SITTER_AVAILABLE", False):
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter("always")
@@ -555,15 +553,18 @@ class TestTypeScriptTypeCompat:
 
 
 class TestTypeChangeKindWithParser:
+    @staticmethod
+    def _ts_parse(type_str: str) -> frozenset[str]:
+        """Simple TypeScript-style union parser for tests."""
+        return frozenset(p.strip() for p in type_str.split("|"))
+
     def test_custom_parser_widening(self) -> None:
         from impactguard.compare_signatures import _type_change_kind
-        ts_parse = lambda s: frozenset(p.strip() for p in s.split("|"))  # noqa: E731
-        assert _type_change_kind("string", "string | null", ts_parse) == "widening"
+        assert _type_change_kind("string", "string | null", self._ts_parse) == "widening"
 
     def test_custom_parser_narrowing(self) -> None:
         from impactguard.compare_signatures import _type_change_kind
-        ts_parse = lambda s: frozenset(p.strip() for p in s.split("|"))  # noqa: E731
-        assert _type_change_kind("string | null", "string", ts_parse) == "narrowing"
+        assert _type_change_kind("string | null", "string", self._ts_parse) == "narrowing"
 
     def test_no_parser_uses_python_defaults(self) -> None:
         from impactguard.compare_signatures import _type_change_kind
@@ -572,8 +573,7 @@ class TestTypeChangeKindWithParser:
 
     def test_changed_incompatible_types(self) -> None:
         from impactguard.compare_signatures import _type_change_kind
-        ts_parse = lambda s: frozenset(p.strip() for p in s.split("|"))  # noqa: E731
-        assert _type_change_kind("number", "string", ts_parse) == "changed"
+        assert _type_change_kind("number", "string", self._ts_parse) == "changed"
 
 
 # ── Config defaults for languages section ────────────────────────────────────

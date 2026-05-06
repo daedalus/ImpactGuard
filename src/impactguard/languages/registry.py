@@ -15,8 +15,9 @@ Usage::
 
 from __future__ import annotations
 
+import functools
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, TypeVar
 
 if TYPE_CHECKING:
     from .base import LanguageExtractor
@@ -26,6 +27,20 @@ _BY_EXTENSION: dict[str, LanguageExtractor] = {}
 
 # Language name (lower-case) → extractor instance
 _BY_LANGUAGE: dict[str, LanguageExtractor] = {}
+
+_T = TypeVar("_T")
+
+
+def _auto_populate(fn: Callable[..., _T]) -> Callable[..., _T]:
+    """Decorator: ensure built-in extractors are registered before calling *fn*."""
+    @functools.wraps(fn)
+    def wrapper(*args: object, **kwargs: object) -> _T:
+        if not _BY_LANGUAGE:
+            # Import triggers self-registration at module level
+            from . import python as _py_mod  # noqa: F401
+            from . import typescript as _ts_mod  # noqa: F401
+        return fn(*args, **kwargs)
+    return wrapper  # type: ignore[return-value]
 
 
 def register(extractor: LanguageExtractor) -> None:
@@ -45,6 +60,7 @@ def register(extractor: LanguageExtractor) -> None:
         _BY_EXTENSION[ext.lower()] = extractor
 
 
+@_auto_populate
 def get_extractor(file: str) -> LanguageExtractor | None:
     """Return the extractor for *file* based on its extension.
 
@@ -60,6 +76,7 @@ def get_extractor(file: str) -> LanguageExtractor | None:
     return _BY_EXTENSION.get(ext)
 
 
+@_auto_populate
 def get_extractor_by_language(language: str) -> LanguageExtractor | None:
     """Return the extractor for a named language.
 
@@ -73,6 +90,7 @@ def get_extractor_by_language(language: str) -> LanguageExtractor | None:
     return _BY_LANGUAGE.get(language.lower())
 
 
+@_auto_populate
 def detect_language(file: str) -> str | None:
     """Return the language name for *file*, or *None* if unknown.
 
@@ -88,58 +106,13 @@ def detect_language(file: str) -> str | None:
     return extractor.language if extractor else None
 
 
+@_auto_populate
 def list_languages() -> list[str]:
     """Return sorted names of all registered languages."""
     return sorted(_BY_LANGUAGE.keys())
 
 
+@_auto_populate
 def list_extensions() -> list[str]:
     """Return sorted list of all registered file extensions."""
     return sorted(_BY_EXTENSION.keys())
-
-
-def _ensure_defaults_registered() -> None:
-    """Import and register the built-in language extractors if not yet done.
-
-    Called lazily by :func:`get_extractor` and :func:`get_extractor_by_language`
-    so that the registry is always populated when needed without requiring
-    callers to manage imports.
-    """
-    if not _BY_LANGUAGE:
-        # Import triggers self-registration at module level
-        from . import python as _py_mod  # noqa: F401
-        from . import typescript as _ts_mod  # noqa: F401
-
-
-# Patch the public lookup functions to auto-populate on first call.
-
-_orig_get_extractor = get_extractor
-_orig_get_extractor_by_language = get_extractor_by_language
-_orig_detect_language = detect_language
-_orig_list_languages = list_languages
-_orig_list_extensions = list_extensions
-
-
-def get_extractor(file: str) -> LanguageExtractor | None:  # type: ignore[no-redef]
-    _ensure_defaults_registered()
-    return _orig_get_extractor(file)
-
-
-def get_extractor_by_language(language: str) -> LanguageExtractor | None:  # type: ignore[no-redef]
-    _ensure_defaults_registered()
-    return _orig_get_extractor_by_language(language)
-
-
-def detect_language(file: str) -> str | None:  # type: ignore[no-redef]
-    _ensure_defaults_registered()
-    return _orig_detect_language(file)
-
-
-def list_languages() -> list[str]:  # type: ignore[no-redef]
-    _ensure_defaults_registered()
-    return _orig_list_languages()
-
-
-def list_extensions() -> list[str]:  # type: ignore[no-redef]
-    _ensure_defaults_registered()
-    return _orig_list_extensions()
