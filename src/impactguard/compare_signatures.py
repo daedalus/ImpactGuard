@@ -108,7 +108,7 @@ def _type_change_kind(
     old_type: str,
     new_type: str,
     union_parser: Any = None,
-) -> str:
+) -> str | None:
     """Classify the relationship between two type annotation strings.
 
     Args:
@@ -119,12 +119,15 @@ def _type_change_kind(
             Python-syntax parser when *None*.
 
     Returns:
+        ``None``       – types are identical (no change).
         ``"widening"``  – new_type is a strict superset of old_type (safe for
             callers; *non-breaking*).
         ``"narrowing"`` – new_type is a strict subset of old_type (breaking).
         ``"changed"``   – types overlap or differ with no clear direction
             (treated as breaking).
     """
+    if old_type == new_type:
+        return None
     parse = union_parser if union_parser is not None else _parse_union_members
     old_members = parse(old_type)
     new_members = parse(new_type)
@@ -151,6 +154,7 @@ def compare(  # noqa: MC0001
     new_path: str,
     include_private: bool | None = None,
     language: str | None = None,
+    suppress: list[str] | None = None,
 ) -> dict[str, list[str]]:
     """Compare two signature snapshots.
 
@@ -178,6 +182,8 @@ def compare(  # noqa: MC0001
         include_private = bool(cfg_get("analysis", "include_private", False))
 
     suppress_list: list[str] = list(cfg_get("analysis", "suppress", []) or [])
+    if suppress:
+        suppress_list.extend(suppress)
 
     # Resolve language-specific union parser (falls back to None → Python default)
     _union_parser: Any = None

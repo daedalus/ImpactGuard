@@ -55,6 +55,12 @@ def run(
             current_change = line.split(":")[0].strip()
 
             count = runtime.get(func_name.strip(), 0)
+            if count == 0:
+                # Try normalizing "module.py:func_name" → "module.func_name"
+                normalized = func_name.strip()
+                if ".py:" in normalized:
+                    normalized = normalized.replace(".py:", ".")
+                    count = runtime.get(normalized, 0)
             severity = get_severity(line)
             risk, exp, conf = classify(severity, count, max_count, count, lambda_)
 
@@ -109,3 +115,7 @@ def risk_main_cli(
 
     print(f"\nReport written to {output_path}")
     return report
+
+
+#: Public alias for the CLI entry point (backward-compat and test access).
+main = risk_main_cli

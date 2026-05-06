@@ -91,7 +91,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_risk(args: argparse.Namespace) -> int:
+def cmd_risk(args: argparse.Namespace):
     """Run risk analysis pipeline."""
     import os
     import tempfile as _tmpmod
@@ -120,10 +120,9 @@ def cmd_risk(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        _ = risk_main(
+        return risk_main(
             diff_path, args.runtime, args.output, lambda_=getattr(args, "lam", 1.0)
         )
-        return 0
     finally:
         if _tmp_path is not None:
             try:
@@ -1556,7 +1555,7 @@ def main() -> int:
         return 1
 
     if hasattr(args, "func"):
-        result: int = args.func(args)
+        result = args.func(args)
         return result
     else:
         parser.print_help()
@@ -1640,4 +1639,6 @@ def post_commit_hook() -> int:
 if __name__ == "__main__":
     result = main()
     logging.shutdown()
+    if isinstance(result, list):
+        sys.exit(1 if any(r.get("risk") == "HIGH" for r in result) else 0)
     sys.exit(result)
