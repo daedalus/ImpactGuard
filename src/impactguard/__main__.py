@@ -27,15 +27,31 @@ def cmd_extract(args: argparse.Namespace) -> int:
         return 1
 
     language: str | None = getattr(args, "language", None)
+    strict: bool = getattr(args, "strict", False)
 
     from .languages.registry import get_extractor, get_extractor_by_language
+
+    def _sig_extract(extractor: object, file_list: list[str]) -> list[dict[str, Any]]:
+        """Call extract_signatures, forwarding strict= when supported."""
+        import inspect
+
+        method = getattr(extractor, "extract_signatures", None)
+        if method is None:
+            print(
+                f"Warning: extractor {extractor!r} has no extract_signatures method; skipping",
+                file=sys.stderr,
+            )
+            return []
+        if strict and "strict" in inspect.signature(method).parameters:
+            return method(file_list, strict=strict)
+        return method(file_list)
 
     if language:
         extractor = get_extractor_by_language(language)
         if extractor is None:
             print(f"Error: Unknown language '{language}'", file=sys.stderr)
             return 1
-        result = extractor.extract_signatures(files)
+        result = _sig_extract(extractor, files)
     else:
         # Group files by language extractor, fall back to Python for .py
         from collections import defaultdict
@@ -60,7 +76,7 @@ def cmd_extract(args: argparse.Namespace) -> int:
         for lang, lang_files in by_extractor.items():
             lang_ext = get_extractor_by_language(lang)
             if lang_ext is not None:
-                result.extend(lang_ext.extract_signatures(lang_files))
+                result.extend(_sig_extract(lang_ext, lang_files))
         result.sort(key=lambda x: x.get("fqname", ""))
 
     print(json.dumps(result, indent=2))
@@ -1100,6 +1116,13 @@ def main() -> int:
         "-l",
         help="Force a specific language (e.g. python, typescript); "
         "auto-detected from extension when omitted",
+    )
+    extract_parser.add_argument(
+        "--strict",
+        action="store_true",
+        default=False,
+        help="Treat parse errors as fatal instead of skipping the file. "
+        "Recommended for CI to ensure broken files are never silently ignored.",
     )
     extract_parser.set_defaults(func=cmd_extract)
 

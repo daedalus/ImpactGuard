@@ -64,6 +64,11 @@ def find_transitive_callers(
 
     Returns:
         Dict mapping affected caller names to their hop distance (1-based).
+
+    Note:
+        Cycle-safe: the ``found`` dict acts as a visited set, so a cycle such
+        as A → B → A will not cause infinite iteration — once a node is
+        recorded in ``found`` it is never added to the next frontier again.
     """
     found: dict[str, int] = {}
     frontier = set(directly_affected)

@@ -4,6 +4,19 @@ try:
 
     LIBCST_AVAILABLE = True
 
+    # Supported patch transformations:
+    #   AddDefaultTransformer — adds a default value to an existing parameter
+    #       on the function definition side (covers OPTIONAL / REQUIRED changes).
+    #   FixCallTransformer — injects a missing keyword argument at every call
+    #       site (covers REQUIRED_POSITIONAL_ADDED and similar changes).
+    #
+    # NOTE: POSITIONAL_REORDER (reordering of positional parameters) is
+    # intentionally NOT handled by the patch generator.  Such a change requires
+    # updating *every* positional call site in the correct order, which cannot
+    # be done safely without full type-inference.  When a diff contains a
+    # POSITIONAL_REORDER entry, no patch will be produced and the caller must
+    # make the fix manually.
+
     class AddDefaultTransformer(cst.CSTTransformer):
         def __init__(self, func_name: str, param_name: str) -> None:
             self.func_name = func_name
