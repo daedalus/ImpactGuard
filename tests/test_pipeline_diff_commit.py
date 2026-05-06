@@ -331,3 +331,143 @@ class TestCliCheckCommit:
         with mock.patch("subprocess.run", side_effect=err):
             code = run_cli(["check-commit", "HEAD"])
         assert code == 1
+
+
+# ---------------------------------------------------------------------------
+# run_pipeline_diff_content (new in-memory / pipe variant)
+# ---------------------------------------------------------------------------
+
+class TestRunPipelineDiffContent:
+    def test_basic_change(self):
+        from impactguard.pipeline import run_pipeline_diff_content
+
+        old_src = "def foo(x):\n    return x\n"
+        new_src = "def foo(x, y=0):\n    return x + y\n"
+        diff_text = _make_unified_diff(old_src, new_src)
+
+        result = run_pipeline_diff_content(diff_text)
+        assert isinstance(result, dict)
+        assert "comparison" in result or "signatures" in result
+
+    def test_no_python_files_raises(self):
+        from impactguard.pipeline import run_pipeline_diff_content
+
+        diff_text = textwrap.dedent("""\
+            --- a/README.md
+            +++ b/README.md
+            @@ -1 +1 @@
+            -old
+            +new
+        """)
+        with pytest.raises(ValueError, match="No Python file changes found"):
+            run_pipeline_diff_content(diff_text)
+
+    def test_only_deletions_raises(self):
+        from impactguard.pipeline import run_pipeline_diff_content
+
+        diff_text = textwrap.dedent("""\
+            --- a/module.py
+            +++ /dev/null
+            @@ -1,2 +0,0 @@
+            -def gone():
+            -    pass
+        """)
+        with pytest.raises(ValueError, match="only deletions"):
+            run_pipeline_diff_content(diff_text)
+
+    def test_empty_diff_raises(self):
+        from impactguard.pipeline import run_pipeline_diff_content
+
+        with pytest.raises(ValueError, match="No Python file changes found"):
+            run_pipeline_diff_content("")
+
+    def test_output_dir_is_respected(self, tmp_path):
+        from impactguard.pipeline import run_pipeline_diff_content
+
+        old_src = "def foo(): pass\n"
+        new_src = "def foo(x=1): pass\n"
+        diff_text = _make_unified_diff(old_src, new_src)
+
+        out_dir = tmp_path / "output"
+        out_dir.mkdir()
+        result = run_pipeline_diff_content(diff_text, output_dir=str(out_dir))
+        assert isinstance(result, dict)
+
+    def test_exported_from_package(self):
+        import impactguard
+
+        assert hasattr(impactguard, "run_pipeline_diff_content")
+        assert callable(impactguard.run_pipeline_diff_content)
+
+    def test_same_result_as_run_pipeline_diff(self, tmp_path):
+        """run_pipeline_diff_content should produce the same output as run_pipeline_diff."""
+        from impactguard.pipeline import run_pipeline_diff, run_pipeline_diff_content
+
+        old_src = "def greet(name):\n    return name\n"
+        new_src = "def greet(name, greeting='Hello'):\n    return greeting + name\n"
+        diff_text = _make_unified_diff(old_src, new_src)
+        diff_file = tmp_path / "changes.patch"
+        diff_file.write_text(diff_text)
+
+        result_file = run_pipeline_diff(str(diff_file))
+        result_content = run_pipeline_diff_content(diff_text)
+
+        # Both should agree on the comparison counts
+        breaking_file = len(result_file.get("comparison", {}).get("breaking", []))
+        breaking_content = len(result_content.get("comparison", {}).get("breaking", []))
+        nonbreaking_file = len(result_file.get("comparison", {}).get("nonbreaking", []))
+        nonbreaking_content = len(result_content.get("comparison", {}).get("nonbreaking", []))
+        assert breaking_file == breaking_content
+        assert nonbreaking_file == nonbreaking_content
+
+
+# ---------------------------------------------------------------------------
+# CLI: check-diff --pipe
+# ---------------------------------------------------------------------------
+
+class TestCliCheckDiffPipe:
+    def test_pipe_nonbreaking_change(self, monkeypatch):
+        old_src = "def foo(x):\n    return x\n"
+        new_src = "def foo(x, y=0):\n    return x\n"
+        diff_text = _make_unified_diff(old_src, new_src)
+
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(diff_text))
+        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+
+        code = run_cli(["check-diff", "--pipe"])
+        assert code == 0
+
+    def test_pipe_empty_diff_returns_error(self, monkeypatch):
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(""))
+        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+
+        code = run_cli(["check-diff", "--pipe"])
+        assert code == 1
+
+    def test_pipe_no_stdin_data_error(self, monkeypatch):
+        """--pipe with a TTY (no piped data) should fail with an error."""
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(""))
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+
+        code = run_cli(["check-diff", "--pipe"])
+        assert code == 1
+
+    def test_pipe_no_python_files_error(self, monkeypatch):
+        diff_text = "--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-old\n+new\n"
+        import io
+        monkeypatch.setattr("sys.stdin", io.StringIO(diff_text))
+        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+
+        code = run_cli(["check-diff", "--pipe"])
+        assert code == 1
+
+    def test_check_diff_help_mentions_pipe(self, capsys):
+        """--help for check-diff should mention --pipe."""
+        run_cli(["check-diff", "--help"])
+        # argparse prints to stdout; check captured output
+        captured = capsys.readouterr()
+        assert "--pipe" in captured.out
+

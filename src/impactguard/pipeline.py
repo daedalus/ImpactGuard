@@ -532,6 +532,70 @@ def _parse_unified_diff(diff_text: str) -> dict[str, tuple[str, str]]:
     return files
 
 
+def run_pipeline_diff_content(
+    diff_text: str,
+    runtime_path: str | None = None,
+    output_dir: str | None = None,
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Run the full ImpactGuard pipeline on unified diff content (as a string).
+
+    Equivalent to :func:`run_pipeline_diff` but accepts the diff text directly
+    instead of a file path.  Useful when the diff is read from stdin or
+    produced in-memory (e.g. ``diff A B | impactguard check-diff --pipe``).
+
+    Args:
+        diff_text: Unified diff / patch content as a string.
+        runtime_path: Optional path to runtime data JSON.
+        output_dir: Directory for output files (default: temp dir).
+        config: Optional configuration dictionary.
+
+    Returns:
+        Same dictionary as :func:`run_pipeline`.
+
+    Raises:
+        ValueError: If the diff contains no Python files.
+    """
+    file_contents = _parse_unified_diff(diff_text)
+
+    if not file_contents:
+        raise ValueError("No Python file changes found in diff")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        old_dir = Path(tmpdir) / "old"
+        new_dir = Path(tmpdir) / "new"
+        old_dir.mkdir()
+        new_dir.mkdir()
+
+        old_files: list[str] = []
+        new_files: list[str] = []
+
+        for rel_path, (old_src, new_src) in file_contents.items():
+            if old_src.strip():
+                dest = old_dir / rel_path
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_text(old_src)
+                old_files.append(str(dest))
+            if new_src.strip():
+                dest = new_dir / rel_path
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_text(new_src)
+                new_files.append(str(dest))
+
+        if not new_files:
+            raise ValueError("Diff contains only deletions – nothing to analyze")
+
+        effective_output = output_dir or tempfile.mkdtemp(prefix="impactguard_diff_")
+
+        return run_pipeline(
+            old_files=old_files or None,
+            new_files=new_files,
+            runtime_path=runtime_path,
+            output_dir=effective_output,
+            config=config,
+        )
+
+
 def run_pipeline_diff(
     diff_path: str,
     runtime_path: str | None = None,
@@ -558,44 +622,16 @@ def run_pipeline_diff(
         ValueError: If the diff contains no Python files.
     """
     diff_text = Path(diff_path).read_text()
-    file_contents = _parse_unified_diff(diff_text)
-
-    if not file_contents:
-        raise ValueError(f"No Python file changes found in diff: {diff_path}")
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        old_dir = Path(tmpdir) / "old"
-        new_dir = Path(tmpdir) / "new"
-        old_dir.mkdir()
-        new_dir.mkdir()
-
-        old_files: list[str] = []
-        new_files: list[str] = []
-
-        for rel_path, (old_src, new_src) in file_contents.items():
-            if old_src.strip():
-                dest = old_dir / rel_path
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                dest.write_text(old_src)
-                old_files.append(str(dest))
-            if new_src.strip():
-                dest = new_dir / rel_path
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                dest.write_text(new_src)
-                new_files.append(str(dest))
-
-        if not new_files:
-            raise ValueError(f"Diff {diff_path} contains only deletions – nothing to analyze")
-
-        effective_output = output_dir or tempfile.mkdtemp(prefix="impactguard_diff_")
-
-        return run_pipeline(
-            old_files=old_files or None,
-            new_files=new_files,
+    try:
+        return run_pipeline_diff_content(
+            diff_text,
             runtime_path=runtime_path,
-            output_dir=effective_output,
+            output_dir=output_dir,
             config=config,
         )
+    except ValueError as exc:
+        # Re-raise with the file path for a more descriptive error message.
+        raise ValueError(str(exc).replace("diff", f"diff: {diff_path}", 1)) from exc
 
 
 def run_pipeline_commit(
