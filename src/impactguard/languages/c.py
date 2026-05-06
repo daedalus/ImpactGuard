@@ -1,7 +1,7 @@
 """C and C++ language extractor for ImpactGuard.
 
 Provides signature and call-site extraction for C (``.c``, ``.h``) and
-C++ (``.cpp``, ``.hpp``, ``.cc``) source files.
+C++ (``.cpp``, ``.hpp``, ``.cc``, ``.cxx``, ``.hxx``) source files.
 
 Two extraction backends are supported for each language:
 
@@ -575,7 +575,7 @@ class CExtractor:
 
 
 class CppExtractor:
-    """Language extractor for C++ (``.cpp``, ``.hpp``, ``.cc``) files.
+    """Language extractor for C++ (``.cpp``, ``.hpp``, ``.cc``, ``.cxx``, ``.hxx``) files.
 
     Uses tree-sitter for accurate AST-based extraction when available,
     otherwise falls back to regex-based extraction with a ``UserWarning``.

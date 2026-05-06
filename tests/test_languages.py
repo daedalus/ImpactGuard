@@ -644,7 +644,7 @@ class TestCLILanguageFlag:
         assert rc == 1
 
     def test_extract_unknown_extension_warns(self, tmp_path: Path, capsys) -> None:
-        f = _write(tmp_path, "script.cobol", "DISPLAY 'hello'.\n")
+        f = _write(tmp_path, "script.xyz123", "NOTHING HERE\n")
         from impactguard.__main__ import cmd_extract
         import argparse
         args = argparse.Namespace(files=[str(f)], language=None)
