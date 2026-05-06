@@ -44,6 +44,7 @@ from .pipeline import (
     quick_check,
     run_pipeline_git,
     run_pipeline_diff,
+    run_pipeline_diff_content,
     run_pipeline_commit,
     ImpactGuard,
 )
@@ -136,6 +137,7 @@ __all__ = [
     "quick_check",
     "run_pipeline_git",
     "run_pipeline_diff",
+    "run_pipeline_diff_content",
     "run_pipeline_commit",
     "ImpactGuard",
     # Config
