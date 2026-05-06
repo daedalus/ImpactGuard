@@ -8,6 +8,7 @@ def enforce(
     runtime_path: str,
     output_path: str | None = None,
     block_unknown: bool | None = None,
+    lambda_: float = 1.0,
 ) -> int:
     """Enforce gate - block on HIGH risk.
 
@@ -18,6 +19,8 @@ def enforce(
         block_unknown: When *True*, treat UNKNOWN risk as blocking just like
             HIGH.  When *None* (default) the value is read from the config
             file (``[impactguard.risk] block_unknown``).
+        lambda_: Sensitivity multiplier (default 1.0). Values >1 increase
+            sensitivity (more changes flagged HIGH); values <1 decrease it.
 
     Returns:
         1 if HIGH risk detected (or UNKNOWN when blocking), 0 otherwise.
@@ -28,7 +31,7 @@ def enforce(
     if block_unknown is None:
         block_unknown = bool(cfg_get("risk", "block_unknown", False))
 
-    report: list[dict[str, Any]] = run(diff_path, runtime_path, output_path)
+    report: list[dict[str, Any]] = run(diff_path, runtime_path, output_path, lambda_=lambda_)
 
     has_high = False
     has_unknown = False
