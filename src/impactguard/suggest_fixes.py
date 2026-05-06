@@ -1,6 +1,9 @@
+import sys
+from pathlib import Path
 from typing import Any
 
 from .patch_confidence import classify_with_factors, compute_confidence
+from ._pathutils import is_safe_path
 
 
 def suggest(
@@ -32,6 +35,9 @@ def suggest(
 
 
 def get_line(file: str, lineno: int) -> str:
+    if not is_safe_path(file):
+        print(f"Warning: impactguard: unsafe file path rejected: '{file}'", file=sys.stderr)
+        return ""
     try:
         with open(file) as f:
             lines = f.read().splitlines()
@@ -78,8 +84,6 @@ def enrich_with_fixes(
     # If no patches yet, try CST patch
     if not fixes and "function" in report_item:
         try:
-            from pathlib import Path
-
             func_name = report_item.get("function", "")
             change = report_item.get("change", "")
 
