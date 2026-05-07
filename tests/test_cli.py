@@ -91,7 +91,7 @@ def test_compare_command():
     new_file = create_temp_file(json.dumps(new_data), ".json")
 
     try:
-        result = run_cli(["compare", old_file, new_file])
+        result = run_cli(["compare", "--json", old_file, new_file])
         # Should detect non-breaking change
         assert result == 0
     finally:

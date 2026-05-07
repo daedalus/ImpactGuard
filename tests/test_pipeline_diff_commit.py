@@ -345,6 +345,8 @@ class TestRunPipelineCommit:
                     runtime_path="/tmp/rt.json",
                     output_path=None,
                     config=None,
+                    suggest_patch=False,
+                    show_patch=False,
                 )
                 assert result == expected
 

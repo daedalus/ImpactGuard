@@ -85,6 +85,8 @@ def run_pipeline(
     runtime_path: str | None = None,
     output_dir: str | None = None,
     config: dict[str, Any] | None = None,
+    suggest_patch: bool = False,
+    show_patch: bool = False,
 ) -> dict[str, Any]:
     """Run the full ImpactGuard pipeline.
 
@@ -96,6 +98,7 @@ def run_pipeline(
     5. Assess risk with runtime data
     6. Generate HTML report
     7. Suggest fixes with confidence scoring
+    8. Generate patches (if suggest_patch=True)
 
     Args:
         old_files: List of old Python files (for extraction)
@@ -106,6 +109,7 @@ def run_pipeline(
         runtime_path: Path to runtime data JSON
         output_dir: Directory for output files (default: temp dir)
         config: Optional configuration dictionary
+        suggest_patch: When True, generate and output patches for fixes
 
     Returns:
         Dictionary with keys:
@@ -115,15 +119,16 @@ def run_pipeline(
         - risk: [...]  # risk assessment results
         - report_html: str  # HTML report content
         - fixes: [...]  # suggested fixes
+        - patches: dict  # generated patches (if suggest_patch=True)
     """
     from .analyze_module import analyze as analyze_module
+    from .class_hierarchy import extract_class_hierarchy, find_implementations
     from .compare_signatures import compare
     from .generate_report import generate_html
     from .impact_analysis import analyze
     from .languages.registry import get_extractor as _get_extractor
     from .risk_gate import run as run_risk
     from .suggest_fixes import enrich_with_fixes
-    from .class_hierarchy import extract_class_hierarchy, find_implementations
 
     result: dict[str, Any] = {}
 
@@ -160,10 +165,10 @@ def run_pipeline(
         return result
 
     # Step 1.5: Extract class hierarchy (for cascade impact)
-    hierarchy: dict = {}
-    implementations: dict = {}
+    hierarchy: dict[str, Any] = {}
+    implementations: dict[str, Any] = {}
 
-    def _extract_hierarchy(files: list[str]) -> dict:
+    def _extract_hierarchy(files: list[str]) -> dict[str, Any]:
         """Extract class hierarchy from Python files only."""
         py_files = [f for f in files if f.endswith(".py")]
         if py_files:
@@ -181,7 +186,12 @@ def run_pipeline(
         implementations = find_implementations(hierarchy)
 
     # Step 2: Compare signatures
-    comparison = compare(old_sigs_path, new_sigs_path, hierarchy=hierarchy, implementations=implementations)
+    comparison = compare(
+        old_sigs_path,
+        new_sigs_path,
+        hierarchy=hierarchy,
+        implementations=implementations,
+    )
     result["comparison"] = comparison
 
     # Step 3: Extract call sites (if not provided)
@@ -251,6 +261,38 @@ def run_pipeline(
     risk = run_risk(diff_path, runtime_path or "", risk_report_path)
     result["risk"] = risk
 
+    # Add file/lineno from signatures to risk items for patch generation
+    if suggest_patch or show_patch:
+        try:
+            with open(old_sigs_path) as f:
+                old_sigs_list = json.load(f)
+        except Exception as e:
+            print(f"Warning: Could not load old signatures: {e}", file=sys.stderr)
+            old_sigs_list = []
+
+        if old_sigs_list:
+            # Create mapping from fqname to actual file path
+            fqname_to_file: dict[str, str] = {}
+            for sig in old_sigs_list:
+                fq = sig.get("fqname", "")
+                file_path = sig.get("file", "")
+                if old_files:
+                    for of in old_files:
+                        if of.endswith(file_path):
+                            fqname_to_file[fq] = of
+                            break
+
+            # Add file/lineno to risk items
+            for risk_item in risk:
+                fqname = risk_item.get("function", "")
+                if fqname in fqname_to_file:
+                    risk_item["file"] = fqname_to_file[fqname]
+                elif file_path in risk_item.get("function", ""):
+                    # Try to extract file path from fqname
+                    pass
+
+    # Step 6: Generate HTML report
+
     # Step 6: Generate HTML report
     html = generate_html(risk)
     result["report_html"] = html
@@ -258,28 +300,63 @@ def run_pipeline(
     # Step 7: Suggest fixes with confidence
     fixes = []
     for item in risk:
-        if "patches" in item or "callsite_patches" in item:
+        if "function" in item:
             enriched = enrich_with_fixes(item, [item])
             fixes.extend(enriched)
 
     # Apply calibrated weights from feedback loop if available
     try:
-        from .feedback import load_outcomes, compute_calibrated_weights
+        from .feedback import compute_calibrated_weights, load_outcomes
 
         outcomes = load_outcomes()
         if outcomes:
             calibrated = compute_calibrated_weights(outcomes)
             if calibrated:
                 # Write calibrated weights to config for patch_confidence to use
-                from .feedback import apply_weight_to_config
+                from .feedback import apply_weights_to_config
 
-                apply_weight_to_config(calibrated)
+                apply_weights_to_config(calibrated)
     except Exception:
         pass  # Feedback loop not set up, continue without calibration
 
     result["fixes"] = fixes
 
-    # Step 8: Semver recommendation
+    # Step 8: Generate/show patches if requested
+    if suggest_patch or show_patch:
+        patches: dict[str, Any] = {}
+        patch_dir = Path(output_dir) / "patches"
+        if suggest_patch:
+            patch_dir.mkdir(parents=True, exist_ok=True)
+
+        for item in fixes:
+            patch_type = item.get("type", "")
+            if "patch" in item and item["patch"]:
+                patch_content = item["patch"]
+
+                # Display patched content if requested
+                if show_patch:
+                    # Extract function name from fqname (e.g., "main.py:add" -> "add")
+                    func_name = item.get("function", "unknown")
+                    if ":" in func_name:
+                        func_name = func_name.split(":")[-1]
+                    print(f"\n=== Patched: {func_name} ===")
+                    print(patch_content)
+
+                # Save to file if suggest_patch is set
+                if suggest_patch:
+                    counter = len(patches) + 1
+                    patch_file = patch_dir / f"patch_{counter}.py"
+                    patch_file.write_text(patch_content)
+                    patches[f"patch_{counter}"] = {
+                        "type": patch_type,
+                        "file": str(patch_file),
+                        "content": patch_content,
+                    }
+
+        if suggest_patch:
+            result["patches"] = patches
+
+    # Step 9: Semver recommendation
     from .semver import format_semver_recommendation
 
     result["semver"] = format_semver_recommendation(comparison)
@@ -297,6 +374,8 @@ def quick_check(
     old_path: str,
     new_path: str,
     runtime_path: str | None = None,
+    suggest_patch: bool = False,
+    show_patch: bool = False,
 ) -> dict[str, Any]:
     """Quick check between two Python files or directories.
 
@@ -304,6 +383,8 @@ def quick_check(
         old_path: Path to old Python file/directory
         new_path: Path to new Python file/directory
         runtime_path: Optional path to runtime data
+        suggest_patch: When True, generate patches for fixes
+        show_patch: When True, display patched content inline
 
     Returns:
         Pipeline result dictionary
@@ -331,6 +412,8 @@ def quick_check(
         old_files=old_files,
         new_files=new_files,
         runtime_path=runtime_path,
+        suggest_patch=suggest_patch,
+        show_patch=show_patch,
     )
 
 
@@ -496,6 +579,8 @@ def run_pipeline_git(
     runtime_path: str | None = None,
     output_path: str | None = None,
     config: dict[str, Any] | None = None,
+    suggest_patch: bool = False,
+    show_patch: bool = False,
 ) -> dict[str, Any]:
     """Run pipeline comparing two git commits.
 
@@ -506,6 +591,8 @@ def run_pipeline_git(
         runtime_path: Path to runtime data JSON
         output_path: Path for HTML report output
         config: Optional configuration dictionary
+        suggest_patch: When True, generate patches for fixes
+        show_patch: When True, display patched content inline
 
     Returns:
         Same as run_pipeline()
@@ -592,6 +679,8 @@ def run_pipeline_git(
             runtime_path=runtime_path,
             output_dir=output_path or tmpdir,
             config=config,
+            suggest_patch=suggest_patch,
+            show_patch=show_patch,
         )
 
 
@@ -657,6 +746,8 @@ def run_pipeline_diff_content(
     runtime_path: str | None = None,
     output_dir: str | None = None,
     config: dict[str, Any] | None = None,
+    suggest_patch: bool = False,
+    show_patch: bool = False,
 ) -> dict[str, Any]:
     """Run the full ImpactGuard pipeline on unified diff content (as a string).
 
@@ -672,17 +763,16 @@ def run_pipeline_diff_content(
         runtime_path: Optional path to runtime data JSON.
         output_dir: Directory for output files (default: temp dir).
         config: Optional configuration dictionary.
+        suggest_patch: When True, generate patches for fixes.
+        show_patch: When True, display patched content inline.
 
     Returns:
         Same dictionary as :func:`run_pipeline`.
-
-    Raises:
-        ValueError: If the diff contains no files with a supported language.
     """
     file_contents = _parse_unified_diff(diff_text)
 
     if not file_contents:
-        raise ValueError("No supported file changes found in diff")
+        raise ValueError("No supported file changes found in diff)")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         old_dir = Path(tmpdir) / "old"
@@ -706,7 +796,7 @@ def run_pipeline_diff_content(
                 new_files.append(str(dest))
 
         if not new_files:
-            raise ValueError("Diff contains only deletions – nothing to analyze")
+            raise ValueError("Diff contains only deletions – nothing to analyze)")
 
         effective_output = output_dir or tempfile.mkdtemp(prefix="impactguard_diff_")
 
@@ -716,6 +806,8 @@ def run_pipeline_diff_content(
             runtime_path=runtime_path,
             output_dir=effective_output,
             config=config,
+            suggest_patch=suggest_patch,
+            show_patch=show_patch,
         )
 
 
@@ -724,6 +816,8 @@ def run_pipeline_diff(
     runtime_path: str | None = None,
     output_dir: str | None = None,
     config: dict[str, Any] | None = None,
+    suggest_patch: bool = False,
+    show_patch: bool = False,
 ) -> dict[str, Any]:
     """Run the full ImpactGuard pipeline on a unified diff / patch file.
 
@@ -737,6 +831,8 @@ def run_pipeline_diff(
         runtime_path: Optional path to runtime data JSON.
         output_dir: Directory for output files (default: temp dir).
         config: Optional configuration dictionary.
+        suggest_patch: When True, generate patches for fixes.
+        show_patch: When True, display patched content inline.
 
     Returns:
         Same dictionary as :func:`run_pipeline`.
@@ -752,6 +848,8 @@ def run_pipeline_diff(
             runtime_path=runtime_path,
             output_dir=output_dir,
             config=config,
+            suggest_patch=suggest_patch,
+            show_patch=show_patch,
         )
     except ValueError as exc:
         # Re-raise with the file path included in the error message.
@@ -764,6 +862,8 @@ def run_pipeline_commit(
     runtime_path: str | None = None,
     output_path: str | None = None,
     config: dict[str, Any] | None = None,
+    suggest_patch: bool = False,
+    show_patch: bool = False,
 ) -> dict[str, Any]:
     """Run the full ImpactGuard pipeline on a single git commit.
 
@@ -778,6 +878,8 @@ def run_pipeline_commit(
         runtime_path: Path to runtime data JSON.
         output_path: Path for output files / HTML report.
         config: Optional configuration dictionary.
+        suggest_patch: When True, generate patches for fixes.
+        show_patch: When True, display patched content inline.
 
     Returns:
         Same dictionary as :func:`run_pipeline`.
@@ -812,6 +914,8 @@ def run_pipeline_commit(
         runtime_path=runtime_path,
         output_path=output_path,
         config=config,
+        suggest_patch=suggest_patch,
+        show_patch=show_patch,
     )
 
 
@@ -831,6 +935,8 @@ class ImpactGuard:
         old_path: str,
         new_path: str,
         runtime_path: str | None = None,
+        suggest_patch: bool = False,
+        show_patch: bool = False,
     ) -> dict[str, Any]:
         """Analyze impact between two versions.
 
@@ -838,11 +944,19 @@ class ImpactGuard:
             old_path: Path to old code (file or directory)
             new_path: Path to new code (file or directory)
             runtime_path: Optional path to runtime data
+            suggest_patch: When True, generate patches for fixes
+            show_patch: When True, display patched content inline
 
         Returns:
             Analysis results dictionary
         """
-        return quick_check(old_path, new_path, runtime_path)
+        return quick_check(
+            old_path,
+            new_path,
+            runtime_path,
+            suggest_patch=suggest_patch,
+            show_patch=show_patch,
+        )
 
     def extract(self, files: list[str]) -> list[dict[str, Any]]:
         """Extract signatures from files.

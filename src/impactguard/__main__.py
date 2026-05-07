@@ -84,10 +84,55 @@ def cmd_extract(args: argparse.Namespace) -> int:
 
 
 def cmd_compare(args: argparse.Namespace) -> int:
-    """Compare two signature snapshots."""
+    """Compare two signature snapshots or source files."""
     from .compare_signatures import compare
 
-    result = compare(args.old, args.new)
+    # Use getattr for backward compatibility (tests may not have json attribute)
+    use_json = getattr(args, "json", False)
+
+    if use_json:
+        # JSON mode: compare two JSON files directly (original behavior)
+        result = compare(args.old, args.new)
+    else:
+        # Source mode: extract signatures from source files, then compare
+        from .languages.registry import get_extractor
+
+        def _extract_file(file_path: str) -> list[dict[str, Any]]:
+            """Extract signatures from a single source file."""
+            extractor = get_extractor(file_path)
+            if extractor is None:
+                print(
+                    f"Error: No extractor found for file '{file_path}'",
+                    file=sys.stderr,
+                )
+                return []
+            method = getattr(extractor, "extract_signatures", None)
+            if method is None:
+                print(
+                    f"Error: Extractor for '{file_path}' has no extract_signatures method",
+                    file=sys.stderr,
+                )
+                return []
+            return method([file_path])
+
+        old_sigs = _extract_file(args.old)
+        new_sigs = _extract_file(args.new)
+
+        if not old_sigs:
+            print(
+                f"Error: Failed to extract signatures from '{args.old}'",
+                file=sys.stderr,
+            )
+            return 1
+        if not new_sigs:
+            print(
+                f"Error: Failed to extract signatures from '{args.new}'",
+                file=sys.stderr,
+            )
+            return 1
+
+        result = compare(old_sigs, new_sigs)
+
     print(f"Breaking changes: {len(result['breaking'])}")
     print(f"Non-breaking changes: {len(result['nonbreaking'])}")
 
@@ -314,11 +359,19 @@ def cmd_check(args: argparse.Namespace) -> int:
     from .pipeline import quick_check
 
     watch: bool = getattr(args, "watch", False)
+    suggest_patch: bool = getattr(args, "suggest_patch", False)
+    show_patch: bool = getattr(args, "show_patch", False)
 
     def _run_once() -> int:
         print(f"Checking impact: {args.old} → {args.new}")
         try:
-            result = quick_check(args.old, args.new, args.runtime)
+            result = quick_check(
+                args.old,
+                args.new,
+                args.runtime,
+                suggest_patch=suggest_patch,
+                show_patch=show_patch,
+            )
             print("\n=== Comparison ===")
             print(
                 f"Breaking changes: {len(result.get('comparison', {}).get('breaking', []))}"
@@ -352,6 +405,16 @@ def cmd_check(args: argparse.Namespace) -> int:
                     print(f"\n=== Suggested Fixes ({len(fixes)}) ===")
                     for fix in fixes[:5]:
                         print(f"  - {fix}")
+
+            if suggest_patch and "patches" in result:
+                patches = result["patches"]
+                if patches:
+                    print(f"\n=== Generated Patches ({len(patches)}) ===")
+                    for func_name, patch_info in patches.items():
+                        print(
+                            f"  - {func_name}: {patch_info.get('type', 'unknown')} patch"
+                        )
+                        print(f"    File: {patch_info.get('file', '')}")
 
             return 0
         except Exception as e:
@@ -405,6 +468,7 @@ def cmd_check_commits(args: argparse.Namespace) -> int:
     """Run ImpactGuard pipeline comparing two git commits."""
     from .pipeline import run_pipeline_git
 
+    suggest_patch: bool = getattr(args, "suggest_patch", False)
     print(f"Checking impact: {args.old_ref} → {args.new_ref}")
 
     try:
@@ -414,6 +478,7 @@ def cmd_check_commits(args: argparse.Namespace) -> int:
             files=args.files if hasattr(args, "files") else None,
             runtime_path=args.runtime,
             output_path=args.output,
+            suggest_patch=suggest_patch,
         )
 
         print("\n=== Comparison ===")
@@ -430,8 +495,15 @@ def cmd_check_commits(args: argparse.Namespace) -> int:
         if "report_html" in result and args.output:
             print(f"\nReport written to {args.output}")
 
-        return 0
+        if suggest_patch and "patches" in result:
+            patches = result["patches"]
+            if patches:
+                print(f"\n=== Generated Patches ({len(patches)}) ===")
+                for func_name, patch_info in patches.items():
+                    print(f"  - {func_name}: {patch_info.get('type', 'unknown')} patch")
+                    print(f"    File: {patch_info.get('file', '')}")
 
+        return 0
     except Exception as e:
         print(f"Error: {e}")
         return 1
@@ -443,6 +515,8 @@ def cmd_check_diff(args: argparse.Namespace) -> int:
 
     pipe: bool = getattr(args, "pipe", False)
     diff_path: str | None = getattr(args, "diff", None)
+    suggest_patch: bool = getattr(args, "suggest_patch", False)
+    show_patch: bool = getattr(args, "show_patch", False)
 
     if pipe:
         if not sys.stdin.isatty():
@@ -456,6 +530,8 @@ def cmd_check_diff(args: argparse.Namespace) -> int:
                 diff_text=diff_text,
                 runtime_path=getattr(args, "runtime", None),
                 output_dir=getattr(args, "output", None),
+                suggest_patch=suggest_patch,
+                show_patch=show_patch,
             )
         except ValueError as e:
             print(f"Error: {e}", file=sys.stderr)
@@ -470,6 +546,7 @@ def cmd_check_diff(args: argparse.Namespace) -> int:
                 diff_path=diff_path,
                 runtime_path=getattr(args, "runtime", None),
                 output_dir=getattr(args, "output", None),
+                suggest_patch=suggest_patch,
             )
         except (FileNotFoundError, ValueError) as e:
             print(f"Error: {e}", file=sys.stderr)
@@ -503,6 +580,14 @@ def cmd_check_diff(args: argparse.Namespace) -> int:
             f.write(result["report_html"])
         print(f"\nReport written to {report_path}")
 
+    if suggest_patch and "patches" in result:
+        patches = result["patches"]
+        if patches:
+            print(f"\n=== Generated Patches ({len(patches)}) ===")
+            for func_name, patch_info in patches.items():
+                print(f"  - {func_name}: {patch_info.get('type', 'unknown')} patch")
+                print(f"    File: {patch_info.get('file', '')}")
+
     return 1 if comparison.get("breaking") else 0
 
 
@@ -510,6 +595,7 @@ def cmd_check_commit(args: argparse.Namespace) -> int:
     """Run ImpactGuard pipeline on a single git commit vs its parent."""
     from .pipeline import run_pipeline_commit
 
+    suggest_patch: bool = getattr(args, "suggest_patch", False)
     print(f"Analyzing commit: {args.commit_ref}")
 
     try:
@@ -518,6 +604,7 @@ def cmd_check_commit(args: argparse.Namespace) -> int:
             files=getattr(args, "files", None),
             runtime_path=getattr(args, "runtime", None),
             output_path=getattr(args, "output", None),
+            suggest_patch=suggest_patch,
         )
     except (ValueError, RuntimeError) as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -539,9 +626,16 @@ def cmd_check_commit(args: argparse.Namespace) -> int:
         print("\n=== Risk Analysis ===")
         print(f"HIGH risk: {high}")
 
-    output = getattr(args, "output", None)
-    if output and "report_html" in result:
-        print(f"\nReport written to {output}")
+    if "report_html" in result and args.output:
+        print(f"\nReport written to {args.output}")
+
+    if suggest_patch and "patches" in result:
+        patches = result["patches"]
+        if patches:
+            print(f"\n=== Generated Patches ({len(patches)}) ===")
+            for func_name, patch_info in patches.items():
+                print(f"  - {func_name}: {patch_info.get('type', 'unknown')} patch")
+                print(f"    File: {patch_info.get('file', '')}")
 
     return 1 if comparison.get("breaking") else 0
 
@@ -907,7 +1001,52 @@ def cmd_semver(args: argparse.Namespace) -> int:
     from .compare_signatures import compare
     from .semver import format_semver_recommendation
 
-    result = compare(args.old, args.new)
+    # Use getattr for backward compatibility (tests may not have json attribute)
+    use_json = getattr(args, "json", False)
+
+    if use_json:
+        # JSON mode: compare two JSON files directly
+        result = compare(args.old, args.new)
+    else:
+        # Source mode: extract signatures from source files, then compare
+        from .languages.registry import get_extractor
+
+        def _extract_file(file_path: str) -> list[dict[str, Any]]:
+            """Extract signatures from a single source file."""
+            extractor = get_extractor(file_path)
+            if extractor is None:
+                print(
+                    f"Error: No extractor found for file '{file_path}'",
+                    file=sys.stderr,
+                )
+                return []
+            method = getattr(extractor, "extract_signatures", None)
+            if method is None:
+                print(
+                    f"Error: Extractor for '{file_path}' has no extract_signatures method",
+                    file=sys.stderr,
+                )
+                return []
+            return method([file_path])
+
+        old_sigs = _extract_file(args.old)
+        new_sigs = _extract_file(args.new)
+
+        if not old_sigs:
+            print(
+                f"Error: Failed to extract signatures from '{args.old}'",
+                file=sys.stderr,
+            )
+            return 1
+        if not new_sigs:
+            print(
+                f"Error: Failed to extract signatures from '{args.new}'",
+                file=sys.stderr,
+            )
+            return 1
+
+        result = compare(old_sigs, new_sigs)
+
     rec = format_semver_recommendation(result, getattr(args, "current_version", None))
 
     print(f"Recommended bump: {rec['bump'].upper()}")
@@ -1164,10 +1303,21 @@ def main() -> int:
 
     # compare subcommand
     compare_parser = subparsers.add_parser(
-        "compare", help="Compare signature snapshots"
+        "compare",
+        help="Compare signature snapshots or source files",
+        description=(
+            "Compare two signature snapshots (JSON files) or two source files.  "
+            "By default, treat OLD and NEW as source files and extract signatures "
+            "automatically.  Use --json to compare pre-extracted JSON files."
+        ),
     )
-    compare_parser.add_argument("old", help="Old signatures JSON file")
-    compare_parser.add_argument("new", help="New signatures JSON file")
+    compare_parser.add_argument("old", help="Old file (source file or JSON)")
+    compare_parser.add_argument("new", help="New file (source file or JSON)")
+    compare_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Treat OLD and NEW as JSON signature files (default: extract from source files)",
+    )
     compare_parser.add_argument("-o", "--output", help="Output file for results")
     compare_parser.set_defaults(func=cmd_compare)
 
@@ -1314,6 +1464,18 @@ def main() -> int:
         action="store_true",
         help="Re-run automatically when source files change",
     )
+    check_parser.add_argument(
+        "--suggest-patch",
+        action="store_true",
+        dest="suggest_patch",
+        help="Generate patches for suggested fixes",
+    )
+    check_parser.add_argument(
+        "--show-patch",
+        action="store_true",
+        dest="show_patch",
+        help="Show how old file would look if patched",
+    )
     check_parser.set_defaults(func=cmd_check)
 
     # check-diff subcommand (unified diff / patch file)
@@ -1332,6 +1494,18 @@ def main() -> int:
         action="store_true",
         help="Read diff from stdin instead of a file (e.g. diff A B | impactguard check-diff --pipe)",
     )
+    check_diff_parser.add_argument(
+        "--suggest-patch",
+        action="store_true",
+        dest="suggest_patch",
+        help="Generate patches for suggested fixes",
+    )
+    check_diff_parser.add_argument(
+        "--show-patch",
+        action="store_true",
+        dest="show_patch",
+        help="Show how old file would look if patched",
+    )
     check_diff_parser.set_defaults(func=cmd_check_diff)
 
     # check-commit subcommand (single commit vs its parent)
@@ -1348,6 +1522,18 @@ def main() -> int:
     check_commit_parser.add_argument(
         "-o", "--output", help="Output path for HTML report"
     )
+    check_commit_parser.add_argument(
+        "--suggest-patch",
+        action="store_true",
+        dest="suggest_patch",
+        help="Generate patches for suggested fixes",
+    )
+    check_commit_parser.add_argument(
+        "--show-patch",
+        action="store_true",
+        dest="show_patch",
+        help="Show how old file would look if patched",
+    )
     check_commit_parser.set_defaults(func=cmd_check_commit)
 
     # check-commits subcommand (git commit comparison)
@@ -1363,10 +1549,22 @@ def main() -> int:
     check_commits_parser.add_argument(
         "--files", nargs="+", help="Specific files to compare (relative to repo root)"
     )
+    check_commits_parser.add_argument("--runtime", help="Runtime data JSON (optional)")
     check_commits_parser.add_argument(
-        "runtime", nargs="?", help="Runtime data JSON (optional)"
+        "-o", "--output", help="Output path for HTML report"
     )
-    check_commits_parser.add_argument("output", nargs="?", help="Output HTML report")
+    check_commits_parser.add_argument(
+        "--suggest-patch",
+        action="store_true",
+        dest="suggest_patch",
+        help="Generate patches for suggested fixes",
+    )
+    check_commits_parser.add_argument(
+        "--show-patch",
+        action="store_true",
+        dest="show_patch",
+        help="Show how old file would look if patched",
+    )
     check_commits_parser.set_defaults(func=cmd_check_commits)
 
     # install-hooks subcommand
@@ -1456,10 +1654,21 @@ def main() -> int:
 
     # semver subcommand
     semver_parser = subparsers.add_parser(
-        "semver", help="Suggest semver bump from two signature snapshots"
+        "semver",
+        help="Suggest semver bump from two signature snapshots or source files",
+        description=(
+            "Suggest a semantic version bump based on two signature snapshots.  "
+            "By default, treat OLD and NEW as source files and extract signatures "
+            "automatically.  Use --json to compare pre-extracted JSON files."
+        ),
     )
-    semver_parser.add_argument("old", help="Old signatures JSON file")
-    semver_parser.add_argument("new", help="New signatures JSON file")
+    semver_parser.add_argument("old", help="Old file (source file or JSON)")
+    semver_parser.add_argument("new", help="New file (source file or JSON)")
+    semver_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Treat OLD and NEW as JSON signature files (default: extract from source files)",
+    )
     semver_parser.add_argument(
         "--current-version",
         dest="current_version",
@@ -1634,7 +1843,7 @@ def main() -> int:
         return 1
 
     if hasattr(args, "func"):
-        result: "int | list[dict[str, Any]]" = args.func(args)
+        result: int | list[dict[str, Any]] = args.func(args)
         return result
     else:
         parser.print_help()

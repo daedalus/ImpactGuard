@@ -149,20 +149,38 @@ def _has_deprecated_decorator(sig: dict[str, Any]) -> bool:
     return False
 
 
+def _load_signatures(arg: str | list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Load signatures from a file path or use the provided signature list.
+
+    Args:
+        arg: Either a path to a JSON file (str) or an already-loaded
+            signature list (list[dict]).
+
+    Returns:
+        Dict mapping fqname to signature dict.
+    """
+    if isinstance(arg, str):
+        return load(arg)
+    # Assume it's already a signature list
+    return {f["fqname"]: f for f in arg}
+
+
 def compare(  # noqa: MC0001
-    old_path: str,
-    new_path: str,
+    old: str | list[dict[str, Any]],
+    new: str | list[dict[str, Any]],
     include_private: bool | None = None,
     language: str | None = None,
     suppress: list[str] | None = None,
-    hierarchy: dict | None = None,
-    implementations: dict | None = None,
+    hierarchy: dict[str, Any] | None = None,
+    implementations: dict[str, Any] | None = None,
 ) -> dict[str, list[str]]:
     """Compare two signature snapshots.
 
     Args:
-        old_path: Path to old signatures JSON.
-        new_path: Path to new signatures JSON.
+        old: Path to old signatures JSON file (str) OR already-loaded
+            signature list (list[dict]).
+        new: Path to new signatures JSON file (str) OR already-loaded
+            signature list (list[dict]).
         include_private: When *False* (default from config), functions whose
             leaf name starts with ``_`` (or that are not in ``__all__`` when
             the module defines it) are excluded from comparison.  Pass *True*
@@ -179,12 +197,11 @@ def compare(  # noqa: MC0001
         config suppress list.
     """
     from .config import get as cfg_get
-    from .class_hierarchy import extract_class_hierarchy, find_implementations
 
     if include_private is None:
         include_private = bool(cfg_get("analysis", "include_private", False))
 
-    suppress_list: list[str] = list(cfg_get("analysis", "suppress", []) or [])
+    suppress_list: list[str] = list(cfg_get("analysis", "suppress", [])) or []
     if suppress:
         suppress_list.extend(suppress)
 
@@ -197,13 +214,13 @@ def compare(  # noqa: MC0001
         if _lang_ext is not None:
             _union_parser = _lang_ext.parse_union_members
 
-    old = load(old_path)
-    new = load(new_path)
+    old_sigs: dict[str, dict[str, Any]] = _load_signatures(old)
+    new_sigs: dict[str, dict[str, Any]] = _load_signatures(new)
 
     # Filter private symbols unless explicitly included
     if not include_private:
-        old = {k: v for k, v in old.items() if _is_effectively_public(k, v)}
-        new = {k: v for k, v in new.items() if _is_effectively_public(k, v)}
+        old_sigs = {k: v for k, v in old_sigs.items() if _is_effectively_public(k, v)}
+        new_sigs = {k: v for k, v in new_sigs.items() if _is_effectively_public(k, v)}
 
     breaking: list[str] = []
     nonbreaking: list[str] = []
@@ -216,39 +233,39 @@ def compare(  # noqa: MC0001
         return False
 
     # Removed functions
-    for k in old:
-        if k not in new:
-            if _suppressed(k, old[k]):
+    for k in old_sigs:
+        if k not in new_sigs:
+            if _suppressed(k, old_sigs[k]):
                 continue
             # Deprecation lifecycle: removing a @deprecated function is non-breaking
-            if _has_deprecated_decorator(old[k]):
+            if _has_deprecated_decorator(old_sigs[k]):
                 nonbreaking.append(f"DEPRECATED_REMOVED: {k}")
             else:
                 breaking.append(f"REMOVED: {k}")
 
     # Added functions
-    for k in new:
-        if k not in old:
-            if _suppressed(k, new[k]):
+    for k in new_sigs:
+        if k not in old_sigs:
+            if _suppressed(k, new_sigs[k]):
                 continue
             nonbreaking.append(f"ADDED: {k}")
 
     # Compare shared
-    for k in old:
-        if k not in new:
+    for k in old_sigs:
+        if k not in new_sigs:
             continue
-        if _suppressed(k, old[k]):
+        if _suppressed(k, old_sigs[k]):
             continue
 
-        o = old[k]
-        n = new[k]
+        o = old_sigs[k]
+        n = new_sigs[k]
 
         o_pos = o["positional"]
         n_pos = n["positional"]
 
         # positional argument removal
         if len(n_pos) < len(o_pos):
-                breaking.append(f"POSITIONAL_REMOVED: {k}")
+            breaking.append(f"POSITIONAL_REMOVED: {k}")
         else:
             # positional arg changes
             for i in range(len(o_pos)):
@@ -311,11 +328,11 @@ def compare(  # noqa: MC0001
                     kind = _type_change_kind(o_type, n_type, _union_parser)
                     if kind == "widening":
                         nonbreaking.append(
-                             f"TYPE_WIDENED: {k} kwarg '{o_arg_name}' {o_type} -> {n_type}"
+                            f"TYPE_WIDENED: {k} kwarg '{o_arg_name}' {o_type} -> {n_type}"
                         )
                     else:
                         breaking.append(
-                             f"TYPE_CHANGED: {k} kwarg '{o_arg_name}' {o_type} -> {n_type}"
+                            f"TYPE_CHANGED: {k} kwarg '{o_arg_name}' {o_type} -> {n_type}"
                         )
 
         # Return type changes
