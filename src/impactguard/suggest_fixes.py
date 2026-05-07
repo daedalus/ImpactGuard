@@ -56,7 +56,11 @@ def enrich_with_fixes(
     patches = report_item.get("patches", [])
     if patches:
         fixes.append(
-            {"type": "make_optional", "patch": patches[0] if patches else None}
+            {
+                "type": "make_optional",
+                "patch": patches[0] if patches else None,
+                "function": report_item.get("function", "unknown"),
+            }
         )
 
     # Generate confidence-scored fixes
@@ -79,6 +83,7 @@ def enrich_with_fixes(
                     "patch": cp,
                     "confidence": factors,
                     "confidence_level": level,
+                    "function": report_item.get("function", "unknown"),
                 }
             )
 

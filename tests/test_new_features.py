@@ -1015,7 +1015,15 @@ def test_cli_semver_command(tmp_path: Path, capsys: pytest.CaptureFixture):
     sigs = [_sig("m.py:foo", "foo")]
     old_p, new_p = _tmp_json(sigs), _tmp_json(sigs)
     try:
-        sys.argv = ["impactguard", "semver", old_p, new_p, "--current-version", "1.2.3"]
+        sys.argv = [
+            "impactguard",
+            "semver",
+            "--json",
+            old_p,
+            new_p,
+            "--current-version",
+            "1.2.3",
+        ]
         rc = main()
         assert rc == 0
         out = capsys.readouterr().out
@@ -1033,7 +1041,7 @@ def test_cli_semver_breaking(tmp_path: Path, capsys: pytest.CaptureFixture):
     new: list = []
     old_p, new_p = _tmp_json(old), _tmp_json(new)
     try:
-        sys.argv = ["impactguard", "semver", old_p, new_p]
+        sys.argv = ["impactguard", "semver", "--json", old_p, new_p]
         rc = main()
         assert rc == 0
         out = capsys.readouterr().out
