@@ -165,6 +165,7 @@ Once two snapshots of a codebase exist (e.g., `HEAD` vs `main`), the `compare` u
 - **Key Component:** `compare_signatures.py`
 - **Output:** A structured list of semantic changes
 - **Role:** Identifies exactly how the API contract has evolved
+- **New:** The `compare` command now supports comparing source files directly (auto-extracts signatures)
 
 ### 3. Call-Site and Module Analysis
 
@@ -312,7 +313,7 @@ positional arguments:
   {extract,compare,analyze,risk,report,enforce,suggest,patch,extract-calls,trace,check,check-diff,check-commit,check-commits,install-hooks,generate-changelog,baseline,semver,report-markdown,feedback,history}
                         Available commands
     extract             Extract function signatures from source files
-    compare             Compare signature snapshots
+    compare             Compare signature snapshots or source files directly
     analyze             Analyze impact on call sites
     risk                Run risk analysis
     report              Generate HTML report
@@ -349,13 +350,25 @@ impactguard check-commits HEAD~1 HEAD
 
 # Compare specific files between commits
 impactguard check-commits HEAD~1 HEAD --files src/module.py src/utils.py
+
+# Generate patch files for suggested fixes
+impactguard check --suggest-patch old.py new.py
+
+# Show how old file would look if patched (requires --suggest-patch)
+impactguard check --suggest-patch --show-patch old.py new.py
 ```
+
+**Patch Generation Flags:**
+- `--suggest-patch`: Generate and save patch files to `patches/` directory
+- `--show-patch`: Display patched content inline (depends on `--suggest-patch`)
 
 ### Individual Commands (Advanced)
 
 ```bash
 impactguard extract file1.py file2.py
 impactguard compare old_sigs.json new_sigs.json
+# Or compare source files directly (auto-extracts signatures):
+impactguard compare old.py new.py
 impactguard analyze signatures.json calls.json runtime.json
 impactguard risk diff.txt runtime.json output.json
 impactguard report risk.json output.html
@@ -407,7 +420,9 @@ result = run_pipeline(
     old_files=["src/"],
     new_files=["src/"],
     runtime_path="runtime.json",
-    output_dir="report.html"
+    output_dir="report.html",
+    suggest_patch=True,  # Generate patch files
+    show_patch=True,     # Display patched content inline
 )
 
 # Quick comparison only (extract + compare)
@@ -418,13 +433,19 @@ print(f"Breaking: {len(changes['comparison']['breaking'])}")
 result = run_pipeline_git(
     old_ref="HEAD~1",
     new_ref="HEAD",
-    files=["src/module.py"]
+    files=["src/module.py"],
+    suggest_patch=True,
+    show_patch=True,
 )
 
 # Use ImpactGuard class for more control
 guard = ImpactGuard()
 report = guard.check("old/", "new/", output="report.html")
 ```
+
+**Patch Generation Parameters:**
+- `suggest_patch=True`: Generate and save patch files to `patches/` directory
+- `show_patch=True`: Display how old file would look if patched (requires `suggest_patch=True`)
 
 ### Individual Components (Advanced)
 
@@ -438,8 +459,10 @@ signatures = extract(["src/module.py", "src/other.py"])
 signatures = extract(["src/main.go", "src/utils.go"])
 signatures = extract(["src/lib.rs", "src/main.rs"])
 
-# Compare two signature snapshots
+# Compare two signature snapshots or source files directly
 result = compare("old_sigs.json", "new_sigs.json")
+# Or compare source files directly (auto-extracts signatures):
+result = compare("old.py", "new.py")
 print(f"Breaking changes: {len(result['breaking'])}")
 
 # Analyze impact on call sites
