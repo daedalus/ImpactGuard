@@ -116,7 +116,7 @@ from .trace_calls_prod import (
     install_tracer as install_tracer_prod,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __all__ = [
     # Signature extraction
     "extract",
