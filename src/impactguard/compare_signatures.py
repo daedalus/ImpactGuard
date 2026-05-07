@@ -155,6 +155,8 @@ def compare(  # noqa: MC0001
     include_private: bool | None = None,
     language: str | None = None,
     suppress: list[str] | None = None,
+    hierarchy: dict | None = None,
+    implementations: dict | None = None,
 ) -> dict[str, list[str]]:
     """Compare two signature snapshots.
 
@@ -177,6 +179,7 @@ def compare(  # noqa: MC0001
         config suppress list.
     """
     from .config import get as cfg_get
+    from .class_hierarchy import extract_class_hierarchy, find_implementations
 
     if include_private is None:
         include_private = bool(cfg_get("analysis", "include_private", False))
@@ -333,6 +336,17 @@ def compare(  # noqa: MC0001
         for added_dec in n_decs - o_decs:
             # Adding a decorator is usually breaking (changes calling convention)
             breaking.append(f"DECORATOR_ADDED: {k} @{added_dec}")
+
+    # ── Cascade impact from class hierarchy ──────────────────────────────
+    if hierarchy:
+        from .class_hierarchy import get_cascade_changes
+
+        cascade = get_cascade_changes(
+            {"breaking": breaking, "nonbreaking": nonbreaking},
+            hierarchy,
+            implementations,
+        )
+        breaking.extend(cascade)
 
     return {
         "breaking": sorted(set(breaking)),
