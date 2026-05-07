@@ -38,6 +38,7 @@ import math
 SEVERITY_SCORES = {
     "REMOVED": 1.0,
     "REQUIRED": 0.9,
+    "POSITIONAL_REMOVED": 1.0,
     "POSITIONAL_REORDER": 0.8,
     "KWONLY_REMOVED": 0.8,
     "*args_REMOVED": 0.7,
@@ -96,6 +97,7 @@ def confidence(samples: int, threshold: int = 100) -> float:
 
 _UNCONDITIONAL_HIGH = frozenset({
     "REMOVED",
+    "POSITIONAL_REMOVED",
     "REQUIRED_POSITIONAL_ADDED",
     "REQUIRED_KWONLY_ADDED",
 })
