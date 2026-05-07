@@ -1,4 +1,0 @@
-# This file is kept for legacy tooling compatibility only.
-# The canonical dependency list lives in pyproject.toml.
-# For a fresh install use: pip install -e ".[all]"
-libcst>=0.4.0

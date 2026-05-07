@@ -64,11 +64,11 @@ _DEFAULTS: dict[str, Any] = {
             "verbose": False,
             "auto_open": False,
         },
-        "analysis": {
-            "include_private": False,
-            "transitive_depth": 0,
-            "suppress": [],
-        },
+    "analysis": {
+        "include_private": False,
+        "suppress": [],
+        "transitive_depth": 1,  # Default 1 to enable transitive impact tracking
+    },
         "languages": {
             # Canonical language names to enable.  "python" is always available.
             # "typescript" requires tree-sitter-typescript (pip install impactguard[languages]).

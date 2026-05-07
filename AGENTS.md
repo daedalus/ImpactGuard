@@ -86,7 +86,7 @@ This avoids extra commits but couples working tree mutation with commit creation
 - Nested functions are included
 - Class methods now include class context (`ClassName.method`)
 - Parsing failures silently skip files
-- Requires Python ≥ 3.9 (`ast.unparse`)
+- Requires Python ≥ 3.11 (`ast.unparse`)
 
 ---
 

@@ -334,8 +334,9 @@ def compare(  # noqa: MC0001
         for removed_dec in o_decs - n_decs:
             breaking.append(f"DECORATOR_REMOVED: {k} @{removed_dec}")
         for added_dec in n_decs - o_decs:
-            # Adding a decorator is usually breaking (changes calling convention)
-            breaking.append(f"DECORATOR_ADDED: {k} @{added_dec}")
+            # Adding a decorator is typically non-breaking (e.g. @lru_cache, @staticmethod)
+            # Only decorators like @classmethod that change calling convention are breaking
+            nonbreaking.append(f"DECORATOR_ADDED: {k} @{added_dec}")
 
     # ── Cascade impact from class hierarchy ──────────────────────────────
     if hierarchy:
