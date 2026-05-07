@@ -2,7 +2,7 @@ import json
 import sys
 from typing import Any
 
-from .risk_model import classify, get_severity
+from .risk_model import classify, get_severity, _effective_severity_scores
 
 
 def run(
@@ -42,38 +42,60 @@ def run(
 
     # Parse breaking/non-breaking from diff
     report: list[dict[str, Any]] = []
+    seen_functions: set[str] = set()
 
     for line in diff_text.splitlines():
-        if (
-            line.startswith("REMOVED:")
-            or "REQUIRED" in line
-            or "POSITIONAL" in line
-            or "KWONLY" in line
+        line = line.strip()
+        if not line:
+            continue
+
+        # Extract change type (before first colon)
+        parts = line.split(":", 1)
+        if len(parts) < 2:
+            continue
+        change_type = parts[0].strip()
+        func_name = parts[1].strip()
+
+        # Skip if we've already processed this function
+        if func_name in seen_functions:
+            continue
+        seen_functions.add(func_name)
+
+        # Skip non-breaking entries (these are informational only)
+        if change_type.startswith("OPTIONAL") or change_type.startswith("ADDED") or change_type.startswith("TYPE_WIDENED") or change_type.startswith("RETURN_TYPE_WIDENED"):
+            continue
+
+        # Get severity - validates that this is a known change type
+        severity = get_severity(line)
+        # Skip if not a recognized change type (unknown types return 0.5 default)
+        if severity == 0.5 and not any(
+            change_type.startswith(k) for k in _effective_severity_scores().keys()
         ):
-            parts = line.split(": ", 1)
-            func_name = parts[-1] if len(parts) > 1 else line.split(":")[-1]
-            current_change = line.split(":")[0].strip()
+            # Not a recognized change type, skip
+            continue
 
-            count = runtime.get(func_name.strip(), 0)
-            if count == 0:
-                # Try normalizing "module.py:func_name" → "module.func_name"
-                normalized = func_name.strip()
-                if ".py:" in normalized:
-                    normalized = normalized.replace(".py:", ".")
-                    count = runtime.get(normalized, 0)
-            severity = get_severity(line)
-            risk, exp, conf = classify(severity, count, max_count, count, lambda_, current_change)
+        count = runtime.get(func_name.strip(), 0)
+        if count == 0:
+            # Try normalizing "module.py:func_name" → "module.func_name"
+            normalized = func_name.strip()
+            if ".py:" in normalized:
+                normalized = normalized.replace(".py:", ".")
+                count = runtime.get(normalized, 0)
+        current_change = change_type
+        risk, exp, conf = classify(
+            severity, count, max_count, count, lambda_, current_change
+        )
 
-            report.append(
-                {
-                    "function": func_name.strip(),
-                    "risk": risk,
-                    "change": current_change,
-                    "exposure": exp,
-                    "confidence": conf,
-                    "details": f"called {count} times" if count > 0 else "not observed",
-                }
-            )
+        report.append(
+            {
+                "function": func_name.strip(),
+                "risk": risk,
+                "change": current_change,
+                "exposure": exp,
+                "confidence": conf,
+                "details": f"called {count} times" if count > 0 else "not observed",
+            }
+        )
 
     # Sort by risk level
     risk_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2, "UNKNOWN": 3}
