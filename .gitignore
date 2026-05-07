@@ -53,3 +53,7 @@ htmlcov/
 .runtime_calls.json
 impact_report.html
 out.json
+
+# RTK
+.rtk/
+!.rtk/filters.toml
