@@ -7,23 +7,27 @@ reflects actual pass rates.  It also exposes an Adversarial Fragility Index
 
 Composite Robustness Score
 --------------------------
-R = C × (α × P_a + (1 − α) × P_n)
+R = C × (α × P_a + (1 − α) × P_n) × S
 
 Where:
   C   = coverage ratio  (0 – 1)
   α   = adversarial weight (recommended: 0.5 general, 0.65 security, 0.75 red-team)
   P_a = adversarial pass rate  (passing_adv / n_adversarial)
   P_n = normal      pass rate  (passing_norm / n_normal)
+  S   = sample-size penalty factor (1.0 when n ≥ 10, decreases for small samples)
+
+Floor: If P_a < 0.3, robustness label is capped at POOR regardless of score.
 
 With category diversity penalty (optional):
-  D   = categories with ≥ 1 pass / total categories
-  R_d = C × D × (α × P_a + (1 − α) × P_n)
+  D   = weighted diversity (mean pass rate across categories, not binary)
+  R_d = C × D × (α × P_a + (1 − α) × P_n) × S
 
 Adversarial Fragility Index
 ---------------------------
-F = 1 − (P_a / P_n)
+F = max(0, (P_n - P_a) / max(P_n, ε))
   F ≈ 0  →  robust  (adversarial ≈ normal performance)
   F ≈ 1  →  brittle (adversarial performance collapses)
+  Note: F is bounded to [0, 1].  Negative values (P_a > P_n) are clamped to 0.
 
 Adversarial Budget Allocation (default target)
 ----------------------------------------------
@@ -32,6 +36,13 @@ Boundary/edge cases   | 30%
 Semantic perturbation | 25%
 Evasion/obfuscation   | 25%
 Compositional attacks | 20%
+
+Thresholds (configurable via function parameters):
+  ADVERSARIAL_FLOOR     = 0.3   (P_a below this caps label to POOR)
+  MIN_SAMPLE_SIZE       = 10    (samples below this are penalized)
+  MIN_P_NORM_FOR_F     = 0.05  (P_n below this → F = None)
+  ROBUSTNESS_LABELS    = {0.80: EXCELLENT, 0.65: GOOD, 0.45: FAIR, else: POOR}
+  FRAGILITY_LABELS     = {0.10: ROBUST, 0.25: MODERATE, 0.50: BRITTLE, else: VERY_BRITTLE}
 """
 
 from __future__ import annotations
@@ -56,6 +67,32 @@ ADVERSARIAL_BUDGET: dict[str, float] = {
     "compositional": 0.20,
 }
 
+# --- Thresholds for robustness/fragility labels (configurable) ---
+# P_a below this value caps robustness label to POOR
+ADVERSARIAL_FLOOR: float = 0.3
+
+# Minimum sample size before penalty applies (samples < this get penalized)
+MIN_SAMPLE_SIZE: int = 10
+
+# P_n must be at least this to compute meaningful fragility index
+MIN_P_NORM_FOR_F: float = 0.05
+
+# Robustness score labels: {threshold: label}
+ROBUSTNESS_LABELS: dict[float, str] = {
+    0.80: "EXCELLENT",
+    0.65: "GOOD",
+    0.45: "FAIR",
+    0.0: "POOR",
+}
+
+# Fragility index labels: {threshold: label}
+FRAGILITY_LABELS: dict[float, str] = {
+    0.10: "ROBUST",
+    0.25: "MODERATE",
+    0.50: "BRITTLE",
+    1.01: "VERY_BRITTLE",  # >0.50 maps here
+}
+
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -69,12 +106,18 @@ class CategoryStats:
     name: str
     total: int
     passing: int
+    difficulty: float = 1.0  # 0.0=easy, 1.0=hard (for future weighting)
 
     @property
     def pass_rate(self) -> float:
         if self.total == 0:
             return 0.0
         return self.passing / self.total
+
+    @property
+    def weighted_score(self) -> float:
+        """Pass rate adjusted by difficulty (higher difficulty = more weight)."""
+        return self.pass_rate * (0.5 + 0.5 * self.difficulty)
 
 
 @dataclass
@@ -93,9 +136,10 @@ class RobustnessResult:
     # --- primary metrics ----------------------------------------------------
     p_adversarial: float  # adversarial pass rate
     p_normal: float  # normal pass rate
-    robustness_score: float  # R  (no diversity penalty)
+    robustness_score: float  # R  (no diversity)
     robustness_score_with_diversity: float | None  # R_d (with diversity)
     fragility_index: float | None  # F  (None when P_n == 0)
+    sample_penalty: float  # S (sample size penalty, 1.0 = no penalty)
 
     # --- secondary metrics --------------------------------------------------
     adversarial_ratio: float  # N_a / N_total
@@ -106,13 +150,13 @@ class RobustnessResult:
     # --- interpretation helpers ---------------------------------------------
     @property
     def robustness_label(self) -> str:
+        # Floor check: low adversarial pass rate caps label to POOR
+        if self.p_adversarial < ADVERSARIAL_FLOOR:
+            return "POOR"
         r = self.robustness_score
-        if r >= 0.80:
-            return "EXCELLENT"
-        if r >= 0.65:
-            return "GOOD"
-        if r >= 0.45:
-            return "FAIR"
+        for threshold in sorted(ROBUSTNESS_LABELS.keys(), reverse=True):
+            if r >= threshold:
+                return ROBUSTNESS_LABELS[threshold]
         return "POOR"
 
     @property
@@ -120,12 +164,9 @@ class RobustnessResult:
         if self.fragility_index is None:
             return None
         f = self.fragility_index
-        if f <= 0.10:
-            return "ROBUST"
-        if f <= 0.25:
-            return "MODERATE"
-        if f <= 0.50:
-            return "BRITTLE"
+        for threshold in sorted(FRAGILITY_LABELS.keys()):
+            if f <= threshold:
+                return FRAGILITY_LABELS[threshold]
         return "VERY_BRITTLE"
 
     def to_dict(self) -> dict[str, Any]:
@@ -203,25 +244,42 @@ def evaluate_robustness(
     p_adv = passing_adv / n_adversarial if n_adversarial > 0 else 0.0
     p_norm = passing_norm / n_normal if n_normal > 0 else 0.0
 
+    # --- sample size penalty -----------------------------------------------
+    # Penalize small sample sizes (n < MIN_SAMPLE_SIZE gets reduced weight)
+    def _sample_penalty(n: int) -> float:
+        if n <= 0:
+            return 0.0
+        if n >= MIN_SAMPLE_SIZE:
+            return 1.0
+        # Linear ramp from 0.3 (n=1) to 1.0 (n=MIN_SAMPLE_SIZE)
+        return 0.3 + 0.7 * (n / MIN_SAMPLE_SIZE)
+
+    s_penalty = _sample_penalty(n_adversarial) * _sample_penalty(n_normal)
+
     # --- composite robustness score (no diversity) --------------------------
     weighted = alpha * p_adv + (1.0 - alpha) * p_norm
-    r = coverage * weighted
+    r = coverage * weighted * s_penalty
 
     # --- adversarial fragility index ----------------------------------------
     fragility: float | None = None
-    # Only compute fragility when p_norm is meaningful (≥ 5% pass rate)
-    if p_norm >= 0.05:
-        fragility = 1.0 - (p_adv / p_norm)
+    # Only compute fragility when p_norm is meaningful (≥ MIN_P_NORM_FOR_F)
+    if p_norm >= MIN_P_NORM_FOR_F:
+        # Bounded formula: F = max(0, (P_n - P_a) / P_n)
+        # This ensures F ∈ [0, 1] and handles P_a > P_n correctly
+        if p_adv >= p_norm:
+            fragility = 0.0  # Adversarial performs as well or better (not brittle)
+        else:
+            fragility = (p_norm - p_adv) / p_norm
 
     # --- diversity metrics --------------------------------------------------
     diversity_score: float | None = None
     r_diversity: float | None = None
 
     if categories:
-        total_cats = len(categories)
-        cats_with_pass = sum(1 for c in categories if c.passing > 0)
-        diversity_score = cats_with_pass / total_cats if total_cats > 0 else 0.0
-        r_diversity = coverage * diversity_score * weighted
+        # Weighted diversity: mean of pass rates (not binary has-pass)
+        pass_rates = [c.pass_rate for c in categories if c.total > 0]
+        diversity_score = sum(pass_rates) / len(pass_rates) if pass_rates else 0.0
+        r_diversity = coverage * diversity_score * weighted * s_penalty
 
     # --- adversarial ratio / minimum check ----------------------------------
     adv_ratio = n_adversarial / n_total if n_total > 0 else 0.0
@@ -240,6 +298,7 @@ def evaluate_robustness(
         robustness_score=r,
         robustness_score_with_diversity=r_diversity,
         fragility_index=fragility,
+        sample_penalty=s_penalty,
         adversarial_ratio=adv_ratio,
         meets_adversarial_minimum=meets_min,
         diversity_score=diversity_score,
@@ -280,6 +339,10 @@ def _format_report(result: RobustnessResult) -> str:
         f"  Robustness Score (R)          : {result.robustness_score:.4f}"
         f"  [{result.robustness_label}]"
     )
+    if result.sample_penalty < 1.0:
+        lines.append(
+            f"  Sample Penalty (S)           : {result.sample_penalty:.2f} (small sample)"
+        )
     if result.robustness_score_with_diversity is not None:
         lines.append(
             f"  Robustness + Diversity (R_d)  : "
@@ -292,6 +355,9 @@ def _format_report(result: RobustnessResult) -> str:
         )
     else:
         lines.append("  Fragility Index (F)           : N/A (no normal tests)")
+
+    if result.coverage < 0.3:
+        lines.append("\n  ⚠ WARNING: Low coverage (<30%) - consider adding tests")
 
     if result.categories:
         lines.append("\n── Category Breakdown ────────────────────────────────────")
