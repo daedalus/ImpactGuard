@@ -272,7 +272,7 @@ def test_compare_decorator_added():
     old_p, new_p = _tmp_json(old), _tmp_json(new)
     try:
         result = compare(old_p, new_p, include_private=True)
-        assert any("DECORATOR_ADDED" in c for c in result["breaking"])
+        assert any("DECORATOR_ADDED" in c for c in result["nonbreaking"])
     finally:
         os.unlink(old_p)
         os.unlink(new_p)

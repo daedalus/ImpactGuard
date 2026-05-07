@@ -261,6 +261,22 @@ def run_pipeline(
         if "patches" in item or "callsite_patches" in item:
             enriched = enrich_with_fixes(item, [item])
             fixes.extend(enriched)
+
+    # Apply calibrated weights from feedback loop if available
+    try:
+        from .feedback import load_outcomes, compute_calibrated_weights
+
+        outcomes = load_outcomes()
+        if outcomes:
+            calibrated = compute_calibrated_weights(outcomes)
+            if calibrated:
+                # Write calibrated weights to config for patch_confidence to use
+                from .feedback import apply_weight_to_config
+
+                apply_weight_to_config(calibrated)
+    except Exception:
+        pass  # Feedback loop not set up, continue without calibration
+
     result["fixes"] = fixes
 
     # Step 8: Semver recommendation
