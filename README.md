@@ -136,10 +136,10 @@ Or use the Python API:
 from impactguard import run_pipeline
 
 result = run_pipeline(
-    old_path="old_version/",
-    new_path="new_version/",
+    old_files=["old_version/"],
+    new_files=["new_version/"],
     runtime_path="runtime.json",  # optional
-    output_path="report.html"      # optional
+    output_dir="report.html"      # optional
 )
 print(f"Breaking changes: {len(result['comparison']['breaking'])}")
 ```
@@ -404,10 +404,10 @@ from impactguard import run_pipeline, quick_check, run_pipeline_git, ImpactGuard
 
 # Full pipeline - extract, compare, analyze, risk, report
 result = run_pipeline(
-    old_path="src/",
-    new_path="src/",
+    old_files=["src/"],
+    new_files=["src/"],
     runtime_path="runtime.json",
-    output_path="report.html"
+    output_dir="report.html"
 )
 
 # Quick comparison only (extract + compare)

@@ -55,11 +55,15 @@ def run(
             continue
         change_type = parts[0].strip()
         func_name = parts[1].strip()
+        
+        # Isolate the fqname (before first space) - change entries like
+        # "TYPE_CHANGED: mod.py:foo arg 'x' int -> str" have extra text
+        fqname = func_name.split(' ')[0].strip()
 
         # Skip if we've already processed this function
-        if func_name in seen_functions:
+        if fqname in seen_functions:
             continue
-        seen_functions.add(func_name)
+        seen_functions.add(fqname)
 
         # Skip non-breaking entries (these are informational only)
         if change_type.startswith("OPTIONAL") or change_type.startswith("ADDED") or change_type.startswith("TYPE_WIDENED") or change_type.startswith("RETURN_TYPE_WIDENED"):
@@ -74,10 +78,10 @@ def run(
             # Not a recognized change type, skip
             continue
 
-        count = runtime.get(func_name.strip(), 0)
+        count = runtime.get(fqname, 0)
         if count == 0:
             # Try normalizing "module.py:func_name" → "module.func_name"
-            normalized = func_name.strip()
+            normalized = fqname.strip()
             if ".py:" in normalized:
                 normalized = normalized.replace(".py:", ".")
                 count = runtime.get(normalized, 0)
@@ -88,7 +92,7 @@ def run(
 
         report.append(
             {
-                "function": func_name.strip(),
+                "function": fqname,
                 "risk": risk,
                 "change": current_change,
                 "exposure": exp,
