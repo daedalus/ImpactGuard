@@ -10,13 +10,13 @@
 
 ## Overview
 
-ImpactGuard is a lightweight API impact analyzer that supports Python, TypeScript, Java, Go, Rust, C, C++, and Ruby. It is designed to maintain API stability by tracking function signatures across commits, detecting breaking changes, and analyzing call-site impact using both static and runtime techniques.
+ImpactGuard is a lightweight API impact analyzer that supports Python, TypeScript, JavaScript, Java, Kotlin, Go, Rust, Swift, C, C++, C#, Ruby, Haskell, and Zig. It is designed to maintain API stability by tracking function signatures across commits, detecting breaking changes, and analyzing call-site impact using both static and runtime techniques.
 
 It provides a quantitative risk framework to help developers understand the consequences of code changes before they are merged.
 
 ### Core Capabilities
 
-- **Multi-language Extraction**: Automatically extracts function signatures from Python (`ast`), TypeScript, Java, Go, Rust, C, C++, and Ruby via tree-sitter grammars (with regex fallback)
+- **Multi-language Extraction**: Automatically extracts function signatures from Python (`ast`), TypeScript, JavaScript, Java, Kotlin, Go, Rust, Swift, C, C++, C#, Ruby, Haskell, and Zig via tree-sitter grammars (with regex fallback)
 - **Semantic API Diffing**: Classifies changes into a taxonomy of breaking (e.g., removing positional arguments) vs. non-breaking (e.g., adding optional keyword-only arguments)
 - **Impact Analysis**: Correlates signature changes with static call-site extraction and optional runtime tracing to identify affected downstream code
 - **Risk Assessment**: Quantifies the danger of a change using the **S × E × C × λ** (Severity × Exposure × Confidence × Lambda) model
@@ -89,7 +89,7 @@ It provides a quantitative risk framework to help developers understand the cons
 # Install from PyPI
 pip install impactguard
 
-# Install with tree-sitter language support (TypeScript, Java, Go, Rust, C, C++, Ruby)
+# Install with tree-sitter language support (TypeScript, JavaScript, Java, Kotlin, Go, Rust, Swift, C, C++, C#, Ruby, Haskell, Zig)
 pip install "impactguard[languages]"
 
 # Or install for development
@@ -118,8 +118,8 @@ impactguard extract $(git ls-files '*.py') > .signatures.json
 impactguard extract-calls $(git ls-files '*.py') > .calls.json
 
 # Extract from other supported languages (requires impactguard[languages])
-impactguard extract $(git ls-files '*.java' '*.go' '*.rs') > .signatures.json
-impactguard extract-calls $(git ls-files '*.java' '*.go' '*.rs') > .calls.json
+impactguard extract $(git ls-files '*.java' '*.go' '*.rs' '*.ts' '*.js' '*.kt' '*.swift' '*.cs' '*.rb' '*.hs' '*.zig') > .signatures.json
+impactguard extract-calls $(git ls-files '*.java' '*.go' '*.rs' '*.ts' '*.js' '*.kt' '*.swift' '*.cs' '*.rb' '*.hs' '*.zig') > .calls.json
 
 # 2. Capture runtime exposure (optional)
 impactguard trace dump .runtime_calls.json
@@ -152,7 +152,7 @@ ImpactGuard operates as a **pipe-and-filter architecture** where artifacts from 
 
 ### 1. Signature Extraction
 
-The first stage involves deep inspection of source files. For Python, the `ast` stdlib module is used to walk the Abstract Syntax Tree. For all other supported languages (TypeScript, Java, Go, Rust, C, C++, Ruby) tree-sitter grammars provide accurate, battle-tested AST parsing with a regex fallback when tree-sitter packages are absent. Every supported language produces the same schema: Fully Qualified Name (FQN), parameters, defaults, and decorators/annotations.
+The first stage involves deep inspection of source files. For Python, the `ast` stdlib module is used to walk the Abstract Syntax Tree. For all other supported languages (TypeScript, JavaScript, Java, Kotlin, Go, Rust, Swift, C, C++, C#, Ruby, Haskell, Zig) tree-sitter grammars provide accurate, battle-tested AST parsing with a regex fallback when tree-sitter packages are absent. Every supported language produces the same schema: Fully Qualified Name (FQN), parameters, defaults, and decorators/annotations.
 
 - **Key Component:** `extract_signatures.py` (Python) · `src/impactguard/languages/` (all languages)
 - **Output:** `.signatures.json`
@@ -564,7 +564,7 @@ The ImpactGuard test suite ensures the reliability of the signature extraction p
 
 ## How It Works
 
-1. **Signature Extraction** — Parses Python AST (stdlib) or tree-sitter grammars (TypeScript, Java, Go, Rust, C, C++, Ruby) to extract function signatures with full structural information
+1. **Signature Extraction** — Parses Python AST (stdlib) or tree-sitter grammars (TypeScript, JavaScript, Java, Kotlin, Go, Rust, Swift, C, C++, C#, Ruby, Haskell, Zig) to extract function signatures with full structural information
 2. **API Diff** — Compares signature snapshots to detect removed functions, added required args, positional reordering, and other breaking changes
 3. **Call-Site Analysis** — Combines signature data with call-site extraction to predict which callers will break
 4. **Runtime Validation** — Instruments functions during test runs to record actual call patterns
@@ -626,7 +626,7 @@ ImpactGuard follows strict quality gates:
 
 ### Core Concepts
 
-- **Signature**: A structured representation of a callable's interface, including positional arguments, keyword-only arguments, variadic arguments, and return type. Supported for Python, TypeScript, Java, Go, Rust, C, C++, and Ruby.
+- **Signature**: A structured representation of a callable's interface, including positional arguments, keyword-only arguments, variadic arguments, and return type. Supported for Python, TypeScript, JavaScript, Java, Kotlin, Go, Rust, Swift, C, C++, C#, Ruby, Haskell, and Zig.
 - **FQName (Fully Qualified Name)**: A unique identifier in `file_path:function_name` format (e.g., `src/auth.py:login`)
 - **Breaking Change**: A modification that prevents existing callers from executing correctly (e.g., `REMOVED`, `REQUIRED_POSITIONAL_ADDED`, `POSITIONAL_REORDER`)
 
@@ -650,7 +650,7 @@ The table below compares ImpactGuard against the tools most commonly used for Py
 
 | Feature | **ImpactGuard** | **griffe** | **python-semantic-release** | **commitizen** | **pyright / mypy** |
 |---|---|---|---|---|---|
-| AST-based signature extraction | ✅ Full — Python (`ast`), TypeScript/Java/Go/Rust/C/C++/Ruby (tree-sitter) | ✅ Full (Python) | ❌ | ❌ | ✅ (internal only) |
+| AST-based signature extraction | ✅ Full — Python (`ast`), TypeScript/JavaScript/Java/Kotlin/Go/Rust/Swift/C/C++/C#/Ruby/Haskell/Zig (tree-sitter) | ✅ Full (Python) | ❌ | ❌ | ✅ (internal only) |
 | Breaking-change detection | ✅ Semantic diff (added / removed / modified) | ✅ | ❌ Code-unaware | ❌ Code-unaware | ⚠️ Type errors only |
 | Call-site impact analysis | ✅ Static call-site traversal | ❌ | ❌ | ❌ | ❌ |
 | Runtime call tracing | ✅ (test + production sampler) | ❌ | ❌ | ❌ | ❌ |
