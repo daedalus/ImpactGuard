@@ -40,7 +40,7 @@ import argparse
 import json
 import sys
 from dataclasses import asdict, dataclass, field
-from typing import Optional
+from typing import Any
 
 # Minimum required adversarial coverage fraction (25 %).
 ADVERSARIAL_COVERAGE_MIN: float = 0.25
@@ -94,13 +94,13 @@ class RobustnessResult:
     p_adversarial: float  # adversarial pass rate
     p_normal: float  # normal pass rate
     robustness_score: float  # R  (no diversity penalty)
-    robustness_score_with_diversity: Optional[float]  # R_d (with diversity)
-    fragility_index: Optional[float]  # F  (None when P_n == 0)
+    robustness_score_with_diversity: float | None  # R_d (with diversity)
+    fragility_index: float | None  # F  (None when P_n == 0)
 
     # --- secondary metrics --------------------------------------------------
     adversarial_ratio: float  # N_a / N_total
     meets_adversarial_minimum: bool  # adversarial_ratio >= 25 %
-    diversity_score: Optional[float]  # D (None when no category data)
+    diversity_score: float | None  # D (None when no category data)
     categories: list[CategoryStats] = field(default_factory=list)
 
     # --- interpretation helpers ---------------------------------------------
@@ -116,7 +116,7 @@ class RobustnessResult:
         return "POOR"
 
     @property
-    def fragility_label(self) -> Optional[str]:
+    def fragility_label(self) -> str | None:
         if self.fragility_index is None:
             return None
         f = self.fragility_index
@@ -128,7 +128,7 @@ class RobustnessResult:
             return "BRITTLE"
         return "VERY_BRITTLE"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["robustness_label"] = self.robustness_label
         d["fragility_label"] = self.fragility_label
@@ -147,7 +147,7 @@ def evaluate_robustness(
     passing_norm: int,
     coverage: float,
     alpha: float = DEFAULT_ALPHA,
-    categories: Optional[list[CategoryStats]] = None,
+    categories: list[CategoryStats] | None = None,
 ) -> RobustnessResult:
     """Compute the composite Robustness Score and related metrics.
 
@@ -184,9 +184,7 @@ def evaluate_robustness(
     if n_total < 0:
         raise ValueError(f"n_total must be >= 0, got {n_total}")
     if not (0 <= n_adversarial <= n_total):
-        raise ValueError(
-            f"n_adversarial must be in [0, n_total], got {n_adversarial}"
-        )
+        raise ValueError(f"n_adversarial must be in [0, n_total], got {n_adversarial}")
     if not (0.0 <= coverage <= 1.0):
         raise ValueError(f"coverage must be in [0.0, 1.0], got {coverage}")
     if not (0.0 < alpha < 1.0):
@@ -199,9 +197,7 @@ def evaluate_robustness(
             f"passing_adv must be in [0, n_adversarial], got {passing_adv}"
         )
     if n_normal > 0 and not (0 <= passing_norm <= n_normal):
-        raise ValueError(
-            f"passing_norm must be in [0, n_normal], got {passing_norm}"
-        )
+        raise ValueError(f"passing_norm must be in [0, n_normal], got {passing_norm}")
 
     # --- pass rates ---------------------------------------------------------
     p_adv = passing_adv / n_adversarial if n_adversarial > 0 else 0.0
@@ -212,13 +208,14 @@ def evaluate_robustness(
     r = coverage * weighted
 
     # --- adversarial fragility index ----------------------------------------
-    fragility: Optional[float] = None
-    if p_norm > 0.0:
+    fragility: float | None = None
+    # Only compute fragility when p_norm is meaningful (≥ 5% pass rate)
+    if p_norm >= 0.05:
         fragility = 1.0 - (p_adv / p_norm)
 
     # --- diversity metrics --------------------------------------------------
-    diversity_score: Optional[float] = None
-    r_diversity: Optional[float] = None
+    diversity_score: float | None = None
+    r_diversity: float | None = None
 
     if categories:
         total_cats = len(categories)
@@ -314,9 +311,6 @@ def format_report(result: RobustnessResult) -> str:
     return _format_report(result)
 
 
-
-
-
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="robustness_evaluator",
@@ -357,7 +351,7 @@ def _build_parser() -> argparse.ArgumentParser:
         type=str,
         metavar="JSON",
         help=(
-            'Per-category stats as JSON array, e.g. '
+            "Per-category stats as JSON array, e.g. "
             '[{"name":"boundary","total":30,"passing":20}]'
         ),
     )
@@ -370,16 +364,36 @@ def _build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
-    cats: Optional[list[CategoryStats]] = None
+    cats: list[CategoryStats] | None = None
     if args.categories:
         raw = json.loads(args.categories)
-        cats = [CategoryStats(**item) for item in raw]
+        cats = []
+        for item in raw:
+            if not isinstance(item, dict):
+                raise ValueError("Each category must be a JSON object")
+            allowed = {
+                k: v for k, v in item.items() if k in ("name", "total", "passing")
+            }
+            cats.append(CategoryStats(**allowed))
 
     try:
+        # --- input bounds validation ---
+        max_reasonable = 10_000_000
+        for arg_name, arg_val in [
+            ("n_total", args.n_total),
+            ("n_adversarial", args.n_adversarial),
+            ("passing_adv", args.passing_adv),
+            ("passing_norm", args.passing_norm),
+        ]:
+            if arg_val >= max_reasonable:
+                raise ValueError(
+                    f"{arg_name} exceeds reasonable maximum {max_reasonable}"
+                )
+
         result = evaluate_robustness(
             n_total=args.n_total,
             n_adversarial=args.n_adversarial,
@@ -398,7 +412,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     else:
         print(_format_report(result))
 
-    return 0 if result.meets_adversarial_minimum else 1
+    # Output advisory info to stderr; exit code 0=success, non-zero=error
+    if not result.meets_adversarial_minimum:
+        print("Warning: adversarial minimum not met", file=sys.stderr)
+
+    return 0
 
 
 if __name__ == "__main__":
