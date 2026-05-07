@@ -826,7 +826,7 @@ python tools/robustness_evaluator.py --n-total 1054 --n-adversarial 425 \
   Sample Penalty (S)           : 0.19 (small sample)
 
 ⚠ WARNING: Low coverage (<30%) - consider adding tests
-```
+
 ============================================================
   ImpactGuard — Robustness Evaluation Report
 ============================================================
