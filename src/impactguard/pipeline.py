@@ -123,6 +123,7 @@ def run_pipeline(
     from .languages.registry import get_extractor as _get_extractor
     from .risk_gate import run as run_risk
     from .suggest_fixes import enrich_with_fixes
+    from .class_hierarchy import extract_class_hierarchy, find_implementations
 
     result: dict[str, Any] = {}
 
@@ -158,8 +159,29 @@ def run_pipeline(
             result["signatures"] = {"new": json.load(f)}
         return result
 
+    # Step 1.5: Extract class hierarchy (for cascade impact)
+    hierarchy: dict = {}
+    implementations: dict = {}
+
+    def _extract_hierarchy(files: list[str]) -> dict:
+        """Extract class hierarchy from Python files only."""
+        py_files = [f for f in files if f.endswith(".py")]
+        if py_files:
+            return extract_class_hierarchy(py_files)
+        return {}
+
+    if old_files:
+        old_hierarchy = _extract_hierarchy(old_files)
+        hierarchy.update(old_hierarchy)
+    if new_files:
+        new_hierarchy = _extract_hierarchy(new_files)
+        hierarchy.update(new_hierarchy)
+
+    if hierarchy:
+        implementations = find_implementations(hierarchy)
+
     # Step 2: Compare signatures
-    comparison = compare(old_sigs_path, new_sigs_path)
+    comparison = compare(old_sigs_path, new_sigs_path, hierarchy=hierarchy, implementations=implementations)
     result["comparison"] = comparison
 
     # Step 3: Extract call sites (if not provided)
