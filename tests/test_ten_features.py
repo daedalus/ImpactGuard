@@ -200,7 +200,7 @@ def test_all_aware_comparison_underscore_private_excluded_by_default() -> None:
 def test_deprecated_removed_is_nonbreaking() -> None:
     old_sig = _sig("mod.py:old_fn", "old_fn", decorators=["deprecated"])
     result = _compare([old_sig], [])
-    assert "DEPRECATED REMOVED: mod.py:old_fn" in result["nonbreaking"]
+    assert "DEPRECATED_REMOVED: mod.py:old_fn" in result["nonbreaking"]
     assert "REMOVED: mod.py:old_fn" not in result["breaking"]
 
 
@@ -208,7 +208,7 @@ def test_deprecated_full_decorator_path() -> None:
     """functools / third-party deprecated decorators should also be recognized."""
     old_sig = _sig("mod.py:fn", "fn", decorators=["warnings.deprecated('old')"])
     result = _compare([old_sig], [])
-    assert "DEPRECATED REMOVED: mod.py:fn" in result["nonbreaking"]
+    assert "DEPRECATED_REMOVED: mod.py:fn" in result["nonbreaking"]
 
 
 def test_non_deprecated_removal_is_breaking() -> None:
@@ -220,7 +220,7 @@ def test_non_deprecated_removal_is_breaking() -> None:
 def test_deprecated_removed_has_low_severity() -> None:
     from impactguard.risk_model import SEVERITY_SCORES
 
-    score = SEVERITY_SCORES.get("DEPRECATED REMOVED", None)
+    score = SEVERITY_SCORES.get("DEPRECATED_REMOVED", None)
     assert score is not None
     assert score < SEVERITY_SCORES["REMOVED"], (
         "deprecated removal must be lower risk than plain removal"
@@ -231,7 +231,7 @@ def test_deprecated_removed_does_not_trigger_major_semver() -> None:
     from impactguard.semver import suggest_semver
 
     result = suggest_semver(
-        {"breaking": [], "nonbreaking": ["DEPRECATED REMOVED: mod.py:fn"]}
+        {"breaking": [], "nonbreaking": ["DEPRECATED_REMOVED: mod.py:fn"]}
     )
     assert result in ("minor", "patch")
 
@@ -254,7 +254,7 @@ def test_deprecated_removed_from_extracted_source(tmp_path: Path) -> None:
     assert "deprecated" in old_api["decorators"]
 
     result = _compare(sigs, [])
-    assert "DEPRECATED REMOVED: old.py:old_api" in result["nonbreaking"]
+    assert "DEPRECATED_REMOVED: old.py:old_api" in result["nonbreaking"]
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -387,8 +387,8 @@ def test_type_widening_is_nonbreaking() -> None:
         )
     ]
     result = _compare(old_sigs, new_sigs)
-    assert any("TYPE WIDENED" in nb for nb in result["nonbreaking"])
-    assert not any("TYPE CHANGED" in b for b in result["breaking"])
+    assert any("TYPE_WIDENED" in nb for nb in result["nonbreaking"])
+    assert not any("TYPE_CHANGED" in b for b in result["breaking"])
 
 
 def test_type_optional_widening_is_nonbreaking() -> None:
@@ -415,7 +415,7 @@ def test_type_narrowing_is_breaking() -> None:
         )
     ]
     result = _compare(old_sigs, new_sigs)
-    assert any("TYPE CHANGED" in b for b in result["breaking"])
+    assert any("TYPE_CHANGED" in b for b in result["breaking"])
 
 
 def test_completely_different_type_is_breaking() -> None:
@@ -430,8 +430,8 @@ def test_return_type_widening_is_nonbreaking() -> None:
     old_sigs = [_sig("mod.py:fn", "fn", return_type="str")]
     new_sigs = [_sig("mod.py:fn", "fn", return_type="str | None")]
     result = _compare(old_sigs, new_sigs)
-    assert any("RETURN TYPE WIDENED" in nb for nb in result["nonbreaking"])
-    assert not any("RETURN TYPE CHANGED" in b for b in result["breaking"])
+    assert any("RETURN_TYPE_WIDENED" in nb for nb in result["nonbreaking"])
+    assert not any("RETURN_TYPE_CHANGED" in b for b in result["breaking"])
 
 
 def test_return_type_narrowing_is_breaking() -> None:
@@ -439,7 +439,7 @@ def test_return_type_narrowing_is_breaking() -> None:
     old_sigs = [_sig("mod.py:fn", "fn", return_type="str | None")]
     new_sigs = [_sig("mod.py:fn", "fn", return_type="str")]
     result = _compare(old_sigs, new_sigs)
-    assert any("RETURN TYPE CHANGED" in b for b in result["breaking"])
+    assert any("RETURN_TYPE_CHANGED" in b for b in result["breaking"])
 
 
 def test_union_widening_detection() -> None:
@@ -1046,7 +1046,7 @@ def test_new_modules_importable() -> None:
 
 
 def test_type_widening_not_in_breaking() -> None:
-    """TYPE WIDENED changes must never appear in the breaking list."""
+    """TYPE_WIDENED changes must never appear in the breaking list."""
     from impactguard.compare_signatures import compare
 
     old_sigs = [
@@ -1070,5 +1070,5 @@ def test_type_widening_not_in_breaking() -> None:
         _write_json(new_sigs, new_p)
         result = compare(str(old_p), str(new_p))
 
-    assert not any("TYPE WIDENED" in b for b in result["breaking"])
-    assert any("TYPE WIDENED" in nb for nb in result["nonbreaking"])
+    assert not any("TYPE_WIDENED" in b for b in result["breaking"])
+    assert any("TYPE_WIDENED" in nb for nb in result["nonbreaking"])

@@ -13,7 +13,7 @@ def test_suggest_fixes_coverage_final(tmp_path):
     items = [
         {
             "fqname": "test.py:foo",
-            "change": "OPTIONAL POSITIONAL ADDED",
+            "change": "OPTIONAL_POSITIONAL_ADDED",
             "risk_level": "MEDIUM",
             "callsites": [{"file": "main.py", "lineno": 10}],
         },
@@ -51,7 +51,7 @@ def test_risk_gate_coverage_final(tmp_path):
 
     # Test with diff and runtime
     diff = tmp_path / "diff.txt"
-    diff.write_text("POSITIONAL REMOVED: test.py:foo\n")
+    diff.write_text("POSITIONAL_REMOVED: test.py:foo\n")
 
     runtime = tmp_path / "runtime.json"
     runtime.write_text(json.dumps([{"function": "foo", "args_count": 1}]))

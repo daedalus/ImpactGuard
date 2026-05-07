@@ -277,10 +277,10 @@ class TestStrategyDetection:
         result = _run_compare(pair)
         # The important check: the breaking entry must be present.
         breaking = result["breaking"]
-        assert any("REQUIRED POSITIONAL ADDED" in b for b in breaking)
-        # Camouflage: type annotation on 'a' produces a TYPE WIDENED nonbreaking entry.
-        assert any("TYPE WIDENED" in nb for nb in result["nonbreaking"]), (
-            "Expected TYPE WIDENED nonbreaking entry from annotation on 'a'"
+        assert any("REQUIRED_POSITIONAL_ADDED" in b for b in breaking)
+        # Camouflage: type annotation on 'a' produces a TYPE_WIDENED nonbreaking entry.
+        assert any("TYPE_WIDENED" in nb for nb in result["nonbreaking"]), (
+            "Expected TYPE_WIDENED nonbreaking entry from annotation on 'a'"
         )
 
     def test_positional_reorder_hidden_by_optional_add(self):
@@ -299,8 +299,8 @@ class TestStrategyDetection:
         """Narrowing must be classified as breaking, not as a type widening."""
         pair = generate("type_narrowing_disguised_as_cleanup")
         result = _run_compare(pair)
-        assert not any("TYPE WIDENED" in nb for nb in result["nonbreaking"]), (
-            "Type narrowing must NOT appear as TYPE WIDENED"
+        assert not any("TYPE_WIDENED" in nb for nb in result["nonbreaking"]), (
+            "Type narrowing must NOT appear as TYPE_WIDENED"
         )
 
     def test_kwonly_removal_with_optional_addition(self):
@@ -320,7 +320,7 @@ class TestStrategyDetection:
         pair = generate("vararg_removal_with_kwarg_addition")
         result = _run_compare(pair)
         # The critical check: *args removal IS in breaking
-        assert any("*args REMOVED" in b for b in result["breaking"])
+        assert any("*args_REMOVED" in b for b in result["breaking"])
 
     def test_return_type_narrowing_disguised_as_guarantee(self):
         pair = generate("return_type_narrowing_disguised_as_guarantee")
@@ -329,8 +329,8 @@ class TestStrategyDetection:
     def test_return_type_narrowing_is_breaking_not_widening(self):
         pair = generate("return_type_narrowing_disguised_as_guarantee")
         result = _run_compare(pair)
-        assert not any("RETURN TYPE WIDENED" in nb for nb in result["nonbreaking"]), (
-            "Return type narrowing must NOT appear as RETURN TYPE WIDENED"
+        assert not any("RETURN TYPE_WIDENED" in nb for nb in result["nonbreaking"]), (
+            "Return type narrowing must NOT appear as RETURN TYPE_WIDENED"
         )
 
     def test_decorator_removal_hidden_by_optional_kwarg(self):
@@ -349,7 +349,7 @@ class TestStrategyDetection:
         """The 'optional_context' name must not prevent the REQUIRED detection."""
         pair = generate("required_kwonly_added_with_misleading_name")
         result = _run_compare(pair)
-        assert any("REQUIRED KWONLY ADDED" in b for b in result["breaking"])
+        assert any("REQUIRED_KWONLY_ADDED" in b for b in result["breaking"])
 
     def test_function_removal_hidden_by_rename_addition(self):
         pair = generate("function_removal_hidden_by_rename_addition")

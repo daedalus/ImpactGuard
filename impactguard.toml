@@ -5,10 +5,10 @@
 [impactguard.severity_scores]
 "REMOVED" = 1.0
 "REQUIRED" = 0.9
-"POSITIONAL REORDER" = 0.8
-"KWONLY REMOVED" = 0.8
-"*args REMOVED" = 0.7
-"**kwargs REMOVED" = 0.7
+"POSITIONAL_REORDER" = 0.8
+"KWONLY_REMOVED" = 0.8
+"*args_REMOVED" = 0.7
+"**kwargs_REMOVED" = 0.7
 "OPTIONAL" = 0.3
 "ADDED" = 0.1
 

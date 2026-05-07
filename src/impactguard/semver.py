@@ -14,19 +14,19 @@ from typing import Any
 # Change prefixes that indicate a breaking API change
 _BREAKING_PREFIXES = (
     "REMOVED:",
-    "POSITIONAL REMOVED:",
-    "POSITIONAL REORDER",
-    "REQUIRED POSITIONAL ADDED:",
-    "REQUIRED KWONLY ADDED:",
-    "KWONLY REMOVED:",
-    "*args REMOVED:",
-    "**kwargs REMOVED:",
-    "TYPE CHANGED:",
-    "RETURN TYPE CHANGED:",
-    "DECORATOR REMOVED:",
-    "DECORATOR ADDED:",
-    # NOTE: "DEPRECATED REMOVED:" is intentionally excluded — it is non-breaking.
-    # NOTE: "TYPE WIDENED:" and "RETURN TYPE WIDENED:" are non-breaking.
+    "POSITIONAL_REMOVED:",
+    "POSITIONAL_REORDER",
+    "REQUIRED_POSITIONAL_ADDED:",
+    "REQUIRED_KWONLY_ADDED:",
+    "KWONLY_REMOVED:",
+    "*args_REMOVED:",
+    "**kwargs_REMOVED:",
+    "TYPE_CHANGED:",
+    "RETURN_TYPE_CHANGED:",
+    "DECORATOR_REMOVED:",
+    "DECORATOR_ADDED:",
+    # NOTE: "DEPRECATED_REMOVED:" is intentionally excluded — it is non-breaking.
+    # NOTE: "TYPE_WIDENED:" and "RETURN_TYPE_WIDENED:" are non-breaking.
 )
 
 

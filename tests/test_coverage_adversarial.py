@@ -487,7 +487,7 @@ class TestRiskGate:
         assert result[0]["function"] == "some_func"
 
     def test_run_with_required_change(self):
-        diff = self._make_diff("REQUIRED POSITIONAL ADDED: my_func\n")
+        diff = self._make_diff("REQUIRED_POSITIONAL_ADDED: my_func\n")
         rt = self._make_runtime([{"function": "my_func", "count": 200}])
         from impactguard.risk_gate import run
 
@@ -524,7 +524,7 @@ class TestRiskGate:
         assert isinstance(result, list)
 
     def test_run_sort_order(self):
-        diff = self._make_diff("REMOVED: func_high\nPOSITIONAL REORDER: func_low\n")
+        diff = self._make_diff("REMOVED: func_high\nPOSITIONAL_REORDER: func_low\n")
         rt = self._make_runtime(
             [
                 {"function": "func_high", "count": 500},
@@ -580,7 +580,7 @@ class TestRiskGate:
     # adversarial
     def test_run_positional_kwonly_lines(self):
         diff = self._make_diff(
-            "POSITIONAL REORDER: reordered_fn\nKWONLY REMOVED: kwonly_fn\n"
+            "POSITIONAL_REORDER: reordered_fn\nKWONLY_REMOVED: kwonly_fn\n"
         )
         rt = self._make_runtime([])
         from impactguard.risk_gate import run
@@ -2180,56 +2180,56 @@ class TestCompareSignaturesEdgeCases:
             [self._sig("mod.f", vararg=True)],
             [self._sig("mod.f", vararg=False)],
         )
-        assert any("*args REMOVED" in b for b in result["breaking"])
+        assert any("*args_REMOVED" in b for b in result["breaking"])
 
     def test_kwarg_removed_is_breaking(self):
         result = self._compare(
             [self._sig("mod.f", kwarg=True)],
             [self._sig("mod.f", kwarg=False)],
         )
-        assert any("**kwargs REMOVED" in b for b in result["breaking"])
+        assert any("**kwargs_REMOVED" in b for b in result["breaking"])
 
     def test_kwonly_removed_is_breaking(self):
         result = self._compare(
             [self._sig("mod.f", kwonly=[self._param("k")])],
             [self._sig("mod.f", kwonly=[])],
         )
-        assert any("KWONLY REMOVED" in b for b in result["breaking"])
+        assert any("KWONLY_REMOVED" in b for b in result["breaking"])
 
     def test_required_kwonly_added_is_breaking(self):
         result = self._compare(
             [self._sig("mod.f", kwonly=[])],
             [self._sig("mod.f", kwonly=[self._param("k", has_default=False)])],
         )
-        assert any("REQUIRED KWONLY ADDED" in b for b in result["breaking"])
+        assert any("REQUIRED_KWONLY_ADDED" in b for b in result["breaking"])
 
     def test_optional_kwonly_added_is_nonbreaking(self):
         result = self._compare(
             [self._sig("mod.f", kwonly=[])],
             [self._sig("mod.f", kwonly=[self._param("k", has_default=True)])],
         )
-        assert any("OPTIONAL KWONLY ADDED" in nb for nb in result["nonbreaking"])
+        assert any("OPTIONAL_KWONLY_ADDED" in nb for nb in result["nonbreaking"])
 
     def test_type_widening_is_nonbreaking(self):
         result = self._compare(
             [self._sig("mod.f", positional=[self._param("x", type_="str")])],
             [self._sig("mod.f", positional=[self._param("x", type_="str | None")])],
         )
-        assert any("TYPE WIDENED" in nb for nb in result["nonbreaking"])
+        assert any("TYPE_WIDENED" in nb for nb in result["nonbreaking"])
 
     def test_type_narrowing_is_breaking(self):
         result = self._compare(
             [self._sig("mod.f", positional=[self._param("x", type_="str | None")])],
             [self._sig("mod.f", positional=[self._param("x", type_="str")])],
         )
-        assert any("TYPE CHANGED" in b for b in result["breaking"])
+        assert any("TYPE_CHANGED" in b for b in result["breaking"])
 
     def test_positional_removed_is_breaking(self):
         result = self._compare(
             [self._sig("mod.f", positional=[self._param("a"), self._param("b")])],
             [self._sig("mod.f", positional=[self._param("a")])],
         )
-        assert any("POSITIONAL REMOVED" in b for b in result["breaking"])
+        assert any("POSITIONAL_REMOVED" in b for b in result["breaking"])
 
     def test_return_type_widening(self):
         result = self._compare(
@@ -2238,21 +2238,21 @@ class TestCompareSignaturesEdgeCases:
         )
         # widening return type → nonbreaking
         all_msgs = result["breaking"] + result["nonbreaking"]
-        assert any("RETURN TYPE" in m for m in all_msgs)
+        assert any("RETURN_TYPE" in m for m in all_msgs)
 
     def test_deprecated_removed_is_nonbreaking(self):
         result = self._compare(
             [self._sig("mod.dep", decorators=["deprecated"])],
             [],
         )
-        assert any("DEPRECATED REMOVED" in nb for nb in result["nonbreaking"])
+        assert any("DEPRECATED_REMOVED" in nb for nb in result["nonbreaking"])
 
     def test_positional_reorder_is_breaking(self):
         result = self._compare(
             [self._sig("mod.f", positional=[self._param("a"), self._param("b")])],
             [self._sig("mod.f", positional=[self._param("b"), self._param("a")])],
         )
-        assert any("POSITIONAL REORDER" in b for b in result["breaking"])
+        assert any("POSITIONAL_REORDER" in b for b in result["breaking"])
 
     def test_empty_sigs(self):
         result = self._compare([], [])
@@ -2346,14 +2346,14 @@ class TestRiskModelEdgeCases:
     def test_severity_return_type_changed(self):
         from impactguard.risk_model import get_severity
 
-        # "RETURN TYPE CHANGED" should match before "TYPE CHANGED"
-        s = get_severity("RETURN TYPE CHANGED: my_func")
-        assert s == 0.5  # RETURN TYPE CHANGED score
+        # "RETURN_TYPE_CHANGED" should match before "TYPE_CHANGED"
+        s = get_severity("RETURN_TYPE_CHANGED: my_func")
+        assert s == 0.5  # RETURN_TYPE_CHANGED score
 
     def test_severity_type_widened(self):
         from impactguard.risk_model import get_severity
 
-        s = get_severity("TYPE WIDENED: my_func")
+        s = get_severity("TYPE_WIDENED: my_func")
         assert s == 0.05
 
 

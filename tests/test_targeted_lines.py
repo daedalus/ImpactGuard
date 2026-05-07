@@ -14,13 +14,13 @@ def test_suggest_fixes_missing_lines(tmp_path):
     items = [
         {
             "fqname": "test.py:foo",
-            "change": "OPTIONAL POSITIONAL ADDED",
+            "change": "OPTIONAL_POSITIONAL_ADDED",
             "risk_level": "MEDIUM",
             "callsites": [{"file": "main.py", "lineno": 10}],
         },
         {
             "fqname": "test.py:bar",
-            "change": "POSITIONAL REMOVED",
+            "change": "POSITIONAL_REMOVED",
             "risk_level": "HIGH",
             "patches": [{"type": "add_default", "param": "x"}],
         },

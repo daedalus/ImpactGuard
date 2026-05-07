@@ -169,7 +169,7 @@ def test_compare_positional_removed():
     try:
         result = compare(old_path, new_path)
         assert len(result["breaking"]) == 1
-        assert "POSITIONAL REMOVED" in result["breaking"][0]
+        assert "POSITIONAL_REMOVED" in result["breaking"][0]
     finally:
         os.unlink(old_path)
         os.unlink(new_path)
@@ -206,7 +206,7 @@ def test_compare_required_added():
     try:
         result = compare(old_path, new_path)
         assert len(result["breaking"]) == 1
-        assert "REQUIRED POSITIONAL ADDED" in result["breaking"][0]
+        assert "REQUIRED_POSITIONAL_ADDED" in result["breaking"][0]
     finally:
         os.unlink(old_path)
         os.unlink(new_path)
@@ -243,7 +243,7 @@ def test_compare_optional_added():
     try:
         result = compare(old_path, new_path)
         assert len(result["nonbreaking"]) == 1
-        assert "OPTIONAL POSITIONAL ADDED" in result["nonbreaking"][0]
+        assert "OPTIONAL_POSITIONAL_ADDED" in result["nonbreaking"][0]
     finally:
         os.unlink(old_path)
         os.unlink(new_path)

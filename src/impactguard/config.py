@@ -17,16 +17,16 @@ _DEFAULTS: dict[str, Any] = {
         "severity_scores": {
             "REMOVED": 1.0,
             "REQUIRED": 0.9,
-            "POSITIONAL REORDER": 0.8,
-            "KWONLY REMOVED": 0.8,
-            "*args REMOVED": 0.7,
-            "**kwargs REMOVED": 0.7,
+            "POSITIONAL_REORDER": 0.8,
+            "KWONLY_REMOVED": 0.8,
+            "*args_REMOVED": 0.7,
+            "**kwargs_REMOVED": 0.7,
             "OPTIONAL": 0.3,
             "ADDED": 0.1,
-            "TYPE CHANGED": 0.6,
-            "RETURN TYPE CHANGED": 0.5,
-            "DECORATOR REMOVED": 0.6,
-            "DECORATOR ADDED": 0.1,  # Adding decorators is typically non-breaking
+            "TYPE_CHANGED": 0.6,
+            "RETURN_TYPE_CHANGED": 0.5,
+            "DECORATOR_REMOVED": 0.6,
+            "DECORATOR_ADDED": 0.1,  # Adding decorators is typically non-breaking
         },
         "risk": {
             "confidence_threshold": 0.3,

@@ -13,14 +13,14 @@ def test_suggest_fixes_lines_79_156(tmp_path):
     test_items = [
         {
             "fqname": "test.py:foo",
-            "change": "OPTIONAL POSITIONAL ADDED",
+            "change": "OPTIONAL_POSITIONAL_ADDED",
             "risk_level": "LOW",
             "callsites": [{"file": "main.py", "lineno": 10}],
             "patches": [{"type": "add_default", "param": "x"}],
         },
         {
             "fqname": "test.py:bar",
-            "change": "POSITIONAL REMOVED",
+            "change": "POSITIONAL_REMOVED",
             "risk_level": "HIGH",
         },
     ]

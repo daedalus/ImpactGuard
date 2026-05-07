@@ -84,4 +84,4 @@ def test_compare_signatures():
     os.unlink(f1_name)
     os.unlink(f2_name)
 
-    assert "OPTIONAL POSITIONAL ADDED" in str(result["nonbreaking"])
+    assert "OPTIONAL_POSITIONAL_ADDED" in str(result["nonbreaking"])

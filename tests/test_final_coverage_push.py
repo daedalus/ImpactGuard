@@ -11,7 +11,7 @@ def test_suggest_fixes_complete(tmp_path):
 
     risk_item = {
         "fqname": "test.py:foo",
-        "change": "OPTIONAL POSITIONAL ADDED: test.py:foo",
+        "change": "OPTIONAL_POSITIONAL_ADDED: test.py:foo",
         "risk_level": "MEDIUM",
         "callsites": [{"file": "main.py", "lineno": 10, "args": 2}],
         "patches": [{"type": "add_default", "param": "x", "default": "None"}],
@@ -116,7 +116,7 @@ def test_risk_gate_with_complex_data(tmp_path):
     from impactguard.risk_gate import run as run_risk
 
     diff_path = tmp_path / "diff.txt"
-    diff_path.write_text("POSITIONAL REMOVED: test.py:foo\n")
+    diff_path.write_text("POSITIONAL_REMOVED: test.py:foo\n")
 
     runtime_path = tmp_path / "runtime.json"
     runtime_path.write_text(
@@ -137,7 +137,7 @@ def test_generate_report_complex(tmp_path):
         {
             "fqname": "test.py:foo",
             "risk_level": "HIGH",
-            "change": "POSITIONAL REMOVED",
+            "change": "POSITIONAL_REMOVED",
             "confidence": 0.9,
             "exposure": 0.8,
         },

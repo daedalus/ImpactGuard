@@ -14,13 +14,13 @@ def test_suggest_fixes_coverage_boost(tmp_path):
     test_items = [
         {
             "fqname": "test.py:foo",
-            "change": "OPTIONAL POSITIONAL ADDED",
+            "change": "OPTIONAL_POSITIONAL_ADDED",
             "risk_level": "MEDIUM",
             "callsites": [{"file": "main.py", "lineno": 10}],
         },
         {
             "fqname": "test.py:bar",
-            "change": "POSITIONAL REMOVED",
+            "change": "POSITIONAL_REMOVED",
             "risk_level": "HIGH",
             "patches": [{"type": "add_default", "param": "x"}],
         },
@@ -84,7 +84,7 @@ def test_risk_gate_coverage_boost(tmp_path):
 
     # Test with diff and runtime
     diff = tmp_path / "diff.txt"
-    diff.write_text("POSITIONAL REMOVED: test.py:foo\n")
+    diff.write_text("POSITIONAL_REMOVED: test.py:foo\n")
 
     runtime = tmp_path / "runtime.json"
     runtime.write_text(json.dumps([{"function": "foo", "args_count": 1}]))

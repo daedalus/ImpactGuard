@@ -219,7 +219,7 @@ def compare(  # noqa: MC0001
                 continue
             # Deprecation lifecycle: removing a @deprecated function is non-breaking
             if _has_deprecated_decorator(old[k]):
-                nonbreaking.append(f"DEPRECATED REMOVED: {k}")
+                nonbreaking.append(f"DEPRECATED_REMOVED: {k}")
             else:
                 breaking.append(f"REMOVED: {k}")
 
@@ -245,21 +245,21 @@ def compare(  # noqa: MC0001
 
         # positional argument removal
         if len(n_pos) < len(o_pos):
-            breaking.append(f"POSITIONAL REMOVED: {k}")
+                breaking.append(f"POSITIONAL_REMOVED: {k}")
         else:
             # positional arg changes
             for i in range(len(o_pos)):
                 if o_pos[i]["name"] != n_pos[i]["name"]:
-                    breaking.append(f"POSITIONAL REORDER/RENAME: {k}")
+                    breaking.append(f"POSITIONAL_REORDER/RENAME: {k}")
                     break
 
             # new positional args
             if len(n_pos) > len(o_pos):
                 added = n_pos[len(o_pos) :]
                 if any(is_required(a) for a in added):
-                    breaking.append(f"REQUIRED POSITIONAL ADDED: {k}")
+                    breaking.append(f"REQUIRED_POSITIONAL_ADDED: {k}")
                 else:
-                    nonbreaking.append(f"OPTIONAL POSITIONAL ADDED: {k}")
+                    nonbreaking.append(f"OPTIONAL_POSITIONAL_ADDED: {k}")
 
         # kwonly args
         o_kw = {a["name"]: a for a in o["kwonly"]}
@@ -267,21 +267,21 @@ def compare(  # noqa: MC0001
 
         for name in o_kw:
             if name not in n_kw:
-                breaking.append(f"KWONLY REMOVED: {k}")
+                breaking.append(f"KWONLY_REMOVED: {k}")
 
         for name in n_kw:
             if name not in o_kw:
                 if is_required(n_kw[name]):
-                    breaking.append(f"REQUIRED KWONLY ADDED: {k}")
+                    breaking.append(f"REQUIRED_KWONLY_ADDED: {k}")
                 else:
-                    nonbreaking.append(f"OPTIONAL KWONLY ADDED: {k}")
+                    nonbreaking.append(f"OPTIONAL_KWONLY_ADDED: {k}")
 
         # varargs changes
         if o["vararg"] and not n["vararg"]:
-            breaking.append(f"*args REMOVED: {k}")
+            breaking.append(f"*args_REMOVED: {k}")
 
         if o["kwarg"] and not n["kwarg"]:
-            breaking.append(f"**kwargs REMOVED: {k}")
+            breaking.append(f"**kwargs_REMOVED: {k}")
 
         # ── Type annotation changes ────────────────────────────────────────
 
@@ -293,11 +293,11 @@ def compare(  # noqa: MC0001
                 kind = _type_change_kind(o_type, n_type, _union_parser)
                 if kind == "widening":
                     nonbreaking.append(
-                        f"TYPE WIDENED: {k} arg '{o_arg['name']}' {o_type} -> {n_type}"
+                        f"TYPE_WIDENED: {k} arg '{o_arg['name']}' {o_type} -> {n_type}"
                     )
                 else:
                     breaking.append(
-                        f"TYPE CHANGED: {k} arg '{o_arg['name']}' {o_type} -> {n_type}"
+                        f"TYPE_CHANGED: {k} arg '{o_arg['name']}' {o_type} -> {n_type}"
                     )
 
         for o_arg_name, o_arg in o_kw.items():
@@ -308,11 +308,11 @@ def compare(  # noqa: MC0001
                     kind = _type_change_kind(o_type, n_type, _union_parser)
                     if kind == "widening":
                         nonbreaking.append(
-                            f"TYPE WIDENED: {k} kwarg '{o_arg_name}' {o_type} -> {n_type}"
+                             f"TYPE_WIDENED: {k} kwarg '{o_arg_name}' {o_type} -> {n_type}"
                         )
                     else:
                         breaking.append(
-                            f"TYPE CHANGED: {k} kwarg '{o_arg_name}' {o_type} -> {n_type}"
+                             f"TYPE_CHANGED: {k} kwarg '{o_arg_name}' {o_type} -> {n_type}"
                         )
 
         # Return type changes
@@ -321,18 +321,18 @@ def compare(  # noqa: MC0001
         if o_ret is not None and n_ret is not None and o_ret != n_ret:
             kind = _type_change_kind(o_ret, n_ret, _union_parser)
             if kind == "widening":
-                nonbreaking.append(f"RETURN TYPE WIDENED: {k} {o_ret} -> {n_ret}")
+                nonbreaking.append(f"RETURN_TYPE_WIDENED: {k} {o_ret} -> {n_ret}")
             else:
-                breaking.append(f"RETURN TYPE CHANGED: {k} {o_ret} -> {n_ret}")
+                breaking.append(f"RETURN_TYPE_CHANGED: {k} {o_ret} -> {n_ret}")
 
         # ── Decorator changes ──────────────────────────────────────────────
         o_decs = set(o.get("decorators", []))
         n_decs = set(n.get("decorators", []))
         for removed_dec in o_decs - n_decs:
-            breaking.append(f"DECORATOR REMOVED: {k} @{removed_dec}")
+            breaking.append(f"DECORATOR_REMOVED: {k} @{removed_dec}")
         for added_dec in n_decs - o_decs:
             # Adding a decorator is usually breaking (changes calling convention)
-            breaking.append(f"DECORATOR ADDED: {k} @{added_dec}")
+            breaking.append(f"DECORATOR_ADDED: {k} @{added_dec}")
 
     return {
         "breaking": sorted(set(breaking)),
