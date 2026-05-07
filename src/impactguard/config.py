@@ -67,7 +67,7 @@ _DEFAULTS: dict[str, Any] = {
     "analysis": {
         "include_private": False,
         "suppress": [],
-        "transitive_depth": 1,  # Default 1 to enable transitive impact tracking
+        "transitive_depth": 0,
     },
         "languages": {
             # Canonical language names to enable.  "python" is always available.
