@@ -17,7 +17,7 @@ from impactguard import (
 def test_get_severity():
     assert get_severity("REMOVED: foo") == 1.0
     assert get_severity("REQUIRED positional arg removed") == 0.9
-    assert get_severity("POSITIONAL REORDER: foo") == 0.8
+    assert get_severity("POSITIONAL_REORDER: foo") == 0.8
     assert get_severity("OPTIONAL arg added") == 0.3
     assert get_severity("unknown change") == 0.5
 

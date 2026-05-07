@@ -194,7 +194,7 @@ class TestBoundaryEdgeCases:
         old = [_sig("m.f", positional=[_param("a")])]
         new = [_sig("m.f", positional=[_param("a"), _param("b")])]
         result = _compare(old, new)
-        assert any("REQUIRED POSITIONAL ADDED" in b for b in result["breaking"])
+        assert any("REQUIRED_POSITIONAL_ADDED" in b for b in result["breaking"])
 
     def test_compare_zero_args_unchanged(self):
         """No-arg function that stays no-arg → no changes."""
@@ -375,7 +375,7 @@ class TestSemanticPerturbation:
         new = [_sig("m.f", return_type="int | None")]
         result = _compare(old, new)
         all_msgs = result["breaking"] + result["nonbreaking"]
-        assert any("RETURN TYPE WIDENED" in m or "RETURN" in m for m in all_msgs)
+        assert any("RETURN TYPE_WIDENED" in m or "RETURN" in m for m in all_msgs)
 
     def test_return_type_narrowing_int_or_none_to_int(self):
         """int | None → int is narrowing (breaking for callers handling None)."""
@@ -383,7 +383,7 @@ class TestSemanticPerturbation:
         new = [_sig("m.f", return_type="int")]
         result = _compare(old, new)
         all_msgs = result["breaking"] + result["nonbreaking"]
-        assert any("RETURN TYPE" in m for m in all_msgs)
+        assert any("RETURN_TYPE" in m for m in all_msgs)
 
     def test_no_return_type_to_none_annotation(self):
         """Missing return type → explicit `None` is a narrowing change."""
@@ -511,7 +511,7 @@ class TestSemanticPerturbation:
         old = [_sig("m.f", positional=[_param("a", type_="int")])]
         new = [_sig("m.f", positional=[_param("a", type_="str")])]
         result = _compare(old, new)
-        assert any("TYPE CHANGED" in b for b in result["breaking"])
+        assert any("TYPE_CHANGED" in b for b in result["breaking"])
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -829,7 +829,7 @@ class TestCompositionalAttacks:
         from impactguard.enforce_gate import enforce
 
         diff_p = _tmp(
-            "NON-BREAKING OPTIONAL POSITIONAL ADDED: x.py:f\n", suffix=".diff"
+            "NON-BREAKING OPTIONAL_POSITIONAL_ADDED: x.py:f\n", suffix=".diff"
         )
         rt_p = _tmpjson([])
         rc = enforce(diff_p, rt_p)

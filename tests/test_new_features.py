@@ -230,7 +230,7 @@ def test_compare_type_changed():
     old_p, new_p = _tmp_json(old), _tmp_json(new)
     try:
         result = compare(old_p, new_p, include_private=True)
-        assert any("TYPE CHANGED" in c for c in result["breaking"])
+        assert any("TYPE_CHANGED" in c for c in result["breaking"])
     finally:
         os.unlink(old_p)
         os.unlink(new_p)
@@ -244,7 +244,7 @@ def test_compare_return_type_changed():
     old_p, new_p = _tmp_json(old), _tmp_json(new)
     try:
         result = compare(old_p, new_p, include_private=True)
-        assert any("RETURN TYPE CHANGED" in c for c in result["breaking"])
+        assert any("RETURN_TYPE_CHANGED" in c for c in result["breaking"])
     finally:
         os.unlink(old_p)
         os.unlink(new_p)
@@ -258,7 +258,7 @@ def test_compare_decorator_removed():
     old_p, new_p = _tmp_json(old), _tmp_json(new)
     try:
         result = compare(old_p, new_p, include_private=True)
-        assert any("DECORATOR REMOVED" in c for c in result["breaking"])
+        assert any("DECORATOR_REMOVED" in c for c in result["breaking"])
     finally:
         os.unlink(old_p)
         os.unlink(new_p)
@@ -272,7 +272,7 @@ def test_compare_decorator_added():
     old_p, new_p = _tmp_json(old), _tmp_json(new)
     try:
         result = compare(old_p, new_p, include_private=True)
-        assert any("DECORATOR ADDED" in c for c in result["breaking"])
+        assert any("DECORATOR_ADDED" in c for c in result["breaking"])
     finally:
         os.unlink(old_p)
         os.unlink(new_p)
@@ -337,7 +337,7 @@ def test_compare_type_unchanged_no_false_positive():
     old_p, new_p = _tmp_json(old), _tmp_json(new)
     try:
         result = compare(old_p, new_p, include_private=True)
-        assert not any("TYPE CHANGED" in c for c in result["breaking"])
+        assert not any("TYPE_CHANGED" in c for c in result["breaking"])
     finally:
         os.unlink(old_p)
         os.unlink(new_p)
@@ -352,18 +352,18 @@ def test_risk_model_new_change_types():
     from impactguard.risk_model import SEVERITY_SCORES, get_severity
 
     # New change types should be in defaults
-    assert "TYPE CHANGED" in SEVERITY_SCORES
-    assert "RETURN TYPE CHANGED" in SEVERITY_SCORES
-    assert "DECORATOR REMOVED" in SEVERITY_SCORES
-    assert "DECORATOR ADDED" in SEVERITY_SCORES
+    assert "TYPE_CHANGED" in SEVERITY_SCORES
+    assert "RETURN_TYPE_CHANGED" in SEVERITY_SCORES
+    assert "DECORATOR_REMOVED" in SEVERITY_SCORES
+    assert "DECORATOR_ADDED" in SEVERITY_SCORES
 
 
 def test_risk_model_get_severity_new_types():
     from impactguard.risk_model import get_severity
 
-    assert get_severity("TYPE CHANGED: foo bar -> baz") == 0.6
-    assert get_severity("RETURN TYPE CHANGED: foo int -> str") == 0.5
-    assert get_severity("DECORATOR REMOVED: foo @classmethod") > 0.5
+    assert get_severity("TYPE_CHANGED: foo bar -> baz") == 0.6
+    assert get_severity("RETURN_TYPE_CHANGED: foo int -> str") == 0.5
+    assert get_severity("DECORATOR_REMOVED: foo @classmethod") > 0.5
 
 
 def test_risk_model_config_override(tmp_path: Path):

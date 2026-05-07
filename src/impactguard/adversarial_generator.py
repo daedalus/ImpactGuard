@@ -209,8 +209,8 @@ def _strategy_required_param_hidden_by_type_annotation(
         ),
         old_signatures=old,
         new_signatures=new,
-        expected_breaking_patterns=["REQUIRED POSITIONAL ADDED", fqname],
-        expected_nonbreaking_patterns=["TYPE WIDENED"],
+        expected_breaking_patterns=["REQUIRED_POSITIONAL_ADDED", fqname],
+        expected_nonbreaking_patterns=["TYPE_WIDENED"],
     )
 
 
@@ -252,8 +252,8 @@ def _strategy_positional_reorder_hidden_by_optional_add(
         ),
         old_signatures=old,
         new_signatures=new,
-        expected_breaking_patterns=["POSITIONAL REORDER", fqname],
-        expected_nonbreaking_patterns=["OPTIONAL POSITIONAL ADDED", fqname],
+        expected_breaking_patterns=["POSITIONAL_REORDER", fqname],
+        expected_nonbreaking_patterns=["OPTIONAL_POSITIONAL_ADDED", fqname],
     )
 
 
@@ -293,7 +293,7 @@ def _strategy_type_narrowing_disguised_as_cleanup(
         ),
         old_signatures=old,
         new_signatures=new,
-        expected_breaking_patterns=["TYPE CHANGED", fqname, p_name],
+        expected_breaking_patterns=["TYPE_CHANGED", fqname, p_name],
         expected_nonbreaking_patterns=[],
     )
 
@@ -335,8 +335,8 @@ def _strategy_kwonly_removal_with_optional_addition(
         ),
         old_signatures=old,
         new_signatures=new,
-        expected_breaking_patterns=["KWONLY REMOVED", fqname],
-        expected_nonbreaking_patterns=["OPTIONAL KWONLY ADDED", fqname],
+        expected_breaking_patterns=["KWONLY_REMOVED", fqname],
+        expected_nonbreaking_patterns=["OPTIONAL_KWONLY_ADDED", fqname],
     )
 
 
@@ -369,7 +369,7 @@ def _strategy_vararg_removal_with_kwarg_addition(
         ),
         old_signatures=old,
         new_signatures=new,
-        expected_breaking_patterns=["*args REMOVED", fqname],
+        expected_breaking_patterns=["*args_REMOVED", fqname],
         expected_nonbreaking_patterns=[],
     )
 
@@ -405,7 +405,7 @@ def _strategy_return_type_narrowing_disguised_as_guarantee(
         ),
         old_signatures=old,
         new_signatures=new,
-        expected_breaking_patterns=["RETURN TYPE CHANGED", fqname],
+        expected_breaking_patterns=["RETURN_TYPE_CHANGED", fqname],
         expected_nonbreaking_patterns=[],
     )
 
@@ -445,8 +445,8 @@ def _strategy_decorator_removal_hidden_by_optional_kwarg(
         ),
         old_signatures=old,
         new_signatures=new,
-        expected_breaking_patterns=["DECORATOR REMOVED", fqname],
-        expected_nonbreaking_patterns=["OPTIONAL KWONLY ADDED", fqname],
+        expected_breaking_patterns=["DECORATOR_REMOVED", fqname],
+        expected_nonbreaking_patterns=["OPTIONAL_KWONLY_ADDED", fqname],
     )
 
 
@@ -484,7 +484,7 @@ def _strategy_required_kwonly_added_with_misleading_name(
         ),
         old_signatures=old,
         new_signatures=new,
-        expected_breaking_patterns=["REQUIRED KWONLY ADDED", fqname],
+        expected_breaking_patterns=["REQUIRED_KWONLY_ADDED", fqname],
         expected_nonbreaking_patterns=[],
     )
 
@@ -566,8 +566,8 @@ def _strategy_kwargs_removal_hidden_by_explicit_params(
         ),
         old_signatures=old,
         new_signatures=new,
-        expected_breaking_patterns=["**kwargs REMOVED", fqname],
-        expected_nonbreaking_patterns=["OPTIONAL KWONLY ADDED", fqname],
+        expected_breaking_patterns=["**kwargs_REMOVED", fqname],
+        expected_nonbreaking_patterns=["OPTIONAL_KWONLY_ADDED", fqname],
     )
 
 

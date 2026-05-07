@@ -402,9 +402,9 @@ class TestRiskModelConfig:
         
         scores = _effective_severity_scores()
         # Default: should return SEVERITY_SCORES unchanged
-        # Note: DECORATOR ADDED is now 0.1 (non-breaking) instead of 0.4
+        # Note: DECORATOR_ADDED is now 0.1 (non-breaking) instead of 0.4
         expected = dict(SEVERITY_SCORES)
-        expected["DECORATOR ADDED"] = 0.1
+        expected["DECORATOR_ADDED"] = 0.1
         assert scores == expected
 
     def test_classify_high_confidence_low_severity(self):
@@ -438,7 +438,7 @@ class TestSuggestFixesCST:
             "function": "my_func",
             "file": str(src),
             "lineno": 1,
-            "change": "REQUIRED POSITIONAL ADDED (y)",
+            "change": "REQUIRED_POSITIONAL_ADDED (y)",
         }
         result = enrich_with_fixes(item, [])
         # Should attempt CST or fallback; result is a list (possibly empty on error)
@@ -467,7 +467,7 @@ class TestSuggestFixesCST:
             "function": "f",
             "file": str(src),
             "lineno": 1,
-            "change": "TYPE CHANGED",  # no param name extractable
+            "change": "TYPE_CHANGED",  # no param name extractable
         }
         result = enrich_with_fixes(item, [])
         assert isinstance(result, list)
@@ -676,7 +676,7 @@ class TestCompareSignaturesMoreEdgeCases:
                 )
             ],
         )
-        assert any("REQUIRED POSITIONAL ADDED" in b for b in result["breaking"])
+        assert any("REQUIRED_POSITIONAL_ADDED" in b for b in result["breaking"])
 
     def test_optional_positional_added_is_nonbreaking(self):
         result = self._compare(
@@ -688,14 +688,14 @@ class TestCompareSignaturesMoreEdgeCases:
                 )
             ],
         )
-        assert any("OPTIONAL POSITIONAL ADDED" in nb for nb in result["nonbreaking"])
+        assert any("OPTIONAL_POSITIONAL_ADDED" in nb for nb in result["nonbreaking"])
 
     def test_kwarg_type_change(self):
         result = self._compare(
             [self._sig("mod.f", kwonly=[self._param("k", type_="int")])],
             [self._sig("mod.f", kwonly=[self._param("k", type_="str")])],
         )
-        assert any("TYPE CHANGED" in b for b in result["breaking"])
+        assert any("TYPE_CHANGED" in b for b in result["breaking"])
 
     def test_return_type_widening(self):
         result = self._compare(
@@ -703,7 +703,7 @@ class TestCompareSignaturesMoreEdgeCases:
             [self._sig("mod.f", return_type="int | None")],
         )
         all_msgs = result["breaking"] + result["nonbreaking"]
-        assert any("RETURN TYPE WIDENED" in m for m in all_msgs)
+        assert any("RETURN_TYPE_WIDENED" in m for m in all_msgs)
 
     def test_decorator_added_is_nonbreaking(self):
         result = self._compare(
@@ -806,7 +806,7 @@ class TestRiskModelExceptionBranches:
                 k: v
                 for k, v in [
                     ("REMOVED", 1.0),
-                    ("REQUIRED POSITIONAL ADDED", 0.8),
+                    ("REQUIRED_POSITIONAL_ADDED", 0.8),
                 ]
             },
         )

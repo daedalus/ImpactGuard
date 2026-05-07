@@ -372,8 +372,8 @@ class TestCompareSignaturesAdversarial:
             positional=[{"name": "x", "has_default": False, "type": "int"}],
         )
         result = self._compare([old], [new])
-        # None -> something: no TYPE CHANGED reported (one side is None)
-        assert not any("TYPE CHANGED" in b for b in result["breaking"])
+        # None -> something: no TYPE_CHANGED reported (one side is None)
+        assert not any("TYPE_CHANGED" in b for b in result["breaking"])
 
     def test_type_change_both_sides_is_breaking(self):
         old = self._mk_sig(
@@ -385,7 +385,7 @@ class TestCompareSignaturesAdversarial:
             positional=[{"name": "x", "has_default": False, "type": "str"}],
         )
         result = self._compare([old], [new])
-        assert any("TYPE CHANGED" in b for b in result["breaking"])
+        assert any("TYPE_CHANGED" in b for b in result["breaking"])
 
     # ------------------------------------------------------------------
     # 2h. Decorator adversarial inputs
@@ -396,15 +396,15 @@ class TestCompareSignaturesAdversarial:
         old = self._mk_sig("m.py:foo", decorators=["some_decorator\ninjected"])
         new = self._mk_sig("m.py:foo", decorators=[])
         result = self._compare([old], [new])
-        # Should still detect DECORATOR REMOVED
-        assert any("DECORATOR REMOVED" in b for b in result["breaking"])
+        # Should still detect DECORATOR_REMOVED
+        assert any("DECORATOR_REMOVED" in b for b in result["breaking"])
 
     def test_many_decorators_removed_all_reported(self):
         decs = [f"dec_{i}" for i in range(20)]
         old = self._mk_sig("m.py:foo", decorators=decs)
         new = self._mk_sig("m.py:foo", decorators=[])
         result = self._compare([old], [new])
-        removed = [b for b in result["breaking"] if "DECORATOR REMOVED" in b]
+        removed = [b for b in result["breaking"] if "DECORATOR_REMOVED" in b]
         assert len(removed) == 20
 
 
@@ -519,12 +519,12 @@ class TestRiskModelAdversarial:
         assert get_severity("COMPLETELY UNKNOWN CHANGE TYPE") == 0.5
 
     def test_get_severity_longest_key_wins(self):
-        """'RETURN TYPE CHANGED' must not match the shorter 'TYPE CHANGED' key."""
+        """'RETURN_TYPE_CHANGED' must not match the shorter 'TYPE_CHANGED' key."""
         from impactguard.risk_model import SEVERITY_SCORES, get_severity
 
-        ret_severity = get_severity("RETURN TYPE CHANGED: m.py:foo str -> int")
-        type_severity = SEVERITY_SCORES["TYPE CHANGED"]
-        return_type_severity = SEVERITY_SCORES["RETURN TYPE CHANGED"]
+        ret_severity = get_severity("RETURN_TYPE_CHANGED: m.py:foo str -> int")
+        type_severity = SEVERITY_SCORES["TYPE_CHANGED"]
+        return_type_severity = SEVERITY_SCORES["RETURN_TYPE_CHANGED"]
         assert ret_severity == return_type_severity
         assert ret_severity != type_severity
 

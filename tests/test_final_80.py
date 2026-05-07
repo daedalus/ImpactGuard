@@ -14,7 +14,7 @@ def test_suggest_fixes_deep_coverage(tmp_path):
     items = [
         {
             "fqname": "test.py:foo",
-            "change": "OPTIONAL POSITIONAL ADDED",
+            "change": "OPTIONAL_POSITIONAL_ADDED",
             "risk_level": "MEDIUM",
             "callsites": [{"file": "main.py", "lineno": 10}],
             "patches": [{"type": "add_default", "param": "x"}],
@@ -90,7 +90,7 @@ def test_risk_gate_deep_coverage(tmp_path):
 
     # Test with runtime data
     diff = tmp_path / "diff.txt"
-    diff.write_text("POSITIONAL REMOVED: test.py:foo\n")
+    diff.write_text("POSITIONAL_REMOVED: test.py:foo\n")
 
     runtime = tmp_path / "runtime.json"
     runtime.write_text(json.dumps([{"function": "foo", "args_count": 1}]))

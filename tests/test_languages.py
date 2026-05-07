@@ -569,8 +569,8 @@ class TestTypeScriptTypeCompat:
         old_path = self._write_sigs(tmp_path, "old.json", [old_sig])
         new_path = self._write_sigs(tmp_path, "new.json", [new_sig])
         result = compare(old_path, new_path, language="typescript")
-        assert any("TYPE WIDENED" in c for c in result["nonbreaking"])
-        assert not any("TYPE CHANGED" in c for c in result["breaking"])
+        assert any("TYPE_WIDENED" in c for c in result["nonbreaking"])
+        assert not any("TYPE_CHANGED" in c for c in result["breaking"])
 
     def test_typescript_narrowing_null(self, tmp_path: Path) -> None:
         """string | null → string is narrowing (breaking)."""
@@ -585,7 +585,7 @@ class TestTypeScriptTypeCompat:
         old_path = self._write_sigs(tmp_path, "old.json", [old_sig])
         new_path = self._write_sigs(tmp_path, "new.json", [new_sig])
         result = compare(old_path, new_path, language="typescript")
-        assert any("TYPE CHANGED" in c for c in result["breaking"])
+        assert any("TYPE_CHANGED" in c for c in result["breaking"])
 
     def test_python_compat_unchanged(self, tmp_path: Path) -> None:
         """Without language param, Python union parsing is used (backward compat)."""
@@ -600,7 +600,7 @@ class TestTypeScriptTypeCompat:
         old_path = self._write_sigs(tmp_path, "old.json", [old_sig])
         new_path = self._write_sigs(tmp_path, "new.json", [new_sig])
         result = compare(old_path, new_path)  # no language param
-        assert any("TYPE WIDENED" in c for c in result["nonbreaking"])
+        assert any("TYPE_WIDENED" in c for c in result["nonbreaking"])
 
     def test_unknown_language_falls_back_to_python(self, tmp_path: Path) -> None:
         """An unregistered language name falls back to Python union parsing."""
@@ -616,7 +616,7 @@ class TestTypeScriptTypeCompat:
         new_path = self._write_sigs(tmp_path, "new.json", [new_sig])
         result = compare(old_path, new_path, language="nonexistent_lang")
         # Falls back to Python behaviour — int | None → widening
-        assert any("TYPE WIDENED" in c for c in result["nonbreaking"])
+        assert any("TYPE_WIDENED" in c for c in result["nonbreaking"])
 
     def test_return_type_widening_typescript(self, tmp_path: Path) -> None:
         from impactguard.compare_signatures import compare
@@ -626,7 +626,7 @@ class TestTypeScriptTypeCompat:
         old_path = self._write_sigs(tmp_path, "old.json", [old_sig])
         new_path = self._write_sigs(tmp_path, "new.json", [new_sig])
         result = compare(old_path, new_path, language="typescript")
-        assert any("RETURN TYPE WIDENED" in c for c in result["nonbreaking"])
+        assert any("RETURN_TYPE_WIDENED" in c for c in result["nonbreaking"])
 
 
 # ── _type_change_kind with union_parser ───────────────────────────────────────

@@ -13,14 +13,14 @@ def test_suggest_fixes_full_coverage(tmp_path):
     risk_items = [
         {
             "fqname": "test.py:foo",
-            "change": "OPTIONAL POSITIONAL ADDED: test.py:foo",
+            "change": "OPTIONAL_POSITIONAL_ADDED: test.py:foo",
             "risk_level": "MEDIUM",
             "callsites": [{"file": "main.py", "lineno": 10}],
             "patches": [{"type": "add_default", "param": "x"}],
         },
         {
             "fqname": "test.py:bar",
-            "change": "POSITIONAL REMOVED: test.py:bar",
+            "change": "POSITIONAL_REMOVED: test.py:bar",
             "risk_level": "HIGH",
         },
     ]
@@ -80,7 +80,7 @@ def test_risk_gate_full_coverage(tmp_path):
 
     # Test with diff and runtime
     diff = tmp_path / "diff.txt"
-    diff.write_text("POSITIONAL REMOVED: test.py:foo\n")
+    diff.write_text("POSITIONAL_REMOVED: test.py:foo\n")
 
     runtime = tmp_path / "runtime.json"
     runtime.write_text(json.dumps([{"function": "foo", "args_count": 1}]))

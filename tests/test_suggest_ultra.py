@@ -9,7 +9,7 @@ def test_suggest_fixes_all_branches():
     # Test with patches
     item1 = {
         "fqname": "test.py:foo",
-        "change": "OPTIONAL POSITIONAL ADDED",
+        "change": "OPTIONAL_POSITIONAL_ADDED",
         "patches": [{"type": "add_default", "param": "x", "default": None}],
     }
     result = suggest(item1, [item1])
@@ -84,8 +84,8 @@ def test_suggest_with_various_change_types():
     """Test suggest() with various change types."""
 
     change_types = [
-        "OPTIONAL POSITIONAL ADDED",
-        "POSITIONAL REMOVED",
+        "OPTIONAL_POSITIONAL_ADDED",
+        "POSITIONAL_REMOVED",
         "KWONLY ADDED",
         "REMOVED",
     ]

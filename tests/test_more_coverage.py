@@ -11,7 +11,7 @@ def test_suggest_fixes_with_cst_patch(tmp_path):
 
     risk_item = {
         "fqname": "test.py:foo",
-        "change": "POSITIONAL REMOVED: test.py:foo",
+        "change": "POSITIONAL_REMOVED: test.py:foo",
         "patches": [{"type": "add_default", "param": "x", "default": "None"}],
     }
 
@@ -25,7 +25,7 @@ def test_suggest_fixes_with_call_sites(tmp_path):
 
     risk_item = {
         "fqname": "test.py:foo",
-        "change": "OPTIONAL POSITIONAL ADDED: test.py:foo",
+        "change": "OPTIONAL_POSITIONAL_ADDED: test.py:foo",
         "callsites": [{"file": "main.py", "lineno": 10, "args": 2}],
     }
 
@@ -127,7 +127,7 @@ def test_risk_gate_basic(tmp_path):
     from impactguard.risk_gate import run as run_risk
 
     diff_path = tmp_path / "diff.txt"
-    diff_path.write_text("POSITIONAL REMOVED: test.py:foo\n")
+    diff_path.write_text("POSITIONAL_REMOVED: test.py:foo\n")
 
     output_path = tmp_path / "risk.json"
 

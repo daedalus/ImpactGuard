@@ -11,25 +11,25 @@ import math
 #   REMOVED (1.0) — function is gone; every caller breaks unconditionally.
 #   REQUIRED (0.9) — new required positional/keyword argument; callers that
 #       don't pass it raise TypeError at runtime.
-#   POSITIONAL REORDER / KWONLY REMOVED (0.8) — positional callers break
+#   POSITIONAL_REORDER / KWONLY_REMOVED (0.8) — positional callers break
 #       silently (wrong values) or loudly (TypeError), equally severe.
-#   *args/*kwargs REMOVED (0.7) — callers passing extra positional/keyword
+#   *args/*kwargs_REMOVED (0.7) — callers passing extra positional/keyword
 #       args break; callers that never used the variadic param are unaffected.
-#   TYPE CHANGED / DECORATOR REMOVED (0.6) — semantics change; many callers
+#   TYPE_CHANGED / DECORATOR_REMOVED (0.6) — semantics change; many callers
 #       may break depending on how they use the return value or rely on the
 #       decorator's side-effects.
-#   RETURN TYPE CHANGED (0.5) — callers that inspect or unpack the return
+#   RETURN_TYPE_CHANGED (0.5) — callers that inspect or unpack the return
 #       value may break; pure call-and-ignore callers are unaffected.
-#   DECORATOR ADDED (0.4) — adds a layer around the function (e.g. caching,
+#   DECORATOR_ADDED (0.1) — adds a layer around the function (e.g. caching,
 #       auth check); only callers that depend on the raw callable break.
 #   OPTIONAL (0.3) — existing required argument gains a default; callers
 #       compiled against the old signature still work but the semantics may
 #       differ if the default is non-trivial.
-#   DEPRECATED REMOVED (0.15) — scheduled removal after a deprecation period;
+#   DEPRECATED_REMOVED (0.15) — scheduled removal after a deprecation period;
 #       callers should already have migrated.
 #   ADDED (0.1) — new optional argument or new function; existing callers
 #       are unaffected.
-#   TYPE WIDENED / RETURN TYPE WIDENED (0.05) — accepts/returns more types
+#   TYPE_WIDENED / RETURN_TYPE_WIDENED (0.05) — accepts/returns more types
 #       than before; existing callers continue to work with the narrower type.
 #
 # These constants can be overridden per-project via impactguard.toml:
@@ -38,19 +38,19 @@ import math
 SEVERITY_SCORES = {
     "REMOVED": 1.0,
     "REQUIRED": 0.9,
-    "POSITIONAL REORDER": 0.8,
-    "KWONLY REMOVED": 0.8,
-    "*args REMOVED": 0.7,
-    "**kwargs REMOVED": 0.7,
-    "TYPE CHANGED": 0.6,
-    "DECORATOR REMOVED": 0.6,
-    "RETURN TYPE CHANGED": 0.5,
-    "DECORATOR ADDED": 0.1,  # Adding decorators is typically non-breaking (e.g. @lru_cache, @staticmethod)
+    "POSITIONAL_REORDER": 0.8,
+    "KWONLY_REMOVED": 0.8,
+    "*args_REMOVED": 0.7,
+    "**kwargs_REMOVED": 0.7,
+    "TYPE_CHANGED": 0.6,
+    "DECORATOR_REMOVED": 0.6,
+    "RETURN_TYPE_CHANGED": 0.5,
+    "DECORATOR_ADDED": 0.1,  # Adding decorators is typically non-breaking (e.g. @lru_cache, @staticmethod)
     "OPTIONAL": 0.3,
     "ADDED": 0.1,
-    "DEPRECATED REMOVED": 0.15,
-    "TYPE WIDENED": 0.05,
-    "RETURN TYPE WIDENED": 0.05,
+    "DEPRECATED_REMOVED": 0.15,
+    "TYPE_WIDENED": 0.05,
+    "RETURN_TYPE_WIDENED": 0.05,
 }
 
 
@@ -108,7 +108,7 @@ def classify(
         med_exp_min = 0.01
     
     # REMOVED and REQUIRED changes are unconditionally HIGH - confidence check is bypassed
-    # This covers: "REMOVED", "KWONLY REMOVED", "REQUIRED POSITIONAL ADDED", etc.
+    # This covers: "REMOVED", "KWONLY_REMOVED", "REQUIRED_POSITIONAL_ADDED", etc.
     if "REMOVED" in change_type or "REQUIRED" in change_type:
         exposure_val = exposure(count, max_count)
         return "HIGH", exposure_val, 1.0
