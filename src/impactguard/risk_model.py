@@ -92,6 +92,25 @@ def confidence(samples: int, threshold: int = 100) -> float:
     return min(1.0, samples / threshold)
 
 
+_UNCONDITIONAL_HIGH = frozenset({
+    "REMOVED",
+    "REQUIRED_POSITIONAL_ADDED",
+    "REQUIRED_KWONLY_ADDED",
+})
+
+
+def _is_unconditional_high(change_type: str) -> bool:
+    """Check if change_type is definitionally breaking regardless of exposure.
+
+    Uses prefix matching to avoid false matches like "DEPRECATED_REMOVED"
+    being caught by "REMOVED" substring matching.
+    """
+    for key in _UNCONDITIONAL_HIGH:
+        if change_type.startswith(key):
+            return True
+    return False
+
+
 def classify(
     severity: float, count: int, max_count: int, samples: int, lambda_: float = 1.0,
     change_type: str = ""
@@ -107,9 +126,9 @@ def classify(
         high_exp_min = 0.1
         med_exp_min = 0.01
     
-    # REMOVED and REQUIRED changes are unconditionally HIGH - confidence check is bypassed
-    # This covers: "REMOVED", "KWONLY_REMOVED", "REQUIRED_POSITIONAL_ADDED", etc.
-    if "REMOVED" in change_type or "REQUIRED" in change_type:
+    # Unconditional HIGH for definitionally-breaking changes
+    # Uses explicit allowlist with prefix matching to avoid false matches
+    if _is_unconditional_high(change_type):
         exposure_val = exposure(count, max_count)
         return "HIGH", exposure_val, 1.0
     
