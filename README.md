@@ -669,16 +669,17 @@ The table below compares ImpactGuard against the tools most commonly used for Py
 
 ## Robustness Evaluator (`tools/robustness_evaluator.py`)
 
-The **Robustness Evaluator** computes a composite project-level **Robustness Score (R)** from test-suite metrics, placing extra emphasis on adversarial test performance.  It also reports an **Adversarial Fragility Index (F)** that isolates how much adversarial inputs specifically degrade the system.
+The **Robustness Evaluator** computes a composite project-level **Robustness Score (R)** from test-suite metrics, placing extra emphasis on adversarial test performance. It also reports an **Adversarial Fragility Index (F)** that isolates how much adversarial inputs specifically degrade the system.
 
 ### Metrics
 
 | Metric | Formula | Description |
 |--------|---------|-------------|
-| **R** | `C × (α × P_a + (1−α) × P_n)` | Composite Robustness Score — overall health in [0, 1] |
-| **R_d** | `C × D × (α × P_a + (1−α) × P_n)` | R with category diversity penalty |
-| **F** | `1 − (P_a / P_n)` | Fragility Index — how much adversarial conditions hurt you |
-| **D** | `categories_with_≥1_pass / total_categories` | Diversity ratio |
+| **R** | `C × (α × P_a + (1−α) × P_n) × S` | Composite Robustness Score — overall health in [0, 1] |
+| **R_d** | `C × D × (α × P_a + (1−α) × P_n) × S` | R with category diversity penalty |
+| **F** | `max(0, (P_n - P_a) / P_n)` | Fragility Index — bounded to [0, 1] |
+| **D** | `mean(pass_rate_i)` | Weighted diversity (mean pass rate across categories) |
+| **S** | `sample_penalty` | Sample size penalty (1.0 when n ≥ 10, decreases for small samples) |
 
 **Input symbols:**
 
@@ -690,10 +691,14 @@ The **Robustness Evaluator** computes a composite project-level **Robustness Sco
 | `P_n` | Normal pass rate (`passing_norm / n_normal`) |
 
 **Robustness labels:** EXCELLENT (≥ 0.80) · GOOD (≥ 0.65) · FAIR (≥ 0.45) · POOR (< 0.45)
+- **Floor:** If `P_a < 0.3`, robustness label is capped to **POOR** regardless of score
 
 **Fragility labels:** ROBUST (F ≤ 0.10) · MODERATE (≤ 0.25) · BRITTLE (≤ 0.50) · VERY_BRITTLE (> 0.50)
+- **Bounded:** F is clamped to [0, 1]; when `P_a ≥ P_n`, F = 0.0 (not brittle)
 
-The tool enforces a **minimum 25% adversarial coverage** requirement (exits with code 1 when unmet).
+**Sample size penalty:** Applied when adversarial or normal sample < 10 tests (linear ramp from 0.3 to 1.0)
+
+The tool enforces a **minimum 25% adversarial coverage** requirement (exits with code 0, outputs warning to stderr).
 
 ### Adversarial Budget Allocation
 
@@ -719,16 +724,17 @@ result = evaluate_robustness(
     coverage=0.57,
     alpha=0.65,            # security context
     categories=[
-        CategoryStats("boundary",       28, 28),
-        CategoryStats("semantic",       22, 22),
-        CategoryStats("evasion",        24, 24),
-        CategoryStats("compositional",  19, 19),
+        CategoryStats("boundary",       28, 28, difficulty=1.0),  # hard
+        CategoryStats("semantic",       22, 22, difficulty=0.5),  # medium
+        CategoryStats("evasion",        24, 24, difficulty=1.0),  # hard
+        CategoryStats("compositional",  19, 19, difficulty=0.8),  # hard
     ],
 )
 
 print(f"R  = {result.robustness_score:.4f}  [{result.robustness_label}]")
 print(f"F  = {result.fragility_index:.4f}  [{result.fragility_label}]")
 print(f"R_d = {result.robustness_score_with_diversity:.4f}  (with diversity)")
+print(f"S  = {result.sample_penalty:.2f}  (sample penalty)")
 ```
 
 **CLI (human-readable report) — empirical run from current test suite:**
@@ -741,10 +747,10 @@ python tools/robustness_evaluator.py \
   --passing-norm 629 \
   --coverage 0.57 \
   --alpha 0.65 \
-  --categories '[{"name":"boundary","total":28,"passing":28},
-                 {"name":"semantic","total":22,"passing":22},
-                 {"name":"evasion","total":24,"passing":24},
-                 {"name":"compositional","total":19,"passing":19}]'
+  --categories '[{"name":"boundary","total":28,"passing":28,"difficulty":1.0},
+                 {"name":"semantic","total":22,"passing":22,"difficulty":0.5},
+                 {"name":"evasion","total":24,"passing":24,"difficulty":1.0},
+                 {"name":"compositional","total":19,"passing":19,"difficulty":0.8}]'
 ```
 
 **CLI (JSON output for CI pipelines):**
@@ -756,6 +762,47 @@ python tools/robustness_evaluator.py --n-total 1054 --n-adversarial 425 \
 
 **Empirical output (measured from actual test runs):**
 
+```
+===========================================================
+  ImpactGuard — Robustness Evaluation Report
+===========================================================
+
+── Test Composition ──────────────────────────────────────
+  Total tests        : 1054
+  Adversarial tests  : 425
+  Normal tests       : 629
+  Adversarial ratio  : 40.3%  ✓
+
+── Pass Rates ────────────────────────────────────────────
+  P_adversarial (P_a): 0.998
+  P_normal      (P_n): 1.000
+  Coverage      (C)  : 0.570
+  Alpha         (α)  : 0.65
+  Diversity     (D)  : 1.000
+
+── Primary Metrics ───────────────────────────────────────
+  Robustness Score (R)          : 0.5691  [FAIR]
+  Sample Penalty (S)           : 1.00
+  Robustness + Diversity (R_d)  : 0.5691
+  Fragility Index (F)           : 0.0000  [ROBUST]
+
+── Category Breakdown ────────────────────────────────────
+  boundary              28/28  (100%)  ●●●●●●●●●●●●●●●●●●●●●●●●●●
+  semantic              22/22  (100%)  ●●●●●●●●●●●●●●●●●●●●●●
+  evasion               24/24  (100%)  ●●●●●●●●●●●●●●●●●●●●●●●●
+  compositional         19/19  (100%)  ●●●●●●●●●●●●●●●●●●●
+
+===========================================================
+```
+
+**Low sample size output example:**
+
+```
+── Primary Metrics ───────────────────────────────────────
+  Robustness Score (R)          : 0.0774  [POOR]
+  Sample Penalty (S)           : 0.19 (small sample)
+
+⚠ WARNING: Low coverage (<30%) - consider adding tests
 ```
 ============================================================
   ImpactGuard — Robustness Evaluation Report
