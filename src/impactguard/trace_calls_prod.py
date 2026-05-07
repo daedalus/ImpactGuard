@@ -10,7 +10,7 @@ from typing import Any
 SAMPLE_RATE = 0.01  # 1% of calls
 FLUSH_INTERVAL = 10  # seconds
 
-_lock = threading.Lock()
+_lock = threading.RLock()
 COUNTS: dict[str, int] = defaultdict(int)
 LAST_FLUSH = time.time()
 
@@ -44,12 +44,13 @@ def trace(func: Callable[..., Any]) -> Callable[..., Any]:
 
         # periodic flush (non-blocking-ish)
         now = time.time()
-        if now - LAST_FLUSH > FLUSH_INTERVAL:
-            try:
-                flush()
-            except Exception:
-                pass
-            LAST_FLUSH = now
+        with _lock:
+            if now - LAST_FLUSH > FLUSH_INTERVAL:
+                try:
+                    flush()
+                except Exception:
+                    pass
+                LAST_FLUSH = now
 
         return func(*args, **kwargs)
 

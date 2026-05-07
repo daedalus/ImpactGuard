@@ -74,10 +74,12 @@ def _effective_severity_scores() -> dict[str, float]:
 
 def get_severity(change_type: str) -> float:
     scores = _effective_severity_scores()
-    # Check longer/more-specific keys first to avoid substring false-matches
-    # e.g. "RETURN TYPE CHANGED" must not match "TYPE CHANGED" prematurely.
-    for key in sorted(scores, key=len, reverse=True):
-        if key in change_type:
+    # Normalize: strip, collapse internal whitespace
+    ct = " ".join(change_type.strip().split())
+    # Use startswith for consistency with _is_unconditional_high()
+    # This avoids false substring matches like "SOME_REMOVED" matching "REMOVED"
+    for key in sorted(scores.keys(), key=len, reverse=True):
+        if ct.startswith(key):
             return scores[key]
     return 0.5
 
