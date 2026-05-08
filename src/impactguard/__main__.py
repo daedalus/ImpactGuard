@@ -29,7 +29,7 @@ def cmd_extract(args: argparse.Namespace) -> int:
     language: str | None = getattr(args, "language", None)
     strict: bool = getattr(args, "strict", False)
 
-    from .languages.registry import get_extractor, get_extractor_by_language
+    from .languages.lib.registry import get_extractor, get_extractor_by_language
 
     def _sig_extract(extractor: object, file_list: list[str]) -> list[dict[str, Any]]:
         """Call extract_signatures, forwarding strict= when supported."""
@@ -95,7 +95,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
         result = compare(args.old, args.new)
     else:
         # Source mode: extract signatures from source files, then compare
-        from .languages.registry import get_extractor
+        from .languages.lib.registry import get_extractor
 
         def _extract_file(file_path: str) -> list[dict[str, Any]]:
             """Extract signatures from a single source file."""
@@ -265,7 +265,7 @@ def cmd_extract_calls(args: argparse.Namespace) -> int:
 
     language: str | None = getattr(args, "language", None)
 
-    from .languages.registry import get_extractor, get_extractor_by_language
+    from .languages.lib.registry import get_extractor, get_extractor_by_language
 
     all_calls = []
     for f in files:
@@ -290,11 +290,11 @@ def cmd_extract_calls(args: argparse.Namespace) -> int:
 
 def cmd_runtime_impact(args: argparse.Namespace) -> int:
     """Analyze runtime impact of signature changes."""
-    from .runtime_impact import analyze
-
-    issues = analyze(args.signatures, args.calls)
-    print(json.dumps(issues, indent=2))
-    return 0
+    # TODO: Implement runtime impact analysis
+    # Original code tried: from .runtime_impact import analyze
+    # But runtime_impact.py doesn't exist
+    print("Runtime impact analysis not yet implemented", file=sys.stderr)
+    return 1
 
 
 # Whitelist of allowed modules for tracing - used by cmd_trace
@@ -428,7 +428,7 @@ def cmd_check(args: argparse.Namespace) -> int:
     import glob as _glob
     import time
 
-    from .languages.registry import list_extensions as _list_exts
+    from .languages.lib.registry import list_extensions as _list_exts
 
     print("Watch mode enabled. Press Ctrl-C to stop.")
 
@@ -1009,7 +1009,7 @@ def cmd_semver(args: argparse.Namespace) -> int:
         result = compare(args.old, args.new)
     else:
         # Source mode: extract signatures from source files, then compare
-        from .languages.registry import get_extractor
+        from .languages.lib.registry import get_extractor
 
         def _extract_file(file_path: str) -> list[dict[str, Any]]:
             """Extract signatures from a single source file."""
@@ -1826,7 +1826,9 @@ def main() -> int:
         help="Feedback JSON file to include patch acceptance rate",
     )
     kpi_parser.add_argument(
-        "-o", "--output", help="Write KPIs as JSON to this file (default: text to stdout)"
+        "-o",
+        "--output",
+        help="Write KPIs as JSON to this file (default: text to stdout)",
     )
     kpi_parser.set_defaults(func=cmd_kpi)
 

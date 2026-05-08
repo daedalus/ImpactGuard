@@ -29,8 +29,8 @@ New languages can be added by:
 2. Calling :func:`~registry.register` with an instance of that class.
 """
 
-from .base import LanguageExtractor
-from .registry import (
+from .lib.base import LanguageExtractor
+from .lib.registry import (
     detect_language,
     get_extractor,
     get_extractor_by_language,

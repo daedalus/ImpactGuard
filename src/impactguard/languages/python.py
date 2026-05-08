@@ -76,7 +76,7 @@ class PythonExtractor:
 
 
 def _register() -> None:
-    from .registry import register
+    from .lib.registry import register
 
     register(PythonExtractor())
 
