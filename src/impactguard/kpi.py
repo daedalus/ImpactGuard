@@ -1,26 +1,51 @@
 """Minimal KPI dashboard for ImpactGuard.
 
-Computes a concise set of 7 key performance indicators from a risk report and
+Computes a concise set of 10 key performance indicators from a risk report and
 optional patch-feedback outcomes.  All values are pure Python — no external
 dependencies beyond the standard library.
 
 KPI definitions
 ---------------
-1. **risk_distribution** — counts and percentage rates per risk level
-   (HIGH / MEDIUM / LOW / UNKNOWN).
-2. **mean_risk_score** — arithmetic mean of the ``exposure × confidence``
-   product across all report items (proxy for overall S×E×C without re-running
-   the model).
-3. **high_rate** — fraction of report items classified HIGH risk.
+The metrics cover all three dimensions of the S×E×C risk model plus
+patch-feedback and transitive-impact quality signals.
+
+**S (Severity)**
+1. **mean_severity** — arithmetic mean of the severity score ``S`` computed
+   via :func:`~impactguard.risk_model.get_severity` for each item's
+   ``change`` field; reflects the inherent breakage probability of the
+   changes being made.
+
+**E (Exposure)**
+2. **mean_exposure** — arithmetic mean of the ``exposure`` field across all
+   items; indicates how well-exercised the changed functions are in traces.
+
+**C (Confidence)**
+3. **mean_confidence** — arithmetic mean of the ``confidence`` field across
+   all items; reflects how much runtime telemetry backs each classification.
 4. **confidence_coverage** — fraction of items that are *not* UNKNOWN
    (i.e., the model had enough runtime data to make a confident call).
-5. **mean_exposure** — arithmetic mean of the ``exposure`` field across all
-   items; indicates how well-exercised the changed functions are in traces.
-6. **patch_acceptance_rate** — overall ratio of accepted patches from recorded
-   feedback outcomes.  ``None`` when no feedback data is supplied.
-7. **false_positive_proxy** — fraction of HIGH-classified items whose
-   ``exposure`` is below *fp_threshold* (default 0.05); items flagged HIGH
-   despite very low runtime coverage are likely false positives.
+
+**Composite / classification**
+5. **risk_distribution** — counts and percentage rates per risk level
+   (HIGH / MEDIUM / LOW / UNKNOWN).
+6. **mean_risk_score** — arithmetic mean of the ``exposure × confidence``
+   product across all report items (proxy for overall S×E×C without
+   re-running the full model).
+7. **high_rate** — fraction of report items classified HIGH risk.
+
+**Transitive impact**
+8. **transitive_count** — number of report items flagged as indirect
+   (transitive) callers (``transitive=True``).
+9. **transitive_rate** — fraction of items that are transitive.
+
+**Patch quality**
+10. **patch_acceptance_rate** — overall ratio of accepted patches from
+    recorded feedback outcomes.  ``None`` when no feedback data is supplied.
+
+**Noise / quality**
+11. **false_positive_proxy** — fraction of HIGH-classified items whose
+    ``exposure`` is below *fp_threshold* (default 0.05); items flagged HIGH
+    despite very low runtime coverage are likely false positives.
 """
 
 from typing import Any
@@ -35,7 +60,10 @@ def compute_kpis(
     feedback_outcomes: list[dict[str, Any]] | None = None,
     fp_threshold: float = _DEFAULT_FP_THRESHOLD,
 ) -> dict[str, Any]:
-    """Compute the minimal KPI set from a risk report.
+    """Compute the KPI set from a risk report.
+
+    Covers all three S×E×C dimensions (severity, exposure, confidence) plus
+    transitive-impact breakdown and patch-quality signal.
 
     Args:
         report_data: List of risk-report dicts as produced by
@@ -51,16 +79,29 @@ def compute_kpis(
         Dictionary with keys:
 
         * ``total`` — total number of report items
+        * ``mean_severity`` — mean severity score S across all items
+        * ``mean_exposure`` — mean exposure E across all items
+        * ``mean_confidence`` — mean confidence C across all items
+        * ``confidence_coverage`` — fraction of items that are not UNKNOWN
         * ``risk_distribution`` — dict with sub-keys for each level (HIGH /
           MEDIUM / LOW / UNKNOWN), each containing ``count`` and ``rate``
-        * ``mean_risk_score`` — float in [0, 1]
-        * ``high_rate`` — float in [0, 1]
-        * ``confidence_coverage`` — float in [0, 1]
-        * ``mean_exposure`` — float in [0, 1]
+        * ``mean_risk_score`` — mean exposure × confidence (E×C proxy)
+        * ``high_rate`` — fraction classified HIGH
+        * ``transitive_count`` — count of indirect (transitive) risk items
+        * ``transitive_rate`` — fraction of items that are transitive
         * ``patch_acceptance_rate`` — float in [0, 1] or None
-        * ``false_positive_proxy`` — float in [0, 1]
+        * ``false_positive_proxy`` — fraction of HIGH items with exposure below
+          *fp_threshold*
     """
     total = len(report_data)
+
+    # ── mean_severity (S dimension of S×E×C) ─────────────────────────────────
+    from .risk_model import get_severity
+
+    severities: list[float] = [
+        get_severity(str(item.get("change", ""))) for item in report_data
+    ]
+    mean_severity = sum(severities) / total if total else 0.0
 
     # ── risk_distribution ────────────────────────────────────────────────────
     counts: dict[str, int] = {"HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0}
@@ -96,6 +137,14 @@ def compute_kpis(
     exposures = [float(item.get("exposure", 0.0)) for item in report_data]
     mean_exposure = sum(exposures) / total if total else 0.0
 
+    # ── mean_confidence (C dimension of S×E×C) ───────────────────────────────
+    confidences: list[float] = [float(item.get("confidence", 0.0)) for item in report_data]
+    mean_confidence = sum(confidences) / total if total else 0.0
+
+    # ── transitive count/rate ─────────────────────────────────────────────────
+    transitive_count = sum(1 for item in report_data if item.get("transitive"))
+    transitive_rate = transitive_count / total if total else 0.0
+
     # ── patch_acceptance_rate ────────────────────────────────────────────────
     patch_acceptance_rate: float | None = None
     if feedback_outcomes is not None:
@@ -115,11 +164,15 @@ def compute_kpis(
 
     return {
         "total": total,
+        "mean_severity": mean_severity,
+        "mean_exposure": mean_exposure,
+        "mean_confidence": mean_confidence,
+        "confidence_coverage": confidence_coverage,
         "risk_distribution": distribution,
         "mean_risk_score": mean_risk_score,
         "high_rate": high_rate,
-        "confidence_coverage": confidence_coverage,
-        "mean_exposure": mean_exposure,
+        "transitive_count": transitive_count,
+        "transitive_rate": transitive_rate,
         "patch_acceptance_rate": patch_acceptance_rate,
         "false_positive_proxy": false_positive_proxy,
     }
@@ -158,17 +211,23 @@ def format_kpi_text(kpis: dict[str, Any]) -> str:
 
     lines.append("")
 
+    ms = kpis.get("mean_severity", 0.0)
+    lines.append(f"  Mean severity (S)      : {ms:.3f}  (avg breakage probability)")
+
     mean_risk = kpis.get("mean_risk_score", 0.0)
     lines.append(f"  Mean risk score (E×C)  : {mean_risk:.3f}")
 
     high_rate = kpis.get("high_rate", 0.0)
     lines.append(f"  HIGH rate              : {high_rate:.1%}")
 
+    me = kpis.get("mean_exposure", 0.0)
+    lines.append(f"  Mean exposure (E)      : {me:.1%}  (avg call-trace coverage)")
+
+    mc = kpis.get("mean_confidence", 0.0)
+    lines.append(f"  Mean confidence (C)    : {mc:.3f}  (avg runtime telemetry strength)")
+
     cc = kpis.get("confidence_coverage", 0.0)
     lines.append(f"  Confidence coverage    : {cc:.1%}  (fraction with runtime data)")
-
-    me = kpis.get("mean_exposure", 0.0)
-    lines.append(f"  Mean exposure          : {me:.1%}  (avg call-trace coverage)")
 
     par = kpis.get("patch_acceptance_rate")
     if par is None:
@@ -179,6 +238,10 @@ def format_kpi_text(kpis: dict[str, Any]) -> str:
 
     fpp = kpis.get("false_positive_proxy", 0.0)
     lines.append(f"  False-positive proxy   : {fpp:.1%}  (HIGH items w/ exposure < 5%)")
+
+    tc = kpis.get("transitive_count", 0)
+    tr = kpis.get("transitive_rate", 0.0)
+    lines.append(f"  Transitive items       : {tc}  ({tr:.1%} of total — indirect callers)")
 
     lines.append("────────────────────────────────────────────────────────")
 
