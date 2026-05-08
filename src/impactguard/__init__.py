@@ -51,6 +51,7 @@ from .feedback import (
 from .feedback import (
     get_stats as get_feedback_stats,
 )
+from .kpi import compute_kpis, format_kpi_text
 from .generate_report import (
     generate_html,
     generate_html_from_file,
@@ -216,6 +217,9 @@ __all__ = [
     "get_feedback_stats",
     "compute_calibrated_weights",
     "apply_weights_to_config",
+    # KPI dashboard
+    "compute_kpis",
+    "format_kpi_text",
     # Adversarial generator
     "AdversarialPair",
     "generate_adversarial",
