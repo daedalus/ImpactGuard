@@ -24,6 +24,20 @@ import warnings
 from pathlib import Path
 from typing import Any
 
+from ._shared import (
+    _IGNORE_TAG,
+    _TREE_SITTER_AVAILABLE,
+    child_of_type,
+    has_ignore_comment,
+    has_ignore_comment_fallback,
+    make_call_dict,
+    make_parser,
+    make_signature_dict,
+    node_text,
+    register_extractor,
+    warn_if_no_tree_sitter,
+)
+
 # ── Optional tree-sitter dependency ──────────────────────────────────────────
 
 try:
@@ -45,29 +59,6 @@ def _make_parser() -> Any:
     return _CSharpParser(_CSHARP_LANGUAGE)
 
 
-def _node_text(node: Any, source: bytes) -> str:
-    """Return the UTF-8 text of a tree-sitter node."""
-    return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
-
-
-def _child_of_type(node: Any, *types: str) -> Any | None:
-    """Return the first direct child whose type is in *types*, or *None*."""
-    for child in node.children:
-        if child.type in types:
-            return child
-    return None
-
-
-def _has_ignore_comment(source_bytes: bytes, lineno_0based: int) -> bool:
-    """Return *True* if a ``// impactguard: ignore`` comment appears on or before the node."""
-    tag = b"impactguard: ignore"
-    lines = source_bytes.split(b"\n")
-    for idx in (lineno_0based - 1, lineno_0based):
-        if 0 <= idx < len(lines) and tag in lines[idx]:
-            return True
-    return False
-
-
 def _class_name_for_member(node: Any, source: bytes) -> str | None:
     """Walk up the tree to find the enclosing class/struct/interface name."""
     parent = node.parent
@@ -78,9 +69,9 @@ def _class_name_for_member(node: Any, source: bytes) -> str | None:
             "interface_declaration",
             "record_declaration",
         ):
-            name_node = _child_of_type(parent, "identifier")
+            name_node = child_of_type(parent, "identifier")
             if name_node is not None:
-                return _node_text(name_node, source)
+                return node_text(name_node, source)
         parent = parent.parent
     return None
 
@@ -90,14 +81,14 @@ def _has_modifier(node: Any, source: bytes, modifier: str) -> bool:
     for child in node.children:
         if child.type == "modifier_list":
             for mod in child.children:
-                if _node_text(mod, source).strip() == modifier:
+                if node_text(mod, source).strip() == modifier:
                     return True
         elif child.type in ("modifier",):
-            if _node_text(child, source).strip() == modifier:
+            if node_text(child, source).strip() == modifier:
                 return True
     # Also check direct children for modifier keywords
     for child in node.children:
-        txt = _node_text(child, source).strip()
+        txt = node_text(child, source).strip()
         if txt == modifier:
             return True
     return False
@@ -124,7 +115,7 @@ def _parse_params(
             is_params = False
             for c in child.children:
                 if c.type == "identifier":
-                    name = _node_text(c, source)
+                    name = node_text(c, source)
                 elif c.type in (
                     "predefined_type",
                     "identifier",
@@ -134,10 +125,10 @@ def _parse_params(
                     "qualified_name",
                 ):
                     if type_str is None:
-                        type_str = _node_text(c, source).strip()
+                        type_str = node_text(c, source).strip()
                 elif c.type == "equals_value_clause":
                     has_default = True
-                elif _node_text(c, source).strip() == "params":
+                elif node_text(c, source).strip() == "params":
                     is_params = True
             if is_params:
                 has_vararg = True
@@ -156,35 +147,47 @@ def _process_method(
 ) -> None:
     """Extract a signature from a C# method/constructor/local function."""
     if node.type in ("method_declaration", "local_function_statement"):
-        name_node = _child_of_type(node, "identifier")
+        name_node = child_of_type(node, "identifier")
         if name_node is None:
             return
-        name = _node_text(name_node, source)
+        name = node_text(name_node, source)
 
         # Return type is the type before the identifier
         return_type: str | None = None
         for c in node.children:
             if c == name_node:
                 break
-            txt = _node_text(c, source).strip()
+            txt = node_text(c, source).strip()
             if c.type not in ("modifier",) and txt not in (
-                "public", "private", "protected", "internal", "static",
-                "virtual", "override", "abstract", "sealed", "async",
-                "new", "extern", "readonly", "unsafe", "volatile",
+                "public",
+                "private",
+                "protected",
+                "internal",
+                "static",
+                "virtual",
+                "override",
+                "abstract",
+                "sealed",
+                "async",
+                "new",
+                "extern",
+                "readonly",
+                "unsafe",
+                "volatile",
             ):
                 if txt:
                     return_type = txt
 
     elif node.type == "constructor_declaration":
-        name_node = _child_of_type(node, "identifier")
+        name_node = child_of_type(node, "identifier")
         if name_node is None:
             return
-        name = _node_text(name_node, source)
+        name = node_text(name_node, source)
         return_type = None
     else:
         return
 
-    params_node = _child_of_type(node, "parameter_list")
+    params_node = child_of_type(node, "parameter_list")
     positional, has_vararg = _parse_params(params_node, source)
     is_async = _has_modifier(node, source, "async")
     exported = _has_modifier(node, source, "public")
@@ -212,7 +215,7 @@ def _process_method(
             "return_type": return_type,
             "decorators": [],
             "is_async": is_async,
-            "ignored": _has_ignore_comment(source, node.start_point[0]),
+            "ignored": has_ignore_comment(source, node.start_point[0]),
             "exported": exported,
         }
     )
@@ -271,14 +274,14 @@ def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
             name: str | None = None
             if func_node is not None:
                 if func_node.type == "identifier":
-                    name = _node_text(func_node, source)
+                    name = node_text(func_node, source)
                 elif func_node.type == "member_access_expression":
                     for c in reversed(func_node.children):
                         if c.type == "identifier":
-                            name = _node_text(c, source)
+                            name = node_text(c, source)
                             break
             if name is not None:
-                args_node = _child_of_type(node, "argument_list")
+                args_node = child_of_type(node, "argument_list")
                 arg_count = 0
                 if args_node is not None:
                     arg_count = sum(
@@ -312,16 +315,6 @@ _FUNC_RE = re.compile(
     r"(?:\s*(?:where\s+\w+\s*:\s*\w+)?)",
     re.MULTILINE,
 )
-
-_IGNORE_TAG = "impactguard: ignore"
-
-
-def _has_ignore_comment_fallback(lines: list[str], lineno: int) -> bool:
-    """Check for ``// impactguard: ignore`` on or before *lineno* (1-based)."""
-    for idx in (lineno - 2, lineno - 1):
-        if 0 <= idx < len(lines) and _IGNORE_TAG in lines[idx]:
-            return True
-    return False
 
 
 def _parse_csharp_params_regex(params_str: str) -> tuple[list[dict[str, Any]], bool]:
@@ -363,11 +356,40 @@ def _extract_with_regex(
     all_funcs: list[dict[str, Any]] = []
 
     _CSHARP_KEYWORDS = {
-        "if", "else", "for", "foreach", "while", "do", "switch", "case",
-        "return", "new", "class", "struct", "interface", "enum", "namespace",
-        "using", "try", "catch", "finally", "throw", "lock", "checked",
-        "unchecked", "fixed", "sizeof", "typeof", "default", "delegate",
-        "event", "abstract", "override", "virtual", "static", "sealed",
+        "if",
+        "else",
+        "for",
+        "foreach",
+        "while",
+        "do",
+        "switch",
+        "case",
+        "return",
+        "new",
+        "class",
+        "struct",
+        "interface",
+        "enum",
+        "namespace",
+        "using",
+        "try",
+        "catch",
+        "finally",
+        "throw",
+        "lock",
+        "checked",
+        "unchecked",
+        "fixed",
+        "sizeof",
+        "typeof",
+        "default",
+        "delegate",
+        "event",
+        "abstract",
+        "override",
+        "virtual",
+        "static",
+        "sealed",
     }
 
     for f in files:
@@ -407,7 +429,7 @@ def _extract_with_regex(
                     "return_type": return_type,
                     "decorators": [],
                     "is_async": is_async,
-                    "ignored": _has_ignore_comment_fallback(lines, lineno),
+                    "ignored": has_ignore_comment_fallback(lines, lineno),
                     "exported": exported,
                 }
             )
@@ -433,8 +455,18 @@ def _extract_calls_with_regex(path: Path) -> list[dict[str, Any]]:
     calls: list[dict[str, Any]] = []
     call_re = re.compile(r"\b(?P<name>\w+)\s*\((?P<args>[^)]*)\)")
     _KEYWORDS = {
-        "if", "for", "foreach", "while", "switch", "catch", "lock",
-        "checked", "unchecked", "fixed", "sizeof", "typeof",
+        "if",
+        "for",
+        "foreach",
+        "while",
+        "switch",
+        "catch",
+        "lock",
+        "checked",
+        "unchecked",
+        "fixed",
+        "sizeof",
+        "typeof",
     }
     for m in call_re.finditer(source):
         name = m.group("name")
@@ -517,9 +549,7 @@ class CSharpExtractor:
 
 
 def _register() -> None:
-    from .registry import register
-
-    register(CSharpExtractor())
+    register_extractor(CSharpExtractor())
 
 
 _register()

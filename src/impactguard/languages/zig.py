@@ -24,6 +24,20 @@ import warnings
 from pathlib import Path
 from typing import Any
 
+from ._shared import (
+    _IGNORE_TAG,
+    _TREE_SITTER_AVAILABLE,
+    child_of_type,
+    has_ignore_comment,
+    has_ignore_comment_fallback,
+    make_call_dict,
+    make_parser,
+    make_signature_dict,
+    node_text,
+    register_extractor,
+    warn_if_no_tree_sitter,
+)
+
 # ── Optional tree-sitter dependency ──────────────────────────────────────────
 
 try:
@@ -43,29 +57,6 @@ except ImportError:  # pragma: no cover
 def _make_parser() -> Any:
     """Create a fresh tree-sitter Zig parser."""
     return _ZigParser(_ZIG_LANGUAGE)
-
-
-def _node_text(node: Any, source: bytes) -> str:
-    """Return the UTF-8 text of a tree-sitter node."""
-    return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
-
-
-def _child_of_type(node: Any, *types: str) -> Any | None:
-    """Return the first direct child whose type is in *types*, or *None*."""
-    for child in node.children:
-        if child.type in types:
-            return child
-    return None
-
-
-def _has_ignore_comment(source_bytes: bytes, lineno_0based: int) -> bool:
-    """Return *True* if a ``// impactguard: ignore`` comment appears on or before the node."""
-    tag = b"impactguard: ignore"
-    lines = source_bytes.split(b"\n")
-    for idx in (lineno_0based - 1, lineno_0based):
-        if 0 <= idx < len(lines) and tag in lines[idx]:
-            return True
-    return False
 
 
 def _parse_params(
@@ -88,11 +79,11 @@ def _parse_params(
             colon_seen = False
             for c in child.children:
                 if c.type == "identifier" and not colon_seen:
-                    name = _node_text(c, source)
+                    name = node_text(c, source)
                 elif c.type == ":":
                     colon_seen = True
                 elif colon_seen and type_str is None:
-                    type_str = _node_text(c, source).strip()
+                    type_str = node_text(c, source).strip()
             positional.append(
                 {"name": name or "_", "has_default": False, "type": type_str}
             )
@@ -114,29 +105,29 @@ def _process_function(
     parent = node.parent
     if parent is not None:
         for c in parent.children:
-            if c.type == "pub" or _node_text(c, source).strip() == "pub":
+            if c.type == "pub" or node_text(c, source).strip() == "pub":
                 is_pub = True
                 break
 
     # Also check direct children for pub
     for c in node.children:
-        if _node_text(c, source).strip() == "pub":
+        if node_text(c, source).strip() == "pub":
             is_pub = True
             break
 
-    name_node = _child_of_type(node, "identifier")
+    name_node = child_of_type(node, "identifier")
     if name_node is None:
         return
 
-    name = _node_text(name_node, source)
+    name = node_text(name_node, source)
 
     is_async = False
     for c in node.children:
-        if _node_text(c, source).strip() == "async":
+        if node_text(c, source).strip() == "async":
             is_async = True
             break
 
-    params_node = _child_of_type(node, "fn_params", "param_list")
+    params_node = child_of_type(node, "fn_params", "param_list")
     positional, has_vararg = _parse_params(params_node, source)
 
     # Return type: after params
@@ -146,8 +137,15 @@ def _process_function(
         if c.type in ("fn_params", "param_list"):
             params_done = True
         elif params_done and c.type not in ("fn", "identifier", "{", ";"):
-            txt = _node_text(c, source).strip()
-            if txt and txt not in ("pub", "async", "extern", "export", "inline", "noinline"):
+            txt = node_text(c, source).strip()
+            if txt and txt not in (
+                "pub",
+                "async",
+                "extern",
+                "export",
+                "inline",
+                "noinline",
+            ):
                 return_type = txt
                 break
 
@@ -166,7 +164,7 @@ def _process_function(
             "return_type": return_type,
             "decorators": [],
             "is_async": is_async,
-            "ignored": _has_ignore_comment(source, node.start_point[0]),
+            "ignored": has_ignore_comment(source, node.start_point[0]),
             "exported": is_pub,
         }
     )
@@ -221,14 +219,14 @@ def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
             name: str | None = None
             if func_node is not None:
                 if func_node.type == "identifier":
-                    name = _node_text(func_node, source)
+                    name = node_text(func_node, source)
                 elif func_node.type == "field_access":
                     for c in reversed(func_node.children):
                         if c.type == "identifier":
-                            name = _node_text(c, source)
+                            name = node_text(c, source)
                             break
             if name is not None:
-                args_node = _child_of_type(node, "argument_list")
+                args_node = child_of_type(node, "argument_list")
                 arg_count = 0
                 if args_node is not None:
                     arg_count = sum(
@@ -259,16 +257,6 @@ _FUNC_RE = re.compile(
     r"(?:\s+(?P<return>[^\{;]+))?",
     re.MULTILINE,
 )
-
-_IGNORE_TAG = "impactguard: ignore"
-
-
-def _has_ignore_comment_fallback(lines: list[str], lineno: int) -> bool:
-    """Check for ``// impactguard: ignore`` on or before *lineno* (1-based)."""
-    for idx in (lineno - 2, lineno - 1):
-        if 0 <= idx < len(lines) and _IGNORE_TAG in lines[idx]:
-            return True
-    return False
 
 
 def _parse_zig_params_regex(params_str: str) -> tuple[list[dict[str, Any]], bool]:
@@ -344,7 +332,7 @@ def _extract_with_regex(
                     "return_type": return_type,
                     "decorators": [],
                     "is_async": is_async,
-                    "ignored": _has_ignore_comment_fallback(lines, lineno),
+                    "ignored": has_ignore_comment_fallback(lines, lineno),
                     "exported": exported,
                 }
             )
@@ -454,9 +442,7 @@ class ZigExtractor:
 
 
 def _register() -> None:
-    from .registry import register
-
-    register(ZigExtractor())
+    register_extractor(ZigExtractor())
 
 
 _register()

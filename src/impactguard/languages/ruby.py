@@ -24,6 +24,20 @@ import warnings
 from pathlib import Path
 from typing import Any
 
+from ._shared import (
+    _IGNORE_TAG,
+    _TREE_SITTER_AVAILABLE,
+    child_of_type,
+    has_ignore_comment,
+    has_ignore_comment_fallback,
+    make_call_dict,
+    make_parser,
+    make_signature_dict,
+    node_text,
+    register_extractor,
+    warn_if_no_tree_sitter,
+)
+
 # ── Optional tree-sitter dependency ──────────────────────────────────────────
 
 try:
@@ -45,29 +59,6 @@ def _make_parser() -> Any:
     return _RubyParser(_RUBY_LANGUAGE)
 
 
-def _node_text(node: Any, source: bytes) -> str:
-    """Return the UTF-8 text of a tree-sitter node."""
-    return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
-
-
-def _child_of_type(node: Any, *types: str) -> Any | None:
-    """Return the first direct child whose type is in *types*, or *None*."""
-    for child in node.children:
-        if child.type in types:
-            return child
-    return None
-
-
-def _has_ignore_comment(source_bytes: bytes, lineno_0based: int) -> bool:
-    """Return *True* if a ``# impactguard: ignore`` comment appears on or before the node."""
-    tag = b"impactguard: ignore"
-    lines = source_bytes.split(b"\n")
-    for idx in (lineno_0based - 1, lineno_0based):
-        if 0 <= idx < len(lines) and tag in lines[idx]:
-            return True
-    return False
-
-
 def _parse_method_parameters(
     params_node: Any | None,
     source: bytes,
@@ -84,14 +75,14 @@ def _parse_method_parameters(
         if t == "identifier":
             positional.append(
                 {
-                    "name": _node_text(child, source),
+                    "name": node_text(child, source),
                     "has_default": False,
                     "type": None,
                 }
             )
         elif t == "optional_parameter":
-            name_node = _child_of_type(child, "identifier")
-            name = _node_text(name_node, source) if name_node else "unknown"
+            name_node = child_of_type(child, "identifier")
+            name = node_text(name_node, source) if name_node else "unknown"
             positional.append({"name": name, "has_default": True, "type": None})
         elif t == "splat_parameter":
             has_vararg = True
@@ -103,8 +94,8 @@ def _parse_method_parameters(
             pass
         elif t == "keyword_parameter":
             # name: or name: default
-            name_node = _child_of_type(child, "identifier")
-            name = _node_text(name_node, source) if name_node else "unknown"
+            name_node = child_of_type(child, "identifier")
+            name = node_text(name_node, source) if name_node else "unknown"
             has_default = any(
                 c.type not in ("identifier", ":", ",") for c in child.children
             )
@@ -126,7 +117,7 @@ def _process_method(
 
     for child in node.children:
         if child.type == "identifier" and name is None:
-            name = _node_text(child, source)
+            name = node_text(child, source)
         elif child.type == "method_parameters":
             params_node = child
 
@@ -157,7 +148,7 @@ def _process_method(
             "return_type": None,  # Ruby has no type annotations in standard syntax
             "decorators": [],
             "is_async": False,
-            "ignored": _has_ignore_comment(source, node.start_point[0]),
+            "ignored": has_ignore_comment(source, node.start_point[0]),
             "exported": True,
         }
     )
@@ -189,7 +180,7 @@ def _process_singleton_method(
         if ctype == ".":
             dot_seen = True
         elif dot_seen and ctype == "identifier" and name is None:
-            name = _node_text(child, source)
+            name = node_text(child, source)
 
     if name is None:
         return
@@ -212,7 +203,7 @@ def _process_singleton_method(
             "return_type": None,
             "decorators": [],
             "is_async": False,
-            "ignored": _has_ignore_comment(source, node.start_point[0]),
+            "ignored": has_ignore_comment(source, node.start_point[0]),
             "exported": True,
         }
     )
@@ -248,9 +239,9 @@ def _extract_with_tree_sitter(
                 cn: str | None = None
                 for child in node.children:
                     if child.type == "constant":
-                        cn = _node_text(child, source)
+                        cn = node_text(child, source)
                         break
-                body = _child_of_type(node, "body_statement")
+                body = child_of_type(node, "body_statement")
                 if body is not None:
                     for child in body.children:
                         visit(child, cn)
@@ -258,9 +249,9 @@ def _extract_with_tree_sitter(
                 mn: str | None = None
                 for child in node.children:
                     if child.type == "constant":
-                        mn = _node_text(child, source)
+                        mn = node_text(child, source)
                         break
-                body = _child_of_type(node, "body_statement")
+                body = child_of_type(node, "body_statement")
                 if body is not None:
                     for child in body.children:
                         visit(child, mn)
@@ -289,7 +280,7 @@ def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
     def visit(node: Any) -> None:
         if node.type == "call":
             # call: receiver '.' method_name argument_list?
-            method_node = _child_of_type(node, "identifier")
+            method_node = child_of_type(node, "identifier")
             if method_node is None:
                 # Could be: identifier argument_list (bare method call)
                 for child in node.children:
@@ -298,8 +289,8 @@ def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
                         break
 
             if method_node is not None:
-                name = _node_text(method_node, source)
-                args_node = _child_of_type(node, "argument_list")
+                name = node_text(method_node, source)
+                args_node = child_of_type(node, "argument_list")
                 arg_count = 0
                 if args_node is not None:
                     arg_count = sum(
@@ -331,16 +322,6 @@ _METHOD_RE = re.compile(
     r"(?:\((?P<params>[^)]*)\))?",
     re.MULTILINE,
 )
-
-_IGNORE_TAG = "impactguard: ignore"
-
-
-def _has_ignore_comment_fallback(lines: list[str], lineno: int) -> bool:
-    """Check for ``# impactguard: ignore`` on or before *lineno* (1-based)."""
-    for idx in (lineno - 2, lineno - 1):
-        if 0 <= idx < len(lines) and _IGNORE_TAG in lines[idx]:
-            return True
-    return False
 
 
 def _parse_ruby_params_regex(params_str: str) -> tuple[list[dict[str, Any]], bool]:
@@ -408,7 +389,7 @@ def _extract_with_regex(
                     "return_type": None,
                     "decorators": [],
                     "is_async": False,
-                    "ignored": _has_ignore_comment_fallback(lines, lineno),
+                    "ignored": has_ignore_comment_fallback(lines, lineno),
                     "exported": True,
                 }
             )
@@ -520,9 +501,7 @@ class RubyExtractor:
 
 
 def _register() -> None:
-    from .registry import register
-
-    register(RubyExtractor())
+    register_extractor(RubyExtractor())
 
 
 _register()

@@ -24,6 +24,20 @@ import warnings
 from pathlib import Path
 from typing import Any
 
+from ._shared import (
+    _IGNORE_TAG,
+    _TREE_SITTER_AVAILABLE,
+    child_of_type,
+    has_ignore_comment,
+    has_ignore_comment_fallback,
+    make_call_dict,
+    make_parser,
+    make_signature_dict,
+    node_text,
+    register_extractor,
+    warn_if_no_tree_sitter,
+)
+
 # ── Optional tree-sitter dependency ──────────────────────────────────────────
 
 try:
@@ -45,35 +59,12 @@ def _make_parser() -> Any:
     return _RustParser(_RUST_LANGUAGE)
 
 
-def _node_text(node: Any, source: bytes) -> str:
-    """Return the UTF-8 text of a tree-sitter node."""
-    return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
-
-
-def _child_of_type(node: Any, *types: str) -> Any | None:
-    """Return the first direct child whose type is in *types*, or *None*."""
-    for child in node.children:
-        if child.type in types:
-            return child
-    return None
-
-
-def _has_ignore_comment(source_bytes: bytes, lineno_0based: int) -> bool:
-    """Return *True* if a ``// impactguard: ignore`` comment appears on or before the node."""
-    tag = b"impactguard: ignore"
-    lines = source_bytes.split(b"\n")
-    for idx in (lineno_0based - 1, lineno_0based):
-        if 0 <= idx < len(lines) and tag in lines[idx]:
-            return True
-    return False
-
-
 def _is_pub(node: Any, source: bytes) -> bool:
     """Return True if the node has a ``pub`` visibility modifier."""
-    vis = _child_of_type(node, "visibility_modifier")
+    vis = child_of_type(node, "visibility_modifier")
     if vis is None:
         return False
-    return _node_text(vis, source).startswith("pub")
+    return node_text(vis, source).startswith("pub")
 
 
 def _parse_parameters(
@@ -94,12 +85,12 @@ def _parse_parameters(
             colon_seen = False
             for c in child.children:
                 if c.type == "identifier" and not colon_seen:
-                    name = _node_text(c, source)
+                    name = node_text(c, source)
                 elif c.type == ":":
                     colon_seen = True
                 elif colon_seen and type_node is None:
                     type_node = c
-            type_str = _node_text(type_node, source).strip() if type_node else None
+            type_str = node_text(type_node, source).strip() if type_node else None
             positional.append(
                 {
                     "name": name or "unknown",
@@ -124,7 +115,7 @@ def _return_type_text(node: Any, source: bytes) -> str | None:
         if child.type == "->":
             arrow_seen = True
         elif arrow_seen and child.type not in ("block", ";"):
-            return _node_text(child, source).strip()
+            return node_text(child, source).strip()
     return None
 
 
@@ -136,12 +127,12 @@ def _process_function(
     funcs: list[dict[str, Any]],
 ) -> None:
     """Extract a signature from a ``function_item`` or ``function_signature_item``."""
-    name_node = _child_of_type(node, "identifier")
+    name_node = child_of_type(node, "identifier")
     if name_node is None:
         return
 
-    name = _node_text(name_node, source)
-    params_node = _child_of_type(node, "parameters")
+    name = node_text(name_node, source)
+    params_node = child_of_type(node, "parameters")
     positional, has_vararg = _parse_parameters(params_node, source)
     return_type = _return_type_text(node, source)
     is_pub = _is_pub(node, source)
@@ -168,7 +159,7 @@ def _process_function(
             "return_type": return_type,
             "decorators": [],
             "is_async": False,
-            "ignored": _has_ignore_comment(source, node.start_point[0]),
+            "ignored": has_ignore_comment(source, node.start_point[0]),
             "exported": is_pub,
         }
     )
@@ -204,8 +195,8 @@ def _extract_with_tree_sitter(
                 type_name: str | None = None
                 for child in node.children:
                     if child.type in ("type_identifier",) and type_name is None:
-                        type_name = _node_text(child, source)
-                decl_list = _child_of_type(node, "declaration_list")
+                        type_name = node_text(child, source)
+                decl_list = child_of_type(node, "declaration_list")
                 if decl_list is not None:
                     for child in decl_list.children:
                         visit(child, type_name)
@@ -237,20 +228,20 @@ def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
             name: str | None = None
             if func_node is not None:
                 if func_node.type == "identifier":
-                    name = _node_text(func_node, source)
+                    name = node_text(func_node, source)
                 elif func_node.type == "field_expression":
-                    field = _child_of_type(func_node, "field_identifier")
+                    field = child_of_type(func_node, "field_identifier")
                     if field is not None:
-                        name = _node_text(field, source)
+                        name = node_text(field, source)
                 elif func_node.type == "scoped_identifier":
                     # e.g. MyStruct::new
                     for c in reversed(func_node.children):
                         if c.type == "identifier":
-                            name = _node_text(c, source)
+                            name = node_text(c, source)
                             break
 
             if name is not None:
-                args_node = _child_of_type(node, "arguments")
+                args_node = child_of_type(node, "arguments")
                 arg_count = 0
                 if args_node is not None:
                     arg_count = sum(
@@ -284,16 +275,6 @@ _FUNC_RE = re.compile(
     r"(?:\s*->\s*(?P<return>[^{;]+))?",
     re.MULTILINE,
 )
-
-_IGNORE_TAG = "impactguard: ignore"
-
-
-def _has_ignore_comment_fallback(lines: list[str], lineno: int) -> bool:
-    """Check for ``// impactguard: ignore`` on or before *lineno* (1-based)."""
-    for idx in (lineno - 2, lineno - 1):
-        if 0 <= idx < len(lines) and _IGNORE_TAG in lines[idx]:
-            return True
-    return False
 
 
 def _parse_rust_params_regex(params_str: str) -> tuple[list[dict[str, Any]], bool]:
@@ -370,7 +351,7 @@ def _extract_with_regex(
                     "return_type": return_type,
                     "decorators": [],
                     "is_async": False,
-                    "ignored": _has_ignore_comment_fallback(lines, lineno),
+                    "ignored": has_ignore_comment_fallback(lines, lineno),
                     "exported": exported,
                 }
             )
@@ -482,9 +463,7 @@ class RustExtractor:
 
 
 def _register() -> None:
-    from .registry import register
-
-    register(RustExtractor())
+    register_extractor(RustExtractor())
 
 
 _register()
