@@ -259,4 +259,8 @@ __all__ = [
     "detect_language",
     "list_languages",
     "list_language_extensions",
+    # Module analysis
+    "extract_calls",
+    "analyze_module",
+    "analyze_impact",
 ]
