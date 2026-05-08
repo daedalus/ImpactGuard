@@ -1230,6 +1230,39 @@ def cmd_baseline_tagged(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_kpi(args: argparse.Namespace) -> int:
+    """Compute and display KPI dashboard from a risk report JSON."""
+    from .feedback import load_outcomes
+    from .kpi import compute_kpis, format_kpi_text
+
+    try:
+        with open(args.report) as f:
+            report_data = json.load(f)
+    except OSError as exc:
+        print(f"Error reading report: {exc}", file=sys.stderr)
+        return 1
+    except json.JSONDecodeError as exc:
+        print(f"Error parsing report JSON: {exc}", file=sys.stderr)
+        return 1
+
+    feedback_outcomes = None
+    feedback_path: str | None = getattr(args, "feedback_path", None)
+    if feedback_path:
+        feedback_outcomes = load_outcomes(feedback_path)
+
+    kpis = compute_kpis(report_data, feedback_outcomes=feedback_outcomes)
+
+    output: str | None = getattr(args, "output", None)
+    if output:
+        with open(output, "w") as f:
+            json.dump(kpis, f, indent=2)
+        print(f"KPIs written to {output}")
+    else:
+        print(format_kpi_text(kpis))
+
+    return 0
+
+
 def cmd_validate_config(args: argparse.Namespace) -> int:
     """Validate the impactguard.toml configuration file."""
     from .config import validate_config
@@ -1782,6 +1815,21 @@ def main() -> int:
     )
     validate_cfg_parser.set_defaults(func=cmd_validate_config)
 
+    # kpi subcommand
+    kpi_parser = subparsers.add_parser(
+        "kpi", help="Compute KPI dashboard from a risk report JSON"
+    )
+    kpi_parser.add_argument("report", help="Risk report JSON file")
+    kpi_parser.add_argument(
+        "--feedback-path",
+        dest="feedback_path",
+        help="Feedback JSON file to include patch acceptance rate",
+    )
+    kpi_parser.add_argument(
+        "-o", "--output", help="Write KPIs as JSON to this file (default: text to stdout)"
+    )
+    kpi_parser.set_defaults(func=cmd_kpi)
+
     if (
         len(sys.argv) > 1
         and sys.argv[1]
@@ -1809,6 +1857,7 @@ def main() -> int:
             "feedback",
             "history",
             "validate-config",
+            "kpi",
         ]
         and not sys.argv[1].startswith("-")
     ):
