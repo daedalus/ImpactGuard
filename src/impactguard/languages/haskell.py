@@ -25,7 +25,7 @@ import warnings
 from pathlib import Path
 from typing import Any
 
-from .shared import (
+from .lib.shared import (
     _IGNORE_TAG,
     _TREE_SITTER_AVAILABLE,
     child_of_type,

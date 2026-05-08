@@ -208,7 +208,7 @@ def compare(  # noqa: MC0001
     # Resolve language-specific union parser (falls back to None → Python default)
     _union_parser: Any = None
     if language is not None:
-        from .languages.registry import get_extractor_by_language
+        from .languages.lib.registry import get_extractor_by_language
 
         _lang_ext = get_extractor_by_language(language)
         if _lang_ext is not None:

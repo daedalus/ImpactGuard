@@ -34,74 +34,74 @@ def _write(tmp_path: Path, name: str, content: str) -> Path:
 
 class TestRegistry:
     def test_get_extractor_python(self) -> None:
-        from impactguard.languages.registry import get_extractor
+        from impactguard.languages.lib.registry import get_extractor
 
         ext = get_extractor("mymodule.py")
         assert ext is not None
         assert ext.language == "python"
 
     def test_get_extractor_typescript(self) -> None:
-        from impactguard.languages.registry import get_extractor
+        from impactguard.languages.lib.registry import get_extractor
 
         ext = get_extractor("api.ts")
         assert ext is not None
         assert ext.language == "typescript"
 
     def test_get_extractor_tsx(self) -> None:
-        from impactguard.languages.registry import get_extractor
+        from impactguard.languages.lib.registry import get_extractor
 
         ext = get_extractor("Component.tsx")
         assert ext is not None
         assert ext.language == "typescript"
 
     def test_get_extractor_unknown(self) -> None:
-        from impactguard.languages.registry import get_extractor
+        from impactguard.languages.lib.registry import get_extractor
 
         assert get_extractor("file.cobol") is None
 
     def test_get_extractor_by_language_python(self) -> None:
-        from impactguard.languages.registry import get_extractor_by_language
+        from impactguard.languages.lib.registry import get_extractor_by_language
 
         ext = get_extractor_by_language("python")
         assert ext is not None
         assert ext.language == "python"
 
     def test_get_extractor_by_language_typescript(self) -> None:
-        from impactguard.languages.registry import get_extractor_by_language
+        from impactguard.languages.lib.registry import get_extractor_by_language
 
         ext = get_extractor_by_language("typescript")
         assert ext is not None
 
     def test_get_extractor_by_language_unknown(self) -> None:
-        from impactguard.languages.registry import get_extractor_by_language
+        from impactguard.languages.lib.registry import get_extractor_by_language
 
         assert get_extractor_by_language("cobol") is None
 
     def test_detect_language_python(self) -> None:
-        from impactguard.languages.registry import detect_language
+        from impactguard.languages.lib.registry import detect_language
 
         assert detect_language("foo.py") == "python"
 
     def test_detect_language_typescript(self) -> None:
-        from impactguard.languages.registry import detect_language
+        from impactguard.languages.lib.registry import detect_language
 
         assert detect_language("foo.ts") == "typescript"
         assert detect_language("foo.tsx") == "typescript"
 
     def test_detect_language_unknown(self) -> None:
-        from impactguard.languages.registry import detect_language
+        from impactguard.languages.lib.registry import detect_language
 
         assert detect_language("foo.cobol") is None
 
     def test_list_languages(self) -> None:
-        from impactguard.languages.registry import list_languages
+        from impactguard.languages.lib.registry import list_languages
 
         langs = list_languages()
         assert "python" in langs
         assert "typescript" in langs
 
     def test_list_extensions(self) -> None:
-        from impactguard.languages.registry import list_extensions
+        from impactguard.languages.lib.registry import list_extensions
 
         exts = list_extensions()
         assert ".py" in exts
@@ -109,7 +109,10 @@ class TestRegistry:
         assert ".tsx" in exts
 
     def test_register_custom_language(self) -> None:
-        from impactguard.languages.registry import get_extractor_by_language, register
+        from impactguard.languages.lib.registry import (
+            get_extractor_by_language,
+            register,
+        )
 
         class FakeLang:
             language = "fake"
@@ -130,7 +133,7 @@ class TestRegistry:
         assert ext.language == "fake"
 
     def test_case_insensitive_lookup(self) -> None:
-        from impactguard.languages.registry import get_extractor_by_language
+        from impactguard.languages.lib.registry import get_extractor_by_language
 
         assert get_extractor_by_language("PYTHON") is not None
         assert get_extractor_by_language("TypeScript") is not None
@@ -141,13 +144,13 @@ class TestRegistry:
 
 class TestLanguageExtractorProtocol:
     def test_python_satisfies_protocol(self) -> None:
-        from impactguard.languages.base import LanguageExtractor
+        from impactguard.languages.lib.base import LanguageExtractor
         from impactguard.languages.python import PythonExtractor
 
         assert isinstance(PythonExtractor(), LanguageExtractor)
 
     def test_typescript_satisfies_protocol(self) -> None:
-        from impactguard.languages.base import LanguageExtractor
+        from impactguard.languages.lib.base import LanguageExtractor
         from impactguard.languages.typescript import TypeScriptExtractor
 
         assert isinstance(TypeScriptExtractor(), LanguageExtractor)
@@ -859,7 +862,7 @@ class TestRegistryNewLanguages:
     """Verify that all new language extractors are registered correctly."""
 
     def test_java_registered(self) -> None:
-        from impactguard.languages.registry import (
+        from impactguard.languages.lib.registry import (
             get_extractor,
             get_extractor_by_language,
         )
@@ -868,7 +871,7 @@ class TestRegistryNewLanguages:
         assert get_extractor_by_language("java") is not None
 
     def test_go_registered(self) -> None:
-        from impactguard.languages.registry import (
+        from impactguard.languages.lib.registry import (
             get_extractor,
             get_extractor_by_language,
         )
@@ -877,7 +880,7 @@ class TestRegistryNewLanguages:
         assert get_extractor_by_language("go") is not None
 
     def test_rust_registered(self) -> None:
-        from impactguard.languages.registry import (
+        from impactguard.languages.lib.registry import (
             get_extractor,
             get_extractor_by_language,
         )
@@ -886,7 +889,7 @@ class TestRegistryNewLanguages:
         assert get_extractor_by_language("rust") is not None
 
     def test_c_registered(self) -> None:
-        from impactguard.languages.registry import (
+        from impactguard.languages.lib.registry import (
             get_extractor,
             get_extractor_by_language,
         )
@@ -896,7 +899,7 @@ class TestRegistryNewLanguages:
         assert get_extractor_by_language("c") is not None
 
     def test_cpp_registered(self) -> None:
-        from impactguard.languages.registry import (
+        from impactguard.languages.lib.registry import (
             get_extractor,
             get_extractor_by_language,
         )
@@ -907,7 +910,7 @@ class TestRegistryNewLanguages:
         assert get_extractor_by_language("cpp") is not None
 
     def test_ruby_registered(self) -> None:
-        from impactguard.languages.registry import (
+        from impactguard.languages.lib.registry import (
             get_extractor,
             get_extractor_by_language,
         )
@@ -916,48 +919,48 @@ class TestRegistryNewLanguages:
         assert get_extractor_by_language("ruby") is not None
 
     def test_list_languages_includes_all_new(self) -> None:
-        from impactguard.languages.registry import list_languages
+        from impactguard.languages.lib.registry import list_languages
 
         langs = list_languages()
         for lang in ("java", "go", "rust", "c", "cpp", "ruby"):
             assert lang in langs, f"{lang} missing from list_languages()"
 
     def test_list_extensions_includes_new(self) -> None:
-        from impactguard.languages.registry import list_extensions
+        from impactguard.languages.lib.registry import list_extensions
 
         exts = list_extensions()
         for ext in (".java", ".go", ".rs", ".c", ".h", ".cpp", ".hpp", ".cc", ".rb"):
             assert ext in exts, f"{ext} missing from list_extensions()"
 
     def test_detect_language_java(self) -> None:
-        from impactguard.languages.registry import detect_language
+        from impactguard.languages.lib.registry import detect_language
 
         assert detect_language("Foo.java") == "java"
 
     def test_detect_language_go(self) -> None:
-        from impactguard.languages.registry import detect_language
+        from impactguard.languages.lib.registry import detect_language
 
         assert detect_language("main.go") == "go"
 
     def test_detect_language_rust(self) -> None:
-        from impactguard.languages.registry import detect_language
+        from impactguard.languages.lib.registry import detect_language
 
         assert detect_language("lib.rs") == "rust"
 
     def test_detect_language_c(self) -> None:
-        from impactguard.languages.registry import detect_language
+        from impactguard.languages.lib.registry import detect_language
 
         assert detect_language("util.c") == "c"
         assert detect_language("header.h") == "c"
 
     def test_detect_language_cpp(self) -> None:
-        from impactguard.languages.registry import detect_language
+        from impactguard.languages.lib.registry import detect_language
 
         assert detect_language("app.cpp") == "cpp"
         assert detect_language("app.cc") == "cpp"
 
     def test_detect_language_ruby(self) -> None:
-        from impactguard.languages.registry import detect_language
+        from impactguard.languages.lib.registry import detect_language
 
         assert detect_language("script.rb") == "ruby"
 
@@ -967,37 +970,37 @@ class TestRegistryNewLanguages:
 
 class TestNewExtractorsProtocol:
     def test_java_satisfies_protocol(self) -> None:
-        from impactguard.languages.base import LanguageExtractor
         from impactguard.languages.java import JavaExtractor
+        from impactguard.languages.lib.base import LanguageExtractor
 
         assert isinstance(JavaExtractor(), LanguageExtractor)
 
     def test_go_satisfies_protocol(self) -> None:
-        from impactguard.languages.base import LanguageExtractor
         from impactguard.languages.go import GoExtractor
+        from impactguard.languages.lib.base import LanguageExtractor
 
         assert isinstance(GoExtractor(), LanguageExtractor)
 
     def test_rust_satisfies_protocol(self) -> None:
-        from impactguard.languages.base import LanguageExtractor
+        from impactguard.languages.lib.base import LanguageExtractor
         from impactguard.languages.rust import RustExtractor
 
         assert isinstance(RustExtractor(), LanguageExtractor)
 
     def test_c_satisfies_protocol(self) -> None:
-        from impactguard.languages.base import LanguageExtractor
         from impactguard.languages.c import CExtractor
+        from impactguard.languages.lib.base import LanguageExtractor
 
         assert isinstance(CExtractor(), LanguageExtractor)
 
     def test_cpp_satisfies_protocol(self) -> None:
-        from impactguard.languages.base import LanguageExtractor
         from impactguard.languages.c import CppExtractor
+        from impactguard.languages.lib.base import LanguageExtractor
 
         assert isinstance(CppExtractor(), LanguageExtractor)
 
     def test_ruby_satisfies_protocol(self) -> None:
-        from impactguard.languages.base import LanguageExtractor
+        from impactguard.languages.lib.base import LanguageExtractor
         from impactguard.languages.ruby import RubyExtractor
 
         assert isinstance(RubyExtractor(), LanguageExtractor)
@@ -1769,20 +1772,20 @@ class TestJavaScriptExtractorTreeSitter:
         assert "foo" in names
 
     def test_protocol_satisfaction(self) -> None:
-        from impactguard.languages.base import LanguageExtractor
         from impactguard.languages.javascript import JavaScriptExtractor
+        from impactguard.languages.lib.base import LanguageExtractor
 
         assert isinstance(JavaScriptExtractor(), LanguageExtractor)
 
     def test_registry_lookup_by_extension(self) -> None:
-        from impactguard.languages.registry import get_extractor
+        from impactguard.languages.lib.registry import get_extractor
 
         ext = get_extractor("app.js")
         assert ext is not None
         assert ext.language == "javascript"
 
     def test_registry_lookup_by_language(self) -> None:
-        from impactguard.languages.registry import get_extractor_by_language
+        from impactguard.languages.lib.registry import get_extractor_by_language
 
         ext = get_extractor_by_language("javascript")
         assert ext is not None
@@ -1913,20 +1916,20 @@ class TestKotlinExtractorTreeSitter:
         assert "foo" in names
 
     def test_protocol_satisfaction(self) -> None:
-        from impactguard.languages.base import LanguageExtractor
         from impactguard.languages.kotlin import KotlinExtractor
+        from impactguard.languages.lib.base import LanguageExtractor
 
         assert isinstance(KotlinExtractor(), LanguageExtractor)
 
     def test_registry_lookup_by_extension(self) -> None:
-        from impactguard.languages.registry import get_extractor
+        from impactguard.languages.lib.registry import get_extractor
 
         ext = get_extractor("app.kt")
         assert ext is not None
         assert ext.language == "kotlin"
 
     def test_registry_lookup_by_language(self) -> None:
-        from impactguard.languages.registry import get_extractor_by_language
+        from impactguard.languages.lib.registry import get_extractor_by_language
 
         ext = get_extractor_by_language("kotlin")
         assert ext is not None
@@ -2017,12 +2020,16 @@ class TestSwiftExtractorTreeSitter:
         assert any(s["name"] == "greet" for s in sigs)
 
     def test_async_function(self, tmp_path: Path, ext) -> None:
-        f = _write(tmp_path, "svc.swift", "async func fetch(url: String) -> String {}\n")
+        f = _write(
+            tmp_path, "svc.swift", "async func fetch(url: String) -> String {}\n"
+        )
         sigs = ext.extract_signatures([str(f)])
         assert sigs[0]["is_async"] is True
 
     def test_exported_function(self, tmp_path: Path, ext) -> None:
-        f = _write(tmp_path, "api.swift", "public func pub(x: Int) -> String { return \"\" }\n")
+        f = _write(
+            tmp_path, "api.swift", 'public func pub(x: Int) -> String { return "" }\n'
+        )
         sigs = ext.extract_signatures([str(f)])
         assert sigs[0]["exported"] is True
 
@@ -2047,20 +2054,20 @@ class TestSwiftExtractorTreeSitter:
         assert "foo" in names
 
     def test_protocol_satisfaction(self) -> None:
-        from impactguard.languages.base import LanguageExtractor
+        from impactguard.languages.lib.base import LanguageExtractor
         from impactguard.languages.swift import SwiftExtractor
 
         assert isinstance(SwiftExtractor(), LanguageExtractor)
 
     def test_registry_lookup_by_extension(self) -> None:
-        from impactguard.languages.registry import get_extractor
+        from impactguard.languages.lib.registry import get_extractor
 
         ext = get_extractor("app.swift")
         assert ext is not None
         assert ext.language == "swift"
 
     def test_registry_lookup_by_language(self) -> None:
-        from impactguard.languages.registry import get_extractor_by_language
+        from impactguard.languages.lib.registry import get_extractor_by_language
 
         ext = get_extractor_by_language("swift")
         assert ext is not None
@@ -2087,14 +2094,18 @@ class TestSwiftExtractorRegex:
         assert any(s["name"] == "greet" for s in sigs)
 
     def test_async_function(self, tmp_path: Path, ext) -> None:
-        f = _write(tmp_path, "svc.swift", "async func fetch(url: String) -> String {}\n")
+        f = _write(
+            tmp_path, "svc.swift", "async func fetch(url: String) -> String {}\n"
+        )
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
             sigs = ext.extract_signatures([str(f)])
         assert any(s["is_async"] for s in sigs)
 
     def test_exported_function(self, tmp_path: Path, ext) -> None:
-        f = _write(tmp_path, "api.swift", "public func pub(x: Int) -> String { return \"\" }\n")
+        f = _write(
+            tmp_path, "api.swift", 'public func pub(x: Int) -> String { return "" }\n'
+        )
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
             sigs = ext.extract_signatures([str(f)])
@@ -2153,7 +2164,9 @@ class TestZigExtractorTreeSitter:
         return ZigExtractor()
 
     def test_basic_function(self, tmp_path: Path, ext) -> None:
-        f = _write(tmp_path, "main.zig", "pub fn add(x: i32, y: i32) i32 { return x + y; }\n")
+        f = _write(
+            tmp_path, "main.zig", "pub fn add(x: i32, y: i32) i32 { return x + y; }\n"
+        )
         sigs = ext.extract_signatures([str(f)])
         assert any(s["name"] == "add" for s in sigs)
 
@@ -2182,20 +2195,20 @@ class TestZigExtractorTreeSitter:
         assert "foo" in names
 
     def test_protocol_satisfaction(self) -> None:
-        from impactguard.languages.base import LanguageExtractor
+        from impactguard.languages.lib.base import LanguageExtractor
         from impactguard.languages.zig import ZigExtractor
 
         assert isinstance(ZigExtractor(), LanguageExtractor)
 
     def test_registry_lookup_by_extension(self) -> None:
-        from impactguard.languages.registry import get_extractor
+        from impactguard.languages.lib.registry import get_extractor
 
         ext = get_extractor("app.zig")
         assert ext is not None
         assert ext.language == "zig"
 
     def test_registry_lookup_by_language(self) -> None:
-        from impactguard.languages.registry import get_extractor_by_language
+        from impactguard.languages.lib.registry import get_extractor_by_language
 
         ext = get_extractor_by_language("zig")
         assert ext is not None
@@ -2215,7 +2228,11 @@ class TestZigExtractorRegex:
             yield ZigExtractor()
 
     def test_basic_function(self, tmp_path: Path, ext) -> None:
-        f = _write(tmp_path, "main.zig", "pub fn add(x: i32, y: i32) i32 {\n  return x + y;\n}\n")
+        f = _write(
+            tmp_path,
+            "main.zig",
+            "pub fn add(x: i32, y: i32) i32 {\n  return x + y;\n}\n",
+        )
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
             sigs = ext.extract_signatures([str(f)])
@@ -2295,7 +2312,9 @@ class TestCSharpExtractorTreeSitter:
         assert any("Bar" in s["name"] for s in sigs)
 
     def test_async_method(self, tmp_path: Path, ext) -> None:
-        src = "class Svc { public async Task<string> Fetch(string url) { return \"\"; } }\n"
+        src = (
+            'class Svc { public async Task<string> Fetch(string url) { return ""; } }\n'
+        )
         f = _write(tmp_path, "svc.cs", src)
         sigs = ext.extract_signatures([str(f)])
         assert any(s["is_async"] for s in sigs)
@@ -2327,20 +2346,20 @@ class TestCSharpExtractorTreeSitter:
         assert "Foo" in names
 
     def test_protocol_satisfaction(self) -> None:
-        from impactguard.languages.base import LanguageExtractor
         from impactguard.languages.csharp import CSharpExtractor
+        from impactguard.languages.lib.base import LanguageExtractor
 
         assert isinstance(CSharpExtractor(), LanguageExtractor)
 
     def test_registry_lookup_by_extension(self) -> None:
-        from impactguard.languages.registry import get_extractor
+        from impactguard.languages.lib.registry import get_extractor
 
         ext = get_extractor("app.cs")
         assert ext is not None
         assert ext.language == "csharp"
 
     def test_registry_lookup_by_language(self) -> None:
-        from impactguard.languages.registry import get_extractor_by_language
+        from impactguard.languages.lib.registry import get_extractor_by_language
 
         ext = get_extractor_by_language("csharp")
         assert ext is not None
@@ -2419,7 +2438,7 @@ class TestHaskellExtractorTreeSitter:
         return HaskellExtractor()
 
     def test_basic_function(self, tmp_path: Path, ext) -> None:
-        src = "greet :: String -> String\ngreet name = \"Hello, \" ++ name\n"
+        src = 'greet :: String -> String\ngreet name = "Hello, " ++ name\n'
         f = _write(tmp_path, "app.hs", src)
         sigs = ext.extract_signatures([str(f)])
         assert any(s["name"] == "greet" for s in sigs)
@@ -2444,27 +2463,27 @@ class TestHaskellExtractorTreeSitter:
         assert ext.extract_signatures([str(f)]) == []
 
     def test_extract_calls(self, tmp_path: Path, ext) -> None:
-        src = "main :: IO ()\nmain = putStrLn \"hello\"\n"
+        src = 'main :: IO ()\nmain = putStrLn "hello"\n'
         f = _write(tmp_path, "main.hs", src)
         calls = ext.extract_calls(f)
         names = [c["name"] for c in calls]
         assert "putStrLn" in names
 
     def test_protocol_satisfaction(self) -> None:
-        from impactguard.languages.base import LanguageExtractor
         from impactguard.languages.haskell import HaskellExtractor
+        from impactguard.languages.lib.base import LanguageExtractor
 
         assert isinstance(HaskellExtractor(), LanguageExtractor)
 
     def test_registry_lookup_by_extension(self) -> None:
-        from impactguard.languages.registry import get_extractor
+        from impactguard.languages.lib.registry import get_extractor
 
         ext = get_extractor("app.hs")
         assert ext is not None
         assert ext.language == "haskell"
 
     def test_registry_lookup_by_language(self) -> None:
-        from impactguard.languages.registry import get_extractor_by_language
+        from impactguard.languages.lib.registry import get_extractor_by_language
 
         ext = get_extractor_by_language("haskell")
         assert ext is not None
@@ -2484,7 +2503,7 @@ class TestHaskellExtractorRegex:
             yield HaskellExtractor()
 
     def test_basic_function(self, tmp_path: Path, ext) -> None:
-        src = "greet :: String -> String\ngreet name = \"Hello, \" ++ name\n"
+        src = 'greet :: String -> String\ngreet name = "Hello, " ++ name\n'
         f = _write(tmp_path, "app.hs", src)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
@@ -2513,7 +2532,7 @@ class TestHaskellExtractorRegex:
             assert ext.extract_signatures([str(f)]) == []
 
     def test_extract_calls(self, tmp_path: Path, ext) -> None:
-        src = "main = putStrLn \"hello\"\n"
+        src = 'main = putStrLn "hello"\n'
         f = _write(tmp_path, "main.hs", src)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
@@ -2544,63 +2563,63 @@ class TestHaskellExtractorRegex:
 
 class TestRegistryNewLanguages2:
     def test_get_extractor_javascript(self) -> None:
-        from impactguard.languages.registry import get_extractor
+        from impactguard.languages.lib.registry import get_extractor
 
         ext = get_extractor("app.js")
         assert ext is not None
         assert ext.language == "javascript"
 
     def test_get_extractor_mjs(self) -> None:
-        from impactguard.languages.registry import get_extractor
+        from impactguard.languages.lib.registry import get_extractor
 
         ext = get_extractor("app.mjs")
         assert ext is not None
         assert ext.language == "javascript"
 
     def test_get_extractor_kotlin(self) -> None:
-        from impactguard.languages.registry import get_extractor
+        from impactguard.languages.lib.registry import get_extractor
 
         ext = get_extractor("app.kt")
         assert ext is not None
         assert ext.language == "kotlin"
 
     def test_get_extractor_swift(self) -> None:
-        from impactguard.languages.registry import get_extractor
+        from impactguard.languages.lib.registry import get_extractor
 
         ext = get_extractor("app.swift")
         assert ext is not None
         assert ext.language == "swift"
 
     def test_get_extractor_zig(self) -> None:
-        from impactguard.languages.registry import get_extractor
+        from impactguard.languages.lib.registry import get_extractor
 
         ext = get_extractor("app.zig")
         assert ext is not None
         assert ext.language == "zig"
 
     def test_get_extractor_csharp(self) -> None:
-        from impactguard.languages.registry import get_extractor
+        from impactguard.languages.lib.registry import get_extractor
 
         ext = get_extractor("app.cs")
         assert ext is not None
         assert ext.language == "csharp"
 
     def test_get_extractor_haskell(self) -> None:
-        from impactguard.languages.registry import get_extractor
+        from impactguard.languages.lib.registry import get_extractor
 
         ext = get_extractor("app.hs")
         assert ext is not None
         assert ext.language == "haskell"
 
     def test_get_extractor_lhs(self) -> None:
-        from impactguard.languages.registry import get_extractor
+        from impactguard.languages.lib.registry import get_extractor
 
         ext = get_extractor("app.lhs")
         assert ext is not None
         assert ext.language == "haskell"
 
     def test_list_languages_includes_new(self) -> None:
-        from impactguard.languages.registry import list_languages
+        from impactguard.languages.lib.registry import list_languages
 
         langs = list_languages()
         for lang in ("javascript", "kotlin", "swift", "zig", "csharp", "haskell"):

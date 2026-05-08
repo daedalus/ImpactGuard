@@ -2127,15 +2127,15 @@ class TestCExtractor:
 
 class TestLanguageExtractorBase:
     def test_language_extractor_protocol(self):
-        from impactguard.languages.base import LanguageExtractor
+        from impactguard.languages.lib.base import LanguageExtractor
         from impactguard.languages.python import PythonExtractor
 
         e = PythonExtractor()
         assert isinstance(e, LanguageExtractor)
 
     def test_all_registered_extractors_satisfy_protocol(self):
-        from impactguard.languages.base import LanguageExtractor
-        from impactguard.languages.registry import (
+        from impactguard.languages.lib.base import LanguageExtractor
+        from impactguard.languages.lib.registry import (
             _BY_LANGUAGE,
             get_extractor_by_language,
         )

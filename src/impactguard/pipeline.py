@@ -57,7 +57,7 @@ def _extract_by_language(
     Returns:
         Combined list of signature dicts from all supported files.
     """
-    from .languages.registry import get_extractor as _get_extractor
+    from .languages.lib.registry import get_extractor as _get_extractor
 
     groups: dict[str, tuple[Any, list[str]]] = {}
     for f in files:
@@ -126,7 +126,7 @@ def run_pipeline(
     from .compare_signatures import compare
     from .generate_report import generate_html
     from .impact_analysis import analyze
-    from .languages.registry import get_extractor as _get_extractor
+    from .languages.lib.registry import get_extractor as _get_extractor
     from .risk_gate import run as run_risk
     from .suggest_fixes import enrich_with_fixes
 
@@ -392,7 +392,7 @@ def quick_check(
 
     # Collect files with a registered language extractor
     def collect_files(path: str) -> list[str]:
-        from .languages.registry import get_extractor as _get_extractor
+        from .languages.lib.registry import get_extractor as _get_extractor
 
         p = Path(path)
         if p.is_file():
@@ -443,7 +443,7 @@ def generate_changelog(
         import subprocess
         import tempfile
 
-        from .languages.registry import get_extractor as _get_extractor
+        from .languages.lib.registry import get_extractor as _get_extractor
 
         # Validate git refs
         for ref in [old_ref, new_ref]:
@@ -599,7 +599,7 @@ def run_pipeline_git(
     """
     import subprocess
 
-    from .languages.registry import get_extractor as _get_extractor
+    from .languages.lib.registry import get_extractor as _get_extractor
 
     def extract_commit_files(ref: str, dest: str) -> None:
         """Extract supported source files from a git commit to a directory."""
@@ -695,7 +695,7 @@ def _parse_unified_diff(diff_text: str) -> dict[str, tuple[str, str]]:
     included in the result.  Unsupported files (Makefile, HTML, etc.) are
     silently skipped.
     """
-    from .languages.registry import get_extractor as _get_extractor
+    from .languages.lib.registry import get_extractor as _get_extractor
 
     files: dict[str, tuple[str, str]] = {}
     old_lines: list[str] = []
