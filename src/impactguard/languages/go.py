@@ -24,6 +24,20 @@ import warnings
 from pathlib import Path
 from typing import Any
 
+from ._shared import (
+    _IGNORE_TAG,
+    _TREE_SITTER_AVAILABLE,
+    child_of_type,
+    has_ignore_comment,
+    has_ignore_comment_fallback,
+    make_call_dict,
+    make_parser,
+    make_signature_dict,
+    node_text,
+    register_extractor,
+    warn_if_no_tree_sitter,
+)
+
 # ── Optional tree-sitter dependency ──────────────────────────────────────────
 
 try:
@@ -45,32 +59,9 @@ def _make_parser() -> Any:
     return _GoParser(_GO_LANGUAGE)
 
 
-def _node_text(node: Any, source: bytes) -> str:
-    """Return the UTF-8 text of a tree-sitter node."""
-    return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
-
-
-def _child_of_type(node: Any, *types: str) -> Any | None:
-    """Return the first direct child whose type is in *types*, or *None*."""
-    for child in node.children:
-        if child.type in types:
-            return child
-    return None
-
-
 def _children_of_type(node: Any, *types: str) -> list[Any]:
     """Return all direct children whose type is in *types*."""
     return [c for c in node.children if c.type in types]
-
-
-def _has_ignore_comment(source_bytes: bytes, lineno_0based: int) -> bool:
-    """Return *True* if a ``// impactguard: ignore`` comment appears on or before the node."""
-    tag = b"impactguard: ignore"
-    lines = source_bytes.split(b"\n")
-    for idx in (lineno_0based - 1, lineno_0based):
-        if 0 <= idx < len(lines) and tag in lines[idx]:
-            return True
-    return False
 
 
 def _parse_parameter_list(
@@ -91,10 +82,10 @@ def _parse_parameter_list(
             type_node = None
             for c in child.children:
                 if c.type == "identifier":
-                    names.append(_node_text(c, source))
+                    names.append(node_text(c, source))
                 elif c.type not in (",", "(", ")"):
                     type_node = c
-            type_str = _node_text(type_node, source).strip() if type_node else None
+            type_str = node_text(type_node, source).strip() if type_node else None
             for name in names:
                 positional.append(
                     {"name": name, "has_default": False, "type": type_str}
@@ -116,7 +107,7 @@ def _receiver_type(receiver_node: Any, source: bytes) -> str | None:
         if child.type == "parameter_declaration":
             for c in child.children:
                 if c.type in ("type_identifier", "pointer_type"):
-                    text = _node_text(c, source)
+                    text = node_text(c, source)
                     return text.lstrip("*").strip()
     return None
 
@@ -134,7 +125,7 @@ def _process_function(
 
     for child in node.children:
         if child.type == "identifier" and name is None:
-            name = _node_text(child, source)
+            name = node_text(child, source)
         elif child.type == "parameter_list" and params_node is None:
             params_node = child
         elif (
@@ -162,7 +153,7 @@ def _process_function(
     positional, has_vararg = _parse_parameter_list(params_node, source)
     return_type: str | None = None
     if result_node is not None:
-        return_type = _node_text(result_node, source).strip()
+        return_type = node_text(result_node, source).strip()
 
     funcs.append(
         {
@@ -179,7 +170,7 @@ def _process_function(
             "return_type": return_type,
             "decorators": [],
             "is_async": False,
-            "ignored": _has_ignore_comment(source, node.start_point[0]),
+            "ignored": has_ignore_comment(source, node.start_point[0]),
             "exported": bool(name and name[0].isupper()),
         }
     )
@@ -206,7 +197,7 @@ def _process_method(
             else:
                 result_node = child
         elif child.type == "field_identifier" and name is None:
-            name = _node_text(child, source)
+            name = node_text(child, source)
         elif (
             child.type
             in (
@@ -229,7 +220,7 @@ def _process_method(
     positional, has_vararg = _parse_parameter_list(params_node, source)
     return_type: str | None = None
     if result_node is not None:
-        return_type = _node_text(result_node, source).strip()
+        return_type = node_text(result_node, source).strip()
 
     if receiver_type:
         fqname = f"{fq_file}:{receiver_type}.{name}"
@@ -253,7 +244,7 @@ def _process_method(
             "return_type": return_type,
             "decorators": [],
             "is_async": False,
-            "ignored": _has_ignore_comment(source, node.start_point[0]),
+            "ignored": has_ignore_comment(source, node.start_point[0]),
             "exported": bool(name and name[0].isupper()),
         }
     )
@@ -307,14 +298,14 @@ def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
             name: str | None = None
             if func_node is not None:
                 if func_node.type == "identifier":
-                    name = _node_text(func_node, source)
+                    name = node_text(func_node, source)
                 elif func_node.type == "selector_expression":
-                    field = _child_of_type(func_node, "field_identifier")
+                    field = child_of_type(func_node, "field_identifier")
                     if field is not None:
-                        name = _node_text(field, source)
+                        name = node_text(field, source)
 
             if name is not None:
-                args_node = _child_of_type(node, "argument_list")
+                args_node = child_of_type(node, "argument_list")
                 arg_count = 0
                 if args_node is not None:
                     arg_count = sum(
@@ -346,16 +337,6 @@ _FUNC_RE = re.compile(
     r"(?:\s*(?P<return>[\w\[\]*{},.<> \t]+))?\s*\{",
     re.MULTILINE,
 )
-
-_IGNORE_TAG = "impactguard: ignore"
-
-
-def _has_ignore_comment_fallback(lines: list[str], lineno: int) -> bool:
-    """Check for ``// impactguard: ignore`` on or before *lineno* (1-based)."""
-    for idx in (lineno - 2, lineno - 1):
-        if 0 <= idx < len(lines) and _IGNORE_TAG in lines[idx]:
-            return True
-    return False
 
 
 def _parse_go_params_regex(params_str: str) -> tuple[list[dict[str, Any]], bool]:
@@ -425,7 +406,7 @@ def _extract_with_regex(
                     "return_type": return_type,
                     "decorators": [],
                     "is_async": False,
-                    "ignored": _has_ignore_comment_fallback(lines, lineno),
+                    "ignored": has_ignore_comment_fallback(lines, lineno),
                     "exported": bool(name and name[0].isupper()),
                 }
             )
@@ -537,9 +518,7 @@ class GoExtractor:
 
 
 def _register() -> None:
-    from .registry import register
-
-    register(GoExtractor())
+    register_extractor(GoExtractor())
 
 
 _register()

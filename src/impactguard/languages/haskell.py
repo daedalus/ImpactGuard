@@ -25,6 +25,20 @@ import warnings
 from pathlib import Path
 from typing import Any
 
+from ._shared import (
+    _IGNORE_TAG,
+    _TREE_SITTER_AVAILABLE,
+    child_of_type,
+    has_ignore_comment,
+    has_ignore_comment_fallback,
+    make_call_dict,
+    make_parser,
+    make_signature_dict,
+    node_text,
+    register_extractor,
+    warn_if_no_tree_sitter,
+)
+
 # ── Optional tree-sitter dependency ──────────────────────────────────────────
 
 try:
@@ -46,29 +60,6 @@ def _make_parser() -> Any:
     return _HaskellParser(_HASKELL_LANGUAGE)
 
 
-def _node_text(node: Any, source: bytes) -> str:
-    """Return the UTF-8 text of a tree-sitter node."""
-    return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
-
-
-def _child_of_type(node: Any, *types: str) -> Any | None:
-    """Return the first direct child whose type is in *types*, or *None*."""
-    for child in node.children:
-        if child.type in types:
-            return child
-    return None
-
-
-def _has_ignore_comment(source_bytes: bytes, lineno_0based: int) -> bool:
-    """Return *True* if a ``-- impactguard: ignore`` comment appears on or before the node."""
-    tag = b"impactguard: ignore"
-    lines = source_bytes.split(b"\n")
-    for idx in (lineno_0based - 1, lineno_0based):
-        if 0 <= idx < len(lines) and tag in lines[idx]:
-            return True
-    return False
-
-
 def _process_function(
     node: Any,
     source: bytes,
@@ -84,7 +75,7 @@ def _process_function(
     if name_node.type not in ("variable", "operator"):
         return
 
-    name = _node_text(name_node, source)
+    name = node_text(name_node, source)
     return_type = type_sigs.get(name)
 
     positional: list[dict[str, Any]] = []
@@ -93,7 +84,7 @@ def _process_function(
         if c.type in ("=", "where", "guards"):
             break
         if c.type not in ("|",):
-            txt = _node_text(c, source).strip()
+            txt = node_text(c, source).strip()
             if txt:
                 positional.append({"name": txt, "has_default": False, "type": None})
 
@@ -112,7 +103,7 @@ def _process_function(
             "return_type": return_type,
             "decorators": [],
             "is_async": False,
-            "ignored": _has_ignore_comment(source, node.start_point[0]),
+            "ignored": has_ignore_comment(source, node.start_point[0]),
             "exported": True,
         }
     )
@@ -143,7 +134,7 @@ def _extract_with_tree_sitter(
         def collect_sigs(node: Any) -> None:
             if node.type == "type_signature":
                 # name :: Type
-                parts = _node_text(node, source).split("::", 1)
+                parts = node_text(node, source).split("::", 1)
                 if len(parts) == 2:
                     sig_name = parts[0].strip()
                     sig_type = parts[1].strip()
@@ -188,7 +179,7 @@ def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
         if node.type == "apply":
             func_node = node.children[0] if node.children else None
             if func_node is not None and func_node.type == "variable":
-                name = _node_text(func_node, source)
+                name = node_text(func_node, source)
                 arg_count = len(node.children) - 1
                 calls.append(
                     {
@@ -221,16 +212,6 @@ _FUNC_DEF_RE = re.compile(
     r"^(?P<name>[a-z_]\w*(?:')*)\s+(?P<args>[^=\n]*?)\s*=",
     re.MULTILINE,
 )
-
-_IGNORE_TAG = "impactguard: ignore"
-
-
-def _has_ignore_comment_fallback(lines: list[str], lineno: int) -> bool:
-    """Check for ``-- impactguard: ignore`` on or before *lineno* (1-based)."""
-    for idx in (lineno - 2, lineno - 1):
-        if 0 <= idx < len(lines) and _IGNORE_TAG in lines[idx]:
-            return True
-    return False
 
 
 def _extract_with_regex(
@@ -284,7 +265,7 @@ def _extract_with_regex(
                     "return_type": type_sigs.get(name),
                     "decorators": [],
                     "is_async": False,
-                    "ignored": _has_ignore_comment_fallback(lines, lineno),
+                    "ignored": has_ignore_comment_fallback(lines, lineno),
                     "exported": True,
                 }
             )
@@ -304,8 +285,22 @@ def _extract_calls_with_regex(path: Path) -> list[dict[str, Any]]:
     # Simple heuristic: identifier followed by space-separated args on same line
     call_re = re.compile(r"\b(?P<name>[a-z_]\w*)\s+(?P<args>[^\n=]+)")
     _KEYWORDS = {
-        "where", "let", "in", "do", "if", "then", "else", "case", "of",
-        "import", "module", "data", "type", "newtype", "class", "instance",
+        "where",
+        "let",
+        "in",
+        "do",
+        "if",
+        "then",
+        "else",
+        "case",
+        "of",
+        "import",
+        "module",
+        "data",
+        "type",
+        "newtype",
+        "class",
+        "instance",
         "deriving",
     }
     for m in call_re.finditer(source):
@@ -395,9 +390,7 @@ class HaskellExtractor:
 
 
 def _register() -> None:
-    from .registry import register
-
-    register(HaskellExtractor())
+    register_extractor(HaskellExtractor())
 
 
 _register()

@@ -25,6 +25,20 @@ import warnings
 from pathlib import Path
 from typing import Any
 
+from ._shared import (
+    _IGNORE_TAG,
+    _TREE_SITTER_AVAILABLE,
+    child_of_type,
+    has_ignore_comment,
+    has_ignore_comment_fallback,
+    make_call_dict,
+    make_parser,
+    make_signature_dict,
+    node_text,
+    register_extractor,
+    warn_if_no_tree_sitter,
+)
+
 # ── Optional tree-sitter dependency ──────────────────────────────────────────
 
 try:
@@ -44,29 +58,6 @@ except ImportError:  # pragma: no cover
 def _make_parser() -> Any:
     """Create a fresh tree-sitter JavaScript parser."""
     return _JsParser(_JS_LANGUAGE)
-
-
-def _node_text(node: Any, source: bytes) -> str:
-    """Return the UTF-8 text of a tree-sitter node."""
-    return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
-
-
-def _child_of_type(node: Any, *types: str) -> Any | None:
-    """Return the first direct child whose type is in *types*, or *None*."""
-    for child in node.children:
-        if child.type in types:
-            return child
-    return None
-
-
-def _has_ignore_comment(source_bytes: bytes, lineno_0based: int) -> bool:
-    """Return *True* if a ``// impactguard: ignore`` comment appears on or before the node."""
-    tag = b"impactguard: ignore"
-    lines = source_bytes.split(b"\n")
-    for idx in (lineno_0based - 1, lineno_0based):
-        if 0 <= idx < len(lines) and tag in lines[idx]:
-            return True
-    return False
 
 
 def _is_exported(node: Any, source: bytes) -> bool:
@@ -93,9 +84,9 @@ def _class_name_for_method(node: Any, source: bytes) -> str | None:
     parent = node.parent
     while parent is not None:
         if parent.type == "class_declaration":
-            name_node = _child_of_type(parent, "identifier")
+            name_node = child_of_type(parent, "identifier")
             if name_node is not None:
-                return _node_text(name_node, source)
+                return node_text(name_node, source)
         parent = parent.parent
     return None
 
@@ -117,21 +108,23 @@ def _parse_formal_params(
         if child.type == "rest_pattern":
             has_vararg = True
         elif child.type == "identifier":
-            positional.append({"name": _node_text(child, source), "has_default": False, "type": None})
+            positional.append(
+                {"name": node_text(child, source), "has_default": False, "type": None}
+            )
         elif child.type == "assignment_pattern":
             # default value: identifier = expr
-            id_node = _child_of_type(child, "identifier")
-            name = _node_text(id_node, source) if id_node else "_"
+            id_node = child_of_type(child, "identifier")
+            name = node_text(id_node, source) if id_node else "_"
             positional.append({"name": name, "has_default": True, "type": None})
         elif child.type in ("required_parameter", "optional_parameter"):
             # TSX-style, just in case
-            id_node = _child_of_type(child, "identifier")
-            name = _node_text(id_node, source) if id_node else "_"
+            id_node = child_of_type(child, "identifier")
+            name = node_text(id_node, source) if id_node else "_"
             has_def = child.type == "optional_parameter"
             positional.append({"name": name, "has_default": has_def, "type": None})
         elif child.type not in ("{", "}", "[", "]"):
             # Treat as unnamed param
-            text = _node_text(child, source).strip()
+            text = node_text(child, source).strip()
             if text and text not in (",", "(", ")"):
                 positional.append({"name": text, "has_default": False, "type": None})
 
@@ -149,25 +142,25 @@ def _process_function(
     class_name: str | None = None
 
     if node.type == "function_declaration":
-        id_node = _child_of_type(node, "identifier")
-        name = _node_text(id_node, source) if id_node else None
+        id_node = child_of_type(node, "identifier")
+        name = node_text(id_node, source) if id_node else None
     elif node.type == "method_definition":
-        prop_node = _child_of_type(node, "property_identifier")
-        name = _node_text(prop_node, source) if prop_node else None
+        prop_node = child_of_type(node, "property_identifier")
+        name = node_text(prop_node, source) if prop_node else None
         class_name = _class_name_for_method(node, source)
     elif node.type in ("function", "arrow_function"):
         # Look for variable_declarator parent to get assigned name
         parent = node.parent
         if parent is not None and parent.type == "variable_declarator":
-            id_node = _child_of_type(parent, "identifier")
-            name = _node_text(id_node, source) if id_node else None
+            id_node = child_of_type(parent, "identifier")
+            name = node_text(id_node, source) if id_node else None
         if name is None:
             return
 
     if name is None:
         return
 
-    params_node = _child_of_type(node, "formal_parameters")
+    params_node = child_of_type(node, "formal_parameters")
     positional, has_vararg = _parse_formal_params(params_node, source)
     is_async = _is_async_node(node, source)
     exported = _is_exported(node, source)
@@ -194,7 +187,7 @@ def _process_function(
             "return_type": None,
             "decorators": [],
             "is_async": is_async,
-            "ignored": _has_ignore_comment(source, node.start_point[0]),
+            "ignored": has_ignore_comment(source, node.start_point[0]),
             "exported": exported,
         }
     )
@@ -254,13 +247,13 @@ def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
             name: str | None = None
             if func_node is not None:
                 if func_node.type == "identifier":
-                    name = _node_text(func_node, source)
+                    name = node_text(func_node, source)
                 elif func_node.type == "member_expression":
-                    prop = _child_of_type(func_node, "property_identifier")
+                    prop = child_of_type(func_node, "property_identifier")
                     if prop is not None:
-                        name = _node_text(prop, source)
+                        name = node_text(prop, source)
             if name is not None:
-                args_node = _child_of_type(node, "arguments")
+                args_node = child_of_type(node, "arguments")
                 arg_count = 0
                 if args_node is not None:
                     arg_count = sum(
@@ -295,16 +288,6 @@ _ARROW_RE = re.compile(
     r"(?:export\s+)?(?:const|let|var)\s+(?P<name>\w+)\s*=\s*(?P<async>async\s+)?\((?P<params>[^)]*)\)\s*=>",
     re.MULTILINE,
 )
-
-_IGNORE_TAG = "impactguard: ignore"
-
-
-def _has_ignore_comment_fallback(lines: list[str], lineno: int) -> bool:
-    """Check for ``// impactguard: ignore`` on or before *lineno* (1-based)."""
-    for idx in (lineno - 2, lineno - 1):
-        if 0 <= idx < len(lines) and _IGNORE_TAG in lines[idx]:
-            return True
-    return False
 
 
 def _parse_js_params_regex(params_str: str) -> tuple[list[dict[str, Any]], bool]:
@@ -353,7 +336,11 @@ def _extract_with_regex(
             is_async = bool(m.group("async"))
             lineno = source[: m.start()].count("\n") + 1
             positional, has_vararg = _parse_js_params_regex(params_str)
-            exported = bool(re.search(r"\bexport\b", source[max(0, m.start() - 20) : m.start() + 10]))
+            exported = bool(
+                re.search(
+                    r"\bexport\b", source[max(0, m.start() - 20) : m.start() + 10]
+                )
+            )
 
             all_funcs.append(
                 {
@@ -370,7 +357,7 @@ def _extract_with_regex(
                     "return_type": None,
                     "decorators": [],
                     "is_async": is_async,
-                    "ignored": _has_ignore_comment_fallback(lines, lineno),
+                    "ignored": has_ignore_comment_fallback(lines, lineno),
                     "exported": exported,
                 }
             )
@@ -381,7 +368,11 @@ def _extract_with_regex(
             is_async = bool(m.group("async"))
             lineno = source[: m.start()].count("\n") + 1
             positional, has_vararg = _parse_js_params_regex(params_str)
-            exported = bool(re.search(r"\bexport\b", source[max(0, m.start() - 20) : m.start() + 10]))
+            exported = bool(
+                re.search(
+                    r"\bexport\b", source[max(0, m.start() - 20) : m.start() + 10]
+                )
+            )
 
             all_funcs.append(
                 {
@@ -398,7 +389,7 @@ def _extract_with_regex(
                     "return_type": None,
                     "decorators": [],
                     "is_async": is_async,
-                    "ignored": _has_ignore_comment_fallback(lines, lineno),
+                    "ignored": has_ignore_comment_fallback(lines, lineno),
                     "exported": exported,
                 }
             )
@@ -508,9 +499,7 @@ class JavaScriptExtractor:
 
 
 def _register() -> None:
-    from .registry import register
-
-    register(JavaScriptExtractor())
+    register_extractor(JavaScriptExtractor())
 
 
 _register()

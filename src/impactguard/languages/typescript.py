@@ -25,6 +25,20 @@ import warnings
 from pathlib import Path
 from typing import Any
 
+from ._shared import (
+    _IGNORE_TAG,
+    _TREE_SITTER_AVAILABLE,
+    child_of_type,
+    has_ignore_comment,
+    has_ignore_comment_fallback,
+    make_call_dict,
+    make_parser,
+    make_signature_dict,
+    node_text,
+    register_extractor,
+    warn_if_no_tree_sitter,
+)
+
 # ── Optional tree-sitter dependency ──────────────────────────────────────────
 
 try:
@@ -48,19 +62,6 @@ def _make_parser() -> Any:
     return parser
 
 
-def _node_text(node: Any, source: bytes) -> str:
-    """Return the UTF-8 text of a tree-sitter node."""
-    return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
-
-
-def _child_of_type(node: Any, *types: str) -> Any | None:
-    """Return the first direct child whose type is in *types*, or *None*."""
-    for child in node.children:
-        if child.type in types:
-            return child
-    return None
-
-
 def _children_of_type(node: Any, *types: str) -> list[Any]:
     """Return all direct children whose type is in *types*."""
     return [c for c in node.children if c.type in types]
@@ -69,7 +70,7 @@ def _children_of_type(node: Any, *types: str) -> list[Any]:
 def _decorator_text(decorator_node: Any, source: bytes) -> str:
     """Return the decorator name/call without the leading ``@``."""
     parts = [
-        _node_text(child, source)
+        node_text(child, source)
         for child in decorator_node.children
         if child.type != "@"
     ]
@@ -80,7 +81,7 @@ def _extract_type_annotation(type_annotation_node: Any, source: bytes) -> str | 
     """Return the text of a ``type_annotation`` node (skipping the ``:`` token)."""
     for child in type_annotation_node.children:
         if child.type != ":":
-            return _node_text(child, source).strip()
+            return node_text(child, source).strip()
     return None
 
 
@@ -117,7 +118,7 @@ def _parse_formal_params_ts(
     for child in params_node.children:
         if child.type == "required_parameter":
             # Check for rest pattern (...name)
-            if _child_of_type(child, "rest_pattern") is not None:
+            if child_of_type(child, "rest_pattern") is not None:
                 has_vararg = True
                 continue
             # Check for default value (= token present)
@@ -145,7 +146,7 @@ def _extract_param_info_ts(
 
     for child in param_node.children:
         if child.type == "identifier" and name is None:
-            name = _node_text(child, source)
+            name = node_text(child, source)
         elif child.type == "type_annotation":
             type_ = _extract_type_annotation(child, source)
 
@@ -214,7 +215,7 @@ def _process_function_declaration(
 
     for child in node.children:
         if child.type == "identifier" and name is None:
-            name = _node_text(child, source)
+            name = node_text(child, source)
         elif child.type == "async":
             is_async = True
         elif child.type == "formal_parameters":
@@ -258,7 +259,7 @@ def _process_method_definition(
 
     for child in node.children:
         if child.type == "property_identifier" and name is None:
-            name = _node_text(child, source)
+            name = node_text(child, source)
         elif child.type == "async":
             is_async = True
         elif child.type == "formal_parameters":
@@ -314,7 +315,7 @@ def _process_arrow_function(
             and return_type_node is None
         ):
             # Single-param arrow without parens: x => expr
-            single_param_name = _node_text(child, source)
+            single_param_name = node_text(child, source)
 
     if single_param_name is not None:
         # Single identifier param path: build the signature directly
@@ -379,10 +380,10 @@ def _process_class_declaration(
     class_name: str | None = None
     for child in node.children:
         if child.type == "type_identifier":
-            class_name = _node_text(child, source)
+            class_name = node_text(child, source)
             break
 
-    class_body = _child_of_type(node, "class_body")
+    class_body = child_of_type(node, "class_body")
     if class_body is None:
         return
 
@@ -418,7 +419,7 @@ def _process_variable_declarator(
     var_name: str | None = None
     for child in node.children:
         if child.type == "identifier" and var_name is None:
-            var_name = _node_text(child, source)
+            var_name = node_text(child, source)
         elif child.type in ("arrow_function", "function"):
             if var_name is not None:
                 _process_arrow_function(
@@ -562,14 +563,14 @@ def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
             name: str | None = None
             if func_node is not None:
                 if func_node.type == "identifier":
-                    name = _node_text(func_node, source)
+                    name = node_text(func_node, source)
                 elif func_node.type == "member_expression":
-                    prop = _child_of_type(func_node, "property_identifier")
+                    prop = child_of_type(func_node, "property_identifier")
                     if prop is not None:
-                        name = _node_text(prop, source)
+                        name = node_text(prop, source)
 
             if name is not None:
-                args_node = _child_of_type(node, "arguments")
+                args_node = child_of_type(node, "arguments")
                 arg_count = 0
                 if args_node is not None:
                     arg_count = sum(
@@ -613,16 +614,6 @@ _ARROW_RE = re.compile(
     r"\((?P<params>[^)]*)\)\s*(?::\s*(?P<return>[^=>{]+))?\s*=>",
     re.MULTILINE,
 )
-
-_IGNORE_TAG = "impactguard: ignore"
-
-
-def _has_ignore_comment_fallback(lines: list[str], lineno: int) -> bool:
-    """Check for ``// impactguard: ignore`` on or before *lineno* (1-based)."""
-    for idx in (lineno - 2, lineno - 1):
-        if 0 <= idx < len(lines) and _IGNORE_TAG in lines[idx]:
-            return True
-    return False
 
 
 def _parse_ts_params_regex(params_str: str) -> tuple[list[dict[str, Any]], bool]:
@@ -763,7 +754,7 @@ def _extract_with_regex(
                         "return_type": return_type,
                         "decorators": [],
                         "is_async": is_async,
-                        "ignored": _has_ignore_comment_fallback(lines, lineno),
+                        "ignored": has_ignore_comment_fallback(lines, lineno),
                         "exported": exported,
                     }
                 )
@@ -875,9 +866,7 @@ class TypeScriptExtractor:
 
 
 def _register() -> None:
-    from .registry import register
-
-    register(TypeScriptExtractor())
+    register_extractor(TypeScriptExtractor())
 
 
 _register()

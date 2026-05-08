@@ -25,6 +25,20 @@ import warnings
 from pathlib import Path
 from typing import Any
 
+from ._shared import (
+    _IGNORE_TAG,
+    _TREE_SITTER_AVAILABLE,
+    child_of_type,
+    has_ignore_comment,
+    has_ignore_comment_fallback,
+    make_call_dict,
+    make_parser,
+    make_signature_dict,
+    node_text,
+    register_extractor,
+    warn_if_no_tree_sitter,
+)
+
 # ── Optional tree-sitter dependency ──────────────────────────────────────────
 
 try:
@@ -46,29 +60,6 @@ def _make_parser() -> Any:
     return _SwiftParser(_SWIFT_LANGUAGE)
 
 
-def _node_text(node: Any, source: bytes) -> str:
-    """Return the UTF-8 text of a tree-sitter node."""
-    return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
-
-
-def _child_of_type(node: Any, *types: str) -> Any | None:
-    """Return the first direct child whose type is in *types*, or *None*."""
-    for child in node.children:
-        if child.type in types:
-            return child
-    return None
-
-
-def _has_ignore_comment(source_bytes: bytes, lineno_0based: int) -> bool:
-    """Return *True* if a ``// impactguard: ignore`` comment appears on or before the node."""
-    tag = b"impactguard: ignore"
-    lines = source_bytes.split(b"\n")
-    for idx in (lineno_0based - 1, lineno_0based):
-        if 0 <= idx < len(lines) and tag in lines[idx]:
-            return True
-    return False
-
-
 def _class_name_for_method(node: Any, source: bytes) -> str | None:
     """Walk up the tree to find the enclosing class/struct/extension name."""
     parent = node.parent
@@ -78,9 +69,9 @@ def _class_name_for_method(node: Any, source: bytes) -> str | None:
             "struct_declaration",
             "extension_declaration",
         ):
-            name_node = _child_of_type(parent, "type_identifier", "simple_identifier")
+            name_node = child_of_type(parent, "type_identifier", "simple_identifier")
             if name_node is not None:
-                return _node_text(name_node, source)
+                return node_text(name_node, source)
         parent = parent.parent
     return None
 
@@ -88,11 +79,11 @@ def _class_name_for_method(node: Any, source: bytes) -> str | None:
 def _has_modifier(node: Any, source: bytes, modifier: str) -> bool:
     """Return True if the node has the given modifier keyword."""
     for child in node.children:
-        if _node_text(child, source).strip() == modifier:
+        if node_text(child, source).strip() == modifier:
             return True
         if child.type in ("modifiers", "access_level_modifier", "mutation_modifier"):
             for mod in child.children:
-                if _node_text(mod, source).strip() == modifier:
+                if node_text(mod, source).strip() == modifier:
                     return True
     return False
 
@@ -121,11 +112,11 @@ def _parse_params(
             for c in child.children:
                 if c.type in ("simple_identifier", "wildcard_pattern"):
                     if name is None:
-                        name = _node_text(c, source)
+                        name = node_text(c, source)
                 elif c.type == ":":
                     colon_seen = True
                 elif colon_seen and c.type not in ("=",) and type_str is None:
-                    type_str = _node_text(c, source).strip()
+                    type_str = node_text(c, source).strip()
                 elif c.type == "=":
                     has_default = True
                 elif c.type == "...":
@@ -146,15 +137,15 @@ def _process_function(
     funcs: list[dict[str, Any]],
 ) -> None:
     """Extract a signature from a Swift function declaration."""
-    name_node = _child_of_type(node, "simple_identifier")
+    name_node = child_of_type(node, "simple_identifier")
     if name_node is None and node.type == "init_declaration":
         name = "init"
     elif name_node is not None:
-        name = _node_text(name_node, source)
+        name = node_text(name_node, source)
     else:
         return
 
-    params_node = _child_of_type(node, "parameter_clause", "function_value_parameters")
+    params_node = child_of_type(node, "parameter_clause", "function_value_parameters")
     positional, has_vararg = _parse_params(params_node, source)
 
     # Return type: after ->
@@ -164,7 +155,7 @@ def _process_function(
         if child.type == "->":
             arrow_seen = True
         elif arrow_seen and child.type not in ("{", ";"):
-            return_type = _node_text(child, source).strip()
+            return_type = node_text(child, source).strip()
             break
 
     # Check for async modifier (can be a child, or before 'func' in an ERROR node)
@@ -180,11 +171,16 @@ def _process_function(
                     break
                 if child == node:
                     found_self = True
-                elif child.type == "async" or (child.type == "ERROR" and _node_text(child, source).strip() == "async"):
+                elif child.type == "async" or (
+                    child.type == "ERROR"
+                    and node_text(child, source).strip() == "async"
+                ):
                     is_async = True
                     break
-    
-    exported = _has_modifier(node, source, "public") or _has_modifier(node, source, "open")
+
+    exported = _has_modifier(node, source, "public") or _has_modifier(
+        node, source, "open"
+    )
     class_name = _class_name_for_method(node, source)
 
     if class_name:
@@ -209,7 +205,7 @@ def _process_function(
             "return_type": return_type,
             "decorators": [],
             "is_async": is_async,
-            "ignored": _has_ignore_comment(source, node.start_point[0]),
+            "ignored": has_ignore_comment(source, node.start_point[0]),
             "exported": exported,
         }
     )
@@ -268,14 +264,14 @@ def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
             name: str | None = None
             if func_node is not None:
                 if func_node.type in ("simple_identifier",):
-                    name = _node_text(func_node, source)
+                    name = node_text(func_node, source)
                 elif func_node.type == "navigation_expression":
                     for c in reversed(func_node.children):
                         if c.type == "simple_identifier":
-                            name = _node_text(c, source)
+                            name = node_text(c, source)
                             break
             if name is not None:
-                args_node = _child_of_type(node, "call_suffix")
+                args_node = child_of_type(node, "call_suffix")
                 arg_count = 0
                 if args_node is not None:
                     arg_count = sum(
@@ -308,16 +304,6 @@ _FUNC_RE = re.compile(
     r"(?:\s*->\s*(?P<return>[^\{]+))?",
     re.MULTILINE,
 )
-
-_IGNORE_TAG = "impactguard: ignore"
-
-
-def _has_ignore_comment_fallback(lines: list[str], lineno: int) -> bool:
-    """Check for ``// impactguard: ignore`` on or before *lineno* (1-based)."""
-    for idx in (lineno - 2, lineno - 1):
-        if 0 <= idx < len(lines) and _IGNORE_TAG in lines[idx]:
-            return True
-    return False
 
 
 def _parse_swift_params_regex(params_str: str) -> tuple[list[dict[str, Any]], bool]:
@@ -397,7 +383,7 @@ def _extract_with_regex(
                     "return_type": return_type,
                     "decorators": [],
                     "is_async": is_async,
-                    "ignored": _has_ignore_comment_fallback(lines, lineno),
+                    "ignored": has_ignore_comment_fallback(lines, lineno),
                     "exported": exported,
                 }
             )
@@ -507,9 +493,7 @@ class SwiftExtractor:
 
 
 def _register() -> None:
-    from .registry import register
-
-    register(SwiftExtractor())
+    register_extractor(SwiftExtractor())
 
 
 _register()

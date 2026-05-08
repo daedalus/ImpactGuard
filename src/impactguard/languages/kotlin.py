@@ -25,6 +25,20 @@ import warnings
 from pathlib import Path
 from typing import Any
 
+from ._shared import (
+    _IGNORE_TAG,
+    _TREE_SITTER_AVAILABLE,
+    child_of_type,
+    has_ignore_comment,
+    has_ignore_comment_fallback,
+    make_call_dict,
+    make_parser,
+    make_signature_dict,
+    node_text,
+    register_extractor,
+    warn_if_no_tree_sitter,
+)
+
 # ── Optional tree-sitter dependency ──────────────────────────────────────────
 
 try:
@@ -46,38 +60,15 @@ def _make_parser() -> Any:
     return _KotlinParser(_KOTLIN_LANGUAGE)
 
 
-def _node_text(node: Any, source: bytes) -> str:
-    """Return the UTF-8 text of a tree-sitter node."""
-    return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
-
-
-def _child_of_type(node: Any, *types: str) -> Any | None:
-    """Return the first direct child whose type is in *types*, or *None*."""
-    for child in node.children:
-        if child.type in types:
-            return child
-    return None
-
-
-def _has_ignore_comment(source_bytes: bytes, lineno_0based: int) -> bool:
-    """Return *True* if a ``// impactguard: ignore`` comment appears on or before the node."""
-    tag = b"impactguard: ignore"
-    lines = source_bytes.split(b"\n")
-    for idx in (lineno_0based - 1, lineno_0based):
-        if 0 <= idx < len(lines) and tag in lines[idx]:
-            return True
-    return False
-
-
 def _has_modifier(node: Any, source: bytes, modifier: str) -> bool:
     """Return True if the node has the given modifier."""
     for child in node.children:
         if child.type == "modifiers":
             for mod in child.children:
-                if _node_text(mod, source).strip() == modifier:
+                if node_text(mod, source).strip() == modifier:
                     return True
         elif child.type in ("modifier", "visibility_modifier", "function_modifier"):
-            if _node_text(child, source).strip() == modifier:
+            if node_text(child, source).strip() == modifier:
                 return True
     return False
 
@@ -87,9 +78,9 @@ def _class_name_for_method(node: Any, source: bytes) -> str | None:
     parent = node.parent
     while parent is not None:
         if parent.type == "class_declaration":
-            name_node = _child_of_type(parent, "type_identifier", "identifier")
+            name_node = child_of_type(parent, "type_identifier", "identifier")
             if name_node is not None:
-                return _node_text(name_node, source)
+                return node_text(name_node, source)
         parent = parent.parent
     return None
 
@@ -109,19 +100,23 @@ def _parse_function_params(
         if child.type in ("(", ")", ","):
             continue
         if child.type == "parameter":
-            name_node = _child_of_type(child, "identifier")
-            name = _node_text(name_node, source) if name_node else "_"
-            type_node = _child_of_type(child, "type_reference", "nullable_type", "user_type")
+            name_node = child_of_type(child, "identifier")
+            name = node_text(name_node, source) if name_node else "_"
+            type_node = child_of_type(
+                child, "type_reference", "nullable_type", "user_type"
+            )
             type_str: str | None = None
             if type_node is not None:
-                type_str = _node_text(type_node, source).strip()
+                type_str = node_text(type_node, source).strip()
             # Check for default value
             has_default = any(c.type == "=" for c in child.children)
             # Check for vararg modifier
             is_vararg = _has_modifier(child, source, "vararg")
             if is_vararg:
                 has_vararg = True
-            positional.append({"name": name, "has_default": has_default, "type": type_str})
+            positional.append(
+                {"name": name, "has_default": has_default, "type": type_str}
+            )
 
     return positional, has_vararg
 
@@ -133,12 +128,12 @@ def _process_function(
     funcs: list[dict[str, Any]],
 ) -> None:
     """Extract a signature from a Kotlin function declaration."""
-    name_node = _child_of_type(node, "identifier")
+    name_node = child_of_type(node, "identifier")
     if name_node is None:
         return
 
-    name = _node_text(name_node, source)
-    params_node = _child_of_type(node, "function_value_parameters")
+    name = node_text(name_node, source)
+    params_node = child_of_type(node, "function_value_parameters")
     positional, has_vararg = _parse_function_params(params_node, source)
 
     # Return type
@@ -148,9 +143,12 @@ def _process_function(
         if child.type == ":":
             colon_seen = True
         elif colon_seen and child.type in (
-            "type_reference", "nullable_type", "user_type", "function_type"
+            "type_reference",
+            "nullable_type",
+            "user_type",
+            "function_type",
         ):
-            return_type = _node_text(child, source).strip()
+            return_type = node_text(child, source).strip()
             break
 
     is_async = _has_modifier(node, source, "suspend")
@@ -185,7 +183,7 @@ def _process_function(
             "return_type": return_type,
             "decorators": [],
             "is_async": is_async,
-            "ignored": _has_ignore_comment(source, node.start_point[0]),
+            "ignored": has_ignore_comment(source, node.start_point[0]),
             "exported": exported,
         }
     )
@@ -240,14 +238,14 @@ def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
             name: str | None = None
             if func_node is not None:
                 if func_node.type == "identifier":
-                    name = _node_text(func_node, source)
+                    name = node_text(func_node, source)
                 elif func_node.type == "navigation_expression":
                     for c in reversed(func_node.children):
                         if c.type == "identifier":
-                            name = _node_text(c, source)
+                            name = node_text(c, source)
                             break
             if name is not None:
-                args_node = _child_of_type(node, "call_suffix", "value_arguments")
+                args_node = child_of_type(node, "call_suffix", "value_arguments")
                 arg_count = 0
                 if args_node is not None:
                     arg_count = sum(
@@ -279,16 +277,6 @@ _FUNC_RE = re.compile(
     r"(?:\s*:\s*(?P<return>[^\{=\n]+))?",
     re.MULTILINE,
 )
-
-_IGNORE_TAG = "impactguard: ignore"
-
-
-def _has_ignore_comment_fallback(lines: list[str], lineno: int) -> bool:
-    """Check for ``// impactguard: ignore`` on or before *lineno* (1-based)."""
-    for idx in (lineno - 2, lineno - 1):
-        if 0 <= idx < len(lines) and _IGNORE_TAG in lines[idx]:
-            return True
-    return False
 
 
 def _parse_kotlin_params_regex(params_str: str) -> tuple[list[dict[str, Any]], bool]:
@@ -348,7 +336,9 @@ def _extract_with_regex(
             fun_idx = match_text.index("fun")
             modifiers = match_text[:fun_idx]
             is_async = bool(re.search(r"\bsuspend\b", modifiers))
-            not_exported = bool(re.search(r"\b(?:private|internal|protected)\b", modifiers))
+            not_exported = bool(
+                re.search(r"\b(?:private|internal|protected)\b", modifiers)
+            )
             exported = not not_exported
 
             all_funcs.append(
@@ -366,7 +356,7 @@ def _extract_with_regex(
                     "return_type": return_type,
                     "decorators": [],
                     "is_async": is_async,
-                    "ignored": _has_ignore_comment_fallback(lines, lineno),
+                    "ignored": has_ignore_comment_fallback(lines, lineno),
                     "exported": exported,
                 }
             )
@@ -476,9 +466,7 @@ class KotlinExtractor:
 
 
 def _register() -> None:
-    from .registry import register
-
-    register(KotlinExtractor())
+    register_extractor(KotlinExtractor())
 
 
 _register()
