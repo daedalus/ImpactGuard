@@ -394,21 +394,6 @@ class ZigExtractor:
     language: str = "zig"
     extensions: list[str] = [".zig"]
 
-    def __init__(self) -> None:
-        self._warned: bool = False
-
-    def _warn_if_no_tree_sitter(self) -> None:
-        if not _TREE_SITTER_AVAILABLE and not self._warned:
-            warnings.warn(
-                "tree-sitter and tree-sitter-zig are not installed; "
-                "Zig extraction will use a regex-based fallback which "
-                "may miss some function signatures.  Install the 'languages' "
-                "extra for full support:  pip install 'impactguard[languages]'",
-                UserWarning,
-                stacklevel=3,
-            )
-            self._warned = True
-
     def extract_signatures(
         self,
         files: list[str],
@@ -417,14 +402,14 @@ class ZigExtractor:
         """Extract signatures from Zig files."""
         if _TREE_SITTER_AVAILABLE:
             return _extract_with_tree_sitter(files, _base_path)
-        self._warn_if_no_tree_sitter()
+        warn_if_no_tree_sitter(self, "Zig", "tree-sitter-zig")
         return _extract_with_regex(files, _base_path)
 
     def extract_calls(self, path: Path) -> list[dict[str, Any]]:
         """Extract call sites from a Zig file."""
         if _TREE_SITTER_AVAILABLE:
             return _extract_calls_with_tree_sitter(path)
-        self._warn_if_no_tree_sitter()
+        warn_if_no_tree_sitter(self, "Zig", "tree-sitter-zig")
         return _extract_calls_with_regex(path)
 
     def parse_union_members(self, type_str: str) -> frozenset[str]:
@@ -438,11 +423,6 @@ class ZigExtractor:
         return frozenset({s})
 
 
-# ── Self-registration ─────────────────────────────────────────────────────────
+# ── Self-registration ─────────────────────────────────
 
-
-def _register() -> None:
-    register_extractor(ZigExtractor())
-
-
-_register()
+register_extractor(ZigExtractor())
