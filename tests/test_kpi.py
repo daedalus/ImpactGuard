@@ -12,11 +12,11 @@ from impactguard.kpi import compute_kpis, format_kpi_text
 # ── fixtures / helpers ────────────────────────────────────────────────────────
 
 _SAMPLE_REPORT: list[dict] = [
-    {"function": "foo", "risk": "HIGH",    "exposure": 0.8, "confidence": 1.0},
-    {"function": "bar", "risk": "MEDIUM",  "exposure": 0.4, "confidence": 0.9},
-    {"function": "baz", "risk": "LOW",     "exposure": 0.1, "confidence": 0.8},
-    {"function": "qux", "risk": "UNKNOWN", "exposure": 0.2, "confidence": 0.2},
-    {"function": "fp",  "risk": "HIGH",    "exposure": 0.01, "confidence": 1.0},
+    {"function": "foo", "risk": "HIGH",    "change": "REMOVED",   "exposure": 0.8,  "confidence": 1.0, "transitive": False},
+    {"function": "bar", "risk": "MEDIUM",  "change": "OPTIONAL",  "exposure": 0.4,  "confidence": 0.9, "transitive": True},
+    {"function": "baz", "risk": "LOW",     "change": "ADDED",     "exposure": 0.1,  "confidence": 0.8, "transitive": False},
+    {"function": "qux", "risk": "UNKNOWN", "change": "REQUIRED",  "exposure": 0.2,  "confidence": 0.2, "transitive": True},
+    {"function": "fp",  "risk": "HIGH",    "change": "REMOVED",   "exposure": 0.01, "confidence": 1.0, "transitive": False},
 ]
 
 _SAMPLE_FEEDBACK: list[dict] = [
@@ -85,6 +85,75 @@ def test_mean_risk_score():
     assert abs(kpis["mean_risk_score"] - expected) < 1e-9
 
 
+def test_mean_severity():
+    from impactguard.risk_model import get_severity
+
+    # changes: REMOVED, OPTIONAL, ADDED, REQUIRED, REMOVED
+    expected = sum(
+        get_severity(c) for c in ("REMOVED", "OPTIONAL", "ADDED", "REQUIRED", "REMOVED")
+    ) / 5
+    kpis = compute_kpis(_SAMPLE_REPORT)
+    assert abs(kpis["mean_severity"] - expected) < 1e-9
+
+
+def test_mean_severity_empty():
+    kpis = compute_kpis([])
+    assert kpis["mean_severity"] == 0.0
+
+
+def test_mean_severity_no_change_field():
+    # Items with missing change field fall back to get_severity("") → 0.5
+    from impactguard.risk_model import get_severity
+
+    report = [{"function": "x", "risk": "HIGH", "exposure": 0.5, "confidence": 0.9}]
+    kpis = compute_kpis(report)
+    assert abs(kpis["mean_severity"] - get_severity("")) < 1e-9
+
+
+def test_mean_confidence():
+    # confidences: 1.0, 0.9, 0.8, 0.2, 1.0
+    expected = (1.0 + 0.9 + 0.8 + 0.2 + 1.0) / 5
+    kpis = compute_kpis(_SAMPLE_REPORT)
+    assert abs(kpis["mean_confidence"] - expected) < 1e-9
+
+
+def test_mean_confidence_empty():
+    kpis = compute_kpis([])
+    assert kpis["mean_confidence"] == 0.0
+
+
+def test_transitive_count():
+    # bar and qux have transitive=True
+    kpis = compute_kpis(_SAMPLE_REPORT)
+    assert kpis["transitive_count"] == 2
+
+
+def test_transitive_rate():
+    kpis = compute_kpis(_SAMPLE_REPORT)
+    assert abs(kpis["transitive_rate"] - 2 / 5) < 1e-9
+
+
+def test_transitive_count_none_transitive_field():
+    # Items without a transitive key default to 0 (falsy)
+    report = [
+        {"function": "a", "risk": "HIGH", "exposure": 0.5, "confidence": 0.8},
+        {"function": "b", "risk": "HIGH", "exposure": 0.3, "confidence": 0.9, "transitive": False},
+    ]
+    kpis = compute_kpis(report)
+    assert kpis["transitive_count"] == 0
+    assert kpis["transitive_rate"] == 0.0
+
+
+def test_transitive_all_transitive():
+    report = [
+        {"function": "a", "risk": "LOW", "exposure": 0.1, "confidence": 0.8, "transitive": True},
+        {"function": "b", "risk": "LOW", "exposure": 0.2, "confidence": 0.9, "transitive": True},
+    ]
+    kpis = compute_kpis(report)
+    assert kpis["transitive_count"] == 2
+    assert kpis["transitive_rate"] == 1.0
+
+
 def test_patch_acceptance_rate_none_when_no_feedback():
     kpis = compute_kpis(_SAMPLE_REPORT)
     assert kpis["patch_acceptance_rate"] is None
@@ -126,10 +195,14 @@ def test_false_positive_proxy_no_high_items():
 def test_empty_report_all_zeros():
     kpis = compute_kpis([])
     assert kpis["total"] == 0
+    assert kpis["mean_severity"] == 0.0
     assert kpis["mean_risk_score"] == 0.0
     assert kpis["high_rate"] == 0.0
     assert kpis["confidence_coverage"] == 0.0
     assert kpis["mean_exposure"] == 0.0
+    assert kpis["mean_confidence"] == 0.0
+    assert kpis["transitive_count"] == 0
+    assert kpis["transitive_rate"] == 0.0
     assert kpis["false_positive_proxy"] == 0.0
     for level in ("HIGH", "MEDIUM", "LOW", "UNKNOWN"):
         assert kpis["risk_distribution"][level]["count"] == 0
@@ -159,6 +232,20 @@ def test_format_kpi_text_contains_levels():
     text = format_kpi_text(kpis)
     for level in ("HIGH", "MEDIUM", "LOW", "UNKNOWN"):
         assert level in text
+
+
+def test_format_kpi_text_contains_sec_dimensions():
+    kpis = compute_kpis(_SAMPLE_REPORT)
+    text = format_kpi_text(kpis)
+    assert "severity" in text.lower()
+    assert "exposure" in text.lower()
+    assert "confidence" in text.lower()
+
+
+def test_format_kpi_text_contains_transitive():
+    kpis = compute_kpis(_SAMPLE_REPORT)
+    text = format_kpi_text(kpis)
+    assert "Transitive" in text
 
 
 def test_format_kpi_text_contains_header():
