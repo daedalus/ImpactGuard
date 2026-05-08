@@ -60,7 +60,7 @@ def _make_parser() -> Any:
     return _JsParser(_JS_LANGUAGE)
 
 
-def _is_exported(node: Any, source: bytes) -> bool:
+def _is_exported(node: Any, _source: bytes) -> bool:
     """Return True if the node or its parent has an export keyword."""
     parent = node.parent
     if parent is not None and parent.type == "export_statement":
@@ -71,7 +71,7 @@ def _is_exported(node: Any, source: bytes) -> bool:
     return False
 
 
-def _is_async_node(node: Any, source: bytes) -> bool:
+def _is_async_node(node: Any, _source: bytes) -> bool:
     """Return True if the node has an async keyword."""
     for child in node.children:
         if child.type == "async":
@@ -451,21 +451,6 @@ class JavaScriptExtractor:
     language: str = "javascript"
     extensions: list[str] = [".js", ".mjs", ".cjs"]
 
-    def __init__(self) -> None:
-        self._warned: bool = False
-
-    def _warn_if_no_tree_sitter(self) -> None:
-        if not _TREE_SITTER_AVAILABLE and not self._warned:
-            warnings.warn(
-                "tree-sitter and tree-sitter-javascript are not installed; "
-                "JavaScript extraction will use a regex-based fallback which "
-                "may miss some function signatures.  Install the 'languages' "
-                "extra for full support:  pip install 'impactguard[languages]'",
-                UserWarning,
-                stacklevel=3,
-            )
-            self._warned = True
-
     def extract_signatures(
         self,
         files: list[str],
@@ -474,14 +459,14 @@ class JavaScriptExtractor:
         """Extract signatures from JavaScript files."""
         if _TREE_SITTER_AVAILABLE:
             return _extract_with_tree_sitter(files, _base_path)
-        self._warn_if_no_tree_sitter()
+        warn_if_no_tree_sitter(self, "JavaScript", "tree-sitter-javascript")
         return _extract_with_regex(files, _base_path)
 
     def extract_calls(self, path: Path) -> list[dict[str, Any]]:
         """Extract call sites from a JavaScript file."""
         if _TREE_SITTER_AVAILABLE:
             return _extract_calls_with_tree_sitter(path)
-        self._warn_if_no_tree_sitter()
+        warn_if_no_tree_sitter(self, "JavaScript", "tree-sitter-javascript")
         return _extract_calls_with_regex(path)
 
     def parse_union_members(self, type_str: str) -> frozenset[str]:
@@ -495,11 +480,6 @@ class JavaScriptExtractor:
         return frozenset({s})
 
 
-# ── Self-registration ─────────────────────────────────────────────────────────
+# ── Self-registration ─────────────────────────
 
-
-def _register() -> None:
-    register_extractor(JavaScriptExtractor())
-
-
-_register()
+register_extractor(JavaScriptExtractor())

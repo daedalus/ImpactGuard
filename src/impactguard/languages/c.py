@@ -548,21 +548,6 @@ class CExtractor:
     language: str = "c"
     extensions: list[str] = _C_EXTENSIONS
 
-    def __init__(self) -> None:
-        self._warned: bool = False
-
-    def _warn_if_no_tree_sitter(self) -> None:
-        if not _C_TREE_SITTER_AVAILABLE and not self._warned:
-            warnings.warn(
-                "tree-sitter and tree-sitter-c are not installed; "
-                "C extraction will use a regex-based fallback which "
-                "may miss some function signatures.  Install the 'languages' "
-                "extra for full support:  pip install 'impactguard[languages]'",
-                UserWarning,
-                stacklevel=3,
-            )
-            self._warned = True
-
     def extract_signatures(
         self,
         files: list[str],
@@ -573,14 +558,14 @@ class CExtractor:
             return _extract_with_tree_sitter(
                 files, use_cpp=False, _base_path=_base_path
             )
-        self._warn_if_no_tree_sitter()
+        warn_if_no_tree_sitter(self, "C", "tree-sitter-c")
         return _extract_with_regex(files, _base_path)
 
     def extract_calls(self, path: Path) -> list[dict[str, Any]]:
         """Extract call sites from a C file."""
         if _C_TREE_SITTER_AVAILABLE:
             return _extract_calls_with_tree_sitter(path, use_cpp=False)
-        self._warn_if_no_tree_sitter()
+        warn_if_no_tree_sitter(self, "C", "tree-sitter-c")
         return _extract_calls_with_regex(path)
 
     def parse_union_members(self, type_str: str) -> frozenset[str]:
@@ -598,21 +583,6 @@ class CppExtractor:
     language: str = "cpp"
     extensions: list[str] = _CPP_EXTENSIONS
 
-    def __init__(self) -> None:
-        self._warned: bool = False
-
-    def _warn_if_no_tree_sitter(self) -> None:
-        if not _CPP_TREE_SITTER_AVAILABLE and not self._warned:
-            warnings.warn(
-                "tree-sitter and tree-sitter-cpp are not installed; "
-                "C++ extraction will use a regex-based fallback which "
-                "may miss some function signatures.  Install the 'languages' "
-                "extra for full support:  pip install 'impactguard[languages]'",
-                UserWarning,
-                stacklevel=3,
-            )
-            self._warned = True
-
     def extract_signatures(
         self,
         files: list[str],
@@ -621,14 +591,14 @@ class CppExtractor:
         """Extract signatures from C++ files."""
         if _CPP_TREE_SITTER_AVAILABLE:
             return _extract_with_tree_sitter(files, use_cpp=True, _base_path=_base_path)
-        self._warn_if_no_tree_sitter()
+        warn_if_no_tree_sitter(self, "C++", "tree-sitter-cpp")
         return _extract_with_regex(files, _base_path)
 
     def extract_calls(self, path: Path) -> list[dict[str, Any]]:
         """Extract call sites from a C++ file."""
         if _CPP_TREE_SITTER_AVAILABLE:
             return _extract_calls_with_tree_sitter(path, use_cpp=True)
-        self._warn_if_no_tree_sitter()
+        warn_if_no_tree_sitter(self, "C++", "tree-sitter-cpp")
         return _extract_calls_with_regex(path)
 
     def parse_union_members(self, type_str: str) -> frozenset[str]:
@@ -636,12 +606,7 @@ class CppExtractor:
         return frozenset({type_str.strip()})
 
 
-# ── Self-registration ─────────────────────────────────────────────────────────
+# ── Self-registration ─────────────────────────────────────────
 
-
-def _register() -> None:
-    register_extractor(CExtractor())
-    register_extractor(CppExtractor())
-
-
-_register()
+register_extractor(CExtractor())
+register_extractor(CppExtractor())

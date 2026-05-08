@@ -24,6 +24,19 @@ import warnings
 from pathlib import Path
 from typing import Any
 
+from ._shared import (
+    _TREE_SITTER_AVAILABLE,
+    call_re,
+    child_of_type,
+    has_ignore_comment,
+    has_ignore_comment_fallback,
+    make_call_dict,
+    make_signature_dict,
+    node_text,
+    register_extractor,
+    warn_if_no_tree_sitter,
+)
+
 # ── Optional tree-sitter dependency ──────────────────────────────────────────
 
 try:
@@ -43,29 +56,6 @@ except ImportError:  # pragma: no cover
 def _make_parser() -> Any:
     """Create a fresh tree-sitter Java parser."""
     return _JavaParser(_JAVA_LANGUAGE)
-
-
-def _node_text(node: Any, source: bytes) -> str:
-    """Return the UTF-8 text of a tree-sitter node."""
-    return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
-
-
-def _child_of_type(node: Any, *types: str) -> Any | None:
-    """Return the first direct child whose type is in *types*, or *None*."""
-    for child in node.children:
-        if child.type in types:
-            return child
-    return None
-
-
-def _has_ignore_comment(source_bytes: bytes, lineno_0based: int) -> bool:
-    """Return *True* if an ``// impactguard: ignore`` comment appears on or before the node."""
-    tag = b"impactguard: ignore"
-    lines = source_bytes.split(b"\n")
-    for idx in (lineno_0based - 1, lineno_0based):
-        if 0 <= idx < len(lines) and tag in lines[idx]:
-            return True
-    return False
 
 
 def _parse_formal_params(
@@ -89,14 +79,14 @@ def _parse_formal_params(
                 elif c.type not in ("variable_modifier", ",", ";"):
                     if type_node is None:
                         type_node = c
-            name = _node_text(name_node, source) if name_node else "unknown"
-            type_str = _node_text(type_node, source).strip() if type_node else None
+            name = node_text(name_node, source) if name_node else "unknown"
+            type_str = node_text(type_node, source).strip() if type_node else None
             positional.append({"name": name, "has_default": False, "type": type_str})
 
         elif child.type == "spread_parameter":
             # vararg: int... args
             has_vararg = True
-            name_node = _child_of_type(child, "variable_declarator")
+            name_node = child_of_type(child, "variable_declarator")
             if name_node is None:
                 # last child is usually the identifier
                 for c in reversed(child.children):
@@ -134,7 +124,7 @@ def _is_public_method(node: Any, source: bytes) -> bool:
     """Check if a method declaration has the 'public' modifier."""
     for child in node.children:
         if child.type == "modifiers":
-            text = _node_text(child, source)
+            text = node_text(child, source)
             return "public" in text.split()
     return False
 
@@ -157,7 +147,7 @@ def _process_method(
 
     for child in node.children:
         if child.type == "identifier" and name is None:
-            name = _node_text(child, source)
+            name = node_text(child, source)
         elif child.type == "formal_parameters":
             params_node = child
         elif (
@@ -185,7 +175,7 @@ def _process_method(
     positional, has_vararg = _parse_formal_params(params_node, source)
     return_type: str | None = None
     if return_type_node is not None:
-        return_type = _node_text(return_type_node, source).strip()
+        return_type = node_text(return_type_node, source).strip()
 
     if class_name:
         fqname = f"{fq_file}:{class_name}.{name}"
@@ -195,23 +185,20 @@ def _process_method(
         display_name = name
 
     funcs.append(
-        {
-            "fqname": fqname,
-            "name": display_name,
-            "file": fq_file,
-            "lineno": node.start_point[0] + 1,
-            "end_lineno": node.end_point[0] + 1,
-            "positional": positional,
-            "kwonly": [],
-            "vararg": has_vararg,
-            "kwarg": False,
-            "class_name": class_name,
-            "return_type": return_type,
-            "decorators": [],
-            "is_async": False,
-            "ignored": _has_ignore_comment(source, node.start_point[0]),
-            "exported": is_public,
-        }
+        make_signature_dict(
+            fqname=fqname,
+            display_name=display_name,
+            file=fq_file,
+            lineno=node.start_point[0] + 1,
+            end_lineno=node.end_point[0] + 1,
+            positional=positional,
+            has_vararg=has_vararg,
+            class_name=class_name,
+            return_type=return_type,
+            is_async=False,
+            ignored=has_ignore_comment(source, node.start_point[0]),
+            exported=is_public,
+        )
     )
 
 
@@ -225,9 +212,9 @@ def _process_type_decl(
     class_name: str | None = None
     for child in node.children:
         if child.type in ("identifier", "type_identifier") and class_name is None:
-            class_name = _node_text(child, source)
+            class_name = node_text(child, source)
 
-    body = _child_of_type(node, "class_body", "interface_body", "enum_body")
+    body = child_of_type(node, "class_body", "interface_body", "enum_body")
     if body is not None:
         _extract_class_methods(body, source, fq_file, class_name, funcs)
 
@@ -279,25 +266,22 @@ def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
     def visit(node: Any) -> None:
         if node.type == "method_invocation":
             # Children: [object '.']? name arguments
-            name_node = _child_of_type(node, "identifier")
+            name_node = child_of_type(node, "identifier")
             if name_node is not None:
-                name = _node_text(name_node, source)
-                args_node = _child_of_type(node, "argument_list")
+                name = node_text(name_node, source)
+                args_node = child_of_type(node, "argument_list")
                 arg_count = 0
                 if args_node is not None:
                     arg_count = sum(
                         1 for c in args_node.children if c.type not in ("(", ")", ",")
                     )
                 calls.append(
-                    {
-                        "name": name,
-                        "lineno": node.start_point[0] + 1,
-                        "args": arg_count,
-                        "kwargs": [],
-                        "has_starargs": False,
-                        "has_kwargs": False,
-                        "file": str(path),
-                    }
+                    make_call_dict(
+                        name=name,
+                        lineno=node.start_point[0] + 1,
+                        arg_count=arg_count,
+                        file=str(path),
+                    )
                 )
         for child in node.children:
             visit(child)
@@ -318,16 +302,6 @@ _METHOD_RE = re.compile(
     r"(?:throws\s+[\w,\s]+)?\s*[{;]",
     re.MULTILINE,
 )
-
-_IGNORE_TAG = "impactguard: ignore"
-
-
-def _has_ignore_comment_fallback(lines: list[str], lineno: int) -> bool:
-    """Check for ``// impactguard: ignore`` on or before *lineno* (1-based)."""
-    for idx in (lineno - 2, lineno - 1):
-        if 0 <= idx < len(lines) and _IGNORE_TAG in lines[idx]:
-            return True
-    return False
 
 
 def _parse_java_params_regex(params_str: str) -> tuple[list[dict[str, Any]], bool]:
@@ -402,23 +376,20 @@ def _extract_with_regex(
             is_public = "public" in modifiers
 
             all_funcs.append(
-                {
-                    "fqname": fqname,
-                    "name": name,
-                    "file": fq_file,
-                    "lineno": lineno,
-                    "end_lineno": lineno,
-                    "positional": positional,
-                    "kwonly": [],
-                    "vararg": has_vararg,
-                    "kwarg": False,
-                    "class_name": None,
-                    "return_type": return_type,
-                    "decorators": [],
-                    "is_async": False,
-                    "ignored": _has_ignore_comment_fallback(lines, lineno),
-                    "exported": is_public,
-                }
+                make_signature_dict(
+                    fqname=fqname,
+                    display_name=name,
+                    file=fq_file,
+                    lineno=lineno,
+                    end_lineno=lineno,
+                    positional=positional,
+                    has_vararg=has_vararg,
+                    class_name=None,
+                    return_type=return_type,
+                    is_async=False,
+                    ignored=has_ignore_comment_fallback(lines, lineno),
+                    exported=is_public,
+                )
             )
 
     seen: set[str] = set()
@@ -440,7 +411,6 @@ def _extract_calls_with_regex(path: Path) -> list[dict[str, Any]]:
         return []
 
     calls: list[dict[str, Any]] = []
-    call_re = re.compile(r"\b(?P<name>\w+)\s*\((?P<args>[^)]*)\)")
     _KEYWORDS = {"if", "while", "for", "switch", "catch"}
     for m in call_re.finditer(source):
         name = m.group("name")
@@ -452,15 +422,12 @@ def _extract_calls_with_regex(path: Path) -> list[dict[str, Any]]:
         )
         lineno = source[: m.start()].count("\n") + 1
         calls.append(
-            {
-                "name": name,
-                "lineno": lineno,
-                "args": arg_count,
-                "kwargs": [],
-                "has_starargs": False,
-                "has_kwargs": False,
-                "file": str(path),
-            }
+            make_call_dict(
+                name=name,
+                lineno=lineno,
+                arg_count=arg_count,
+                file=str(path),
+            )
         )
     return calls
 
@@ -478,21 +445,6 @@ class JavaExtractor:
     language: str = "java"
     extensions: list[str] = [".java"]
 
-    def __init__(self) -> None:
-        self._warned: bool = False
-
-    def _warn_if_no_tree_sitter(self) -> None:
-        if not _TREE_SITTER_AVAILABLE and not self._warned:
-            warnings.warn(
-                "tree-sitter and tree-sitter-java are not installed; "
-                "Java extraction will use a regex-based fallback which "
-                "may miss some method signatures.  Install the 'languages' "
-                "extra for full support:  pip install 'impactguard[languages]'",
-                UserWarning,
-                stacklevel=3,
-            )
-            self._warned = True
-
     def extract_signatures(
         self,
         files: list[str],
@@ -501,14 +453,14 @@ class JavaExtractor:
         """Extract signatures from Java files."""
         if _TREE_SITTER_AVAILABLE:
             return _extract_with_tree_sitter(files, _base_path)
-        self._warn_if_no_tree_sitter()
+        warn_if_no_tree_sitter(self, "Java", "tree-sitter-java")
         return _extract_with_regex(files, _base_path)
 
     def extract_calls(self, path: Path) -> list[dict[str, Any]]:
         """Extract call sites from a Java file."""
         if _TREE_SITTER_AVAILABLE:
             return _extract_calls_with_tree_sitter(path)
-        self._warn_if_no_tree_sitter()
+        warn_if_no_tree_sitter(self, "Java", "tree-sitter-java")
         return _extract_calls_with_regex(path)
 
     def parse_union_members(self, type_str: str) -> frozenset[str]:
@@ -523,13 +475,6 @@ class JavaExtractor:
         return frozenset({s})
 
 
-# ── Self-registration ─────────────────────────────────────────────────────────
+# ── Self-registration ─────────────────────────────────────────────────
 
-
-def _register() -> None:
-    from .registry import register
-
-    register(JavaExtractor())
-
-
-_register()
+register_extractor(JavaExtractor())

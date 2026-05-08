@@ -504,21 +504,6 @@ class CSharpExtractor:
     language: str = "csharp"
     extensions: list[str] = [".cs"]
 
-    def __init__(self) -> None:
-        self._warned: bool = False
-
-    def _warn_if_no_tree_sitter(self) -> None:
-        if not _TREE_SITTER_AVAILABLE and not self._warned:
-            warnings.warn(
-                "tree-sitter and tree-sitter-c-sharp are not installed; "
-                "C# extraction will use a regex-based fallback which "
-                "may miss some method signatures.  Install the 'languages' "
-                "extra for full support:  pip install 'impactguard[languages]'",
-                UserWarning,
-                stacklevel=3,
-            )
-            self._warned = True
-
     def extract_signatures(
         self,
         files: list[str],
@@ -527,14 +512,14 @@ class CSharpExtractor:
         """Extract signatures from C# files."""
         if _TREE_SITTER_AVAILABLE:
             return _extract_with_tree_sitter(files, _base_path)
-        self._warn_if_no_tree_sitter()
+        warn_if_no_tree_sitter(self, "C#", "tree-sitter-c-sharp")
         return _extract_with_regex(files, _base_path)
 
     def extract_calls(self, path: Path) -> list[dict[str, Any]]:
         """Extract call sites from a C# file."""
         if _TREE_SITTER_AVAILABLE:
             return _extract_calls_with_tree_sitter(path)
-        self._warn_if_no_tree_sitter()
+        warn_if_no_tree_sitter(self, "C#", "tree-sitter-c-sharp")
         return _extract_calls_with_regex(path)
 
     def parse_union_members(self, type_str: str) -> frozenset[str]:
@@ -545,11 +530,6 @@ class CSharpExtractor:
         return frozenset({type_str.strip()})
 
 
-# ── Self-registration ─────────────────────────────────────────────────────────
+# ── Self-registration ─────────────────────────────────
 
-
-def _register() -> None:
-    register_extractor(CSharpExtractor())
-
-
-_register()
+register_extractor(CSharpExtractor())

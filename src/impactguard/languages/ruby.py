@@ -451,21 +451,6 @@ class RubyExtractor:
     language: str = "ruby"
     extensions: list[str] = [".rb"]
 
-    def __init__(self) -> None:
-        self._warned: bool = False
-
-    def _warn_if_no_tree_sitter(self) -> None:
-        if not _TREE_SITTER_AVAILABLE and not self._warned:
-            warnings.warn(
-                "tree-sitter and tree-sitter-ruby are not installed; "
-                "Ruby extraction will use a regex-based fallback which "
-                "may miss some method signatures.  Install the 'languages' "
-                "extra for full support:  pip install 'impactguard[languages]'",
-                UserWarning,
-                stacklevel=3,
-            )
-            self._warned = True
-
     def extract_signatures(
         self,
         files: list[str],
@@ -474,14 +459,14 @@ class RubyExtractor:
         """Extract signatures from Ruby files."""
         if _TREE_SITTER_AVAILABLE:
             return _extract_with_tree_sitter(files, _base_path)
-        self._warn_if_no_tree_sitter()
+        warn_if_no_tree_sitter(self, "Ruby", "tree-sitter-ruby")
         return _extract_with_regex(files, _base_path)
 
     def extract_calls(self, path: Path) -> list[dict[str, Any]]:
         """Extract call sites from a Ruby file."""
         if _TREE_SITTER_AVAILABLE:
             return _extract_calls_with_tree_sitter(path)
-        self._warn_if_no_tree_sitter()
+        warn_if_no_tree_sitter(self, "Ruby", "tree-sitter-ruby")
         return _extract_calls_with_regex(path)
 
     def parse_union_members(self, type_str: str) -> frozenset[str]:
@@ -497,11 +482,6 @@ class RubyExtractor:
         return frozenset({s})
 
 
-# ── Self-registration ─────────────────────────────────────────────────────────
+# ── Self-registration ─────────────────────────────────
 
-
-def _register() -> None:
-    register_extractor(RubyExtractor())
-
-
-_register()
+register_extractor(RubyExtractor())
