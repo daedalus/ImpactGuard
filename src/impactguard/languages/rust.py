@@ -43,7 +43,6 @@ from .lib.shared import (
 try:
     import tree_sitter_rust as _rust_lang
     from tree_sitter import Language as _RustLanguage
-    from tree_sitter import Parser as _RustParser
 
     _RUST_LANGUAGE = _RustLanguage(_rust_lang.language())
     _TREE_SITTER_AVAILABLE = True
@@ -52,11 +51,6 @@ except ImportError:  # pragma: no cover
 
 
 # ── Tree-sitter helpers ───────────────────────────────────────────────────────
-
-
-def _make_parser() -> Any:
-    """Create a fresh tree-sitter Rust parser."""
-    return _RustParser(_RUST_LANGUAGE)
 
 
 def _is_pub(node: Any, source: bytes) -> bool:
@@ -170,7 +164,7 @@ def _extract_with_tree_sitter(
     _base_path: str | None = None,
 ) -> list[dict[str, Any]]:
     """Extract Rust signatures using tree-sitter."""
-    parser = _make_parser()
+    parser = make_parser("rust", _RUST_LANGUAGE)
     all_funcs: list[dict[str, Any]] = []
 
     for f in files:
@@ -213,7 +207,7 @@ def _extract_with_tree_sitter(
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
     """Extract Rust call sites using tree-sitter."""
-    parser = _make_parser()
+    parser = make_parser("rust", _RUST_LANGUAGE)
     try:
         source = path.read_bytes()
     except OSError:

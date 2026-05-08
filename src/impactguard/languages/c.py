@@ -45,7 +45,6 @@ from .lib.shared import (
 try:
     import tree_sitter_c as _c_lang
     from tree_sitter import Language as _CLanguage
-    from tree_sitter import Parser as _CParser
 
     _C_LANGUAGE = _CLanguage(_c_lang.language())
     _C_TREE_SITTER_AVAILABLE = True
@@ -55,7 +54,6 @@ except ImportError:  # pragma: no cover
 try:
     import tree_sitter_cpp as _cpp_lang
     from tree_sitter import Language as _CppLanguage
-    from tree_sitter import Parser as _CppParser
 
     _CPP_LANGUAGE = _CppLanguage(_cpp_lang.language())
     _CPP_TREE_SITTER_AVAILABLE = True
@@ -64,16 +62,6 @@ except ImportError:  # pragma: no cover
 
 
 # ── Tree-sitter helpers ───────────────────────────────────────────────────────
-
-
-def _make_c_parser() -> Any:
-    """Create a fresh tree-sitter C parser."""
-    return _CParser(_C_LANGUAGE)
-
-
-def _make_cpp_parser() -> Any:
-    """Create a fresh tree-sitter C++ parser."""
-    return _CppParser(_CPP_LANGUAGE)
 
 
 def _parse_parameter_list(
@@ -296,9 +284,9 @@ def _extract_with_tree_sitter(
 ) -> list[dict[str, Any]]:
     """Extract C or C++ signatures using tree-sitter."""
     if use_cpp:
-        parser = _make_cpp_parser()
+        parser = make_parser("C++", _CPP_LANGUAGE)
     else:
-        parser = _make_c_parser()
+        parser = make_parser("C", _C_LANGUAGE)
 
     all_funcs: list[dict[str, Any]] = []
 
@@ -322,9 +310,9 @@ def _extract_with_tree_sitter(
 def _extract_calls_with_tree_sitter(path: Path, use_cpp: bool) -> list[dict[str, Any]]:
     """Extract C/C++ call sites using tree-sitter."""
     if use_cpp:
-        parser = _make_cpp_parser()
+        parser = make_parser("C++", _CPP_LANGUAGE)
     else:
-        parser = _make_c_parser()
+        parser = make_parser("C", _C_LANGUAGE)
 
     try:
         source = path.read_bytes()

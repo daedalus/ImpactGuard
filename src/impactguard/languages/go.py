@@ -43,7 +43,6 @@ from .lib.shared import (
 try:
     import tree_sitter_go as _go_lang
     from tree_sitter import Language as _GoLanguage
-    from tree_sitter import Parser as _GoParser
 
     _GO_LANGUAGE = _GoLanguage(_go_lang.language())
     _TREE_SITTER_AVAILABLE = True
@@ -52,11 +51,6 @@ except ImportError:  # pragma: no cover
 
 
 # ── Tree-sitter helpers ───────────────────────────────────────────────────────
-
-
-def _make_parser() -> Any:
-    """Create a fresh tree-sitter Go parser."""
-    return _GoParser(_GO_LANGUAGE)
 
 
 def _children_of_type(node: Any, *types: str) -> list[Any]:
@@ -255,7 +249,7 @@ def _extract_with_tree_sitter(
     _base_path: str | None = None,
 ) -> list[dict[str, Any]]:
     """Extract Go signatures using tree-sitter."""
-    parser = _make_parser()
+    parser = make_parser("Go", _GO_LANGUAGE)
     all_funcs: list[dict[str, Any]] = []
 
     for f in files:
@@ -283,7 +277,7 @@ def _extract_with_tree_sitter(
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
     """Extract Go call sites using tree-sitter."""
-    parser = _make_parser()
+    parser = make_parser("Go", _GO_LANGUAGE)
     try:
         source = path.read_bytes()
     except OSError:
