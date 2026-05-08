@@ -1,6 +1,6 @@
 """Minimal KPI dashboard for ImpactGuard.
 
-Computes a concise set of 10 key performance indicators from a risk report and
+Computes a concise set of 12 key performance indicators from a risk report and
 optional patch-feedback outcomes.  All values are pure Python — no external
 dependencies beyond the standard library.
 
@@ -60,7 +60,7 @@ def compute_kpis(
     feedback_outcomes: list[dict[str, Any]] | None = None,
     fp_threshold: float = _DEFAULT_FP_THRESHOLD,
 ) -> dict[str, Any]:
-    """Compute the KPI set from a risk report.
+    """Compute the 12-metric KPI set from a risk report.
 
     Covers all three S×E×C dimensions (severity, exposure, confidence) plus
     transitive-impact breakdown and patch-quality signal.
