@@ -44,7 +44,6 @@ from .lib.shared import (
 try:
     import tree_sitter_swift as _swift_lang
     from tree_sitter import Language as _SwiftLanguage
-    from tree_sitter import Parser as _SwiftParser
 
     _SWIFT_LANGUAGE = _SwiftLanguage(_swift_lang.language())
     _TREE_SITTER_AVAILABLE = True
@@ -53,11 +52,6 @@ except ImportError:  # pragma: no cover
 
 
 # ── Tree-sitter helpers ───────────────────────────────────────────────────────
-
-
-def _make_parser() -> Any:
-    """Create a fresh tree-sitter Swift parser."""
-    return _SwiftParser(_SWIFT_LANGUAGE)
 
 
 def _class_name_for_method(node: Any, source: bytes) -> str | None:
@@ -216,7 +210,7 @@ def _extract_with_tree_sitter(
     _base_path: str | None = None,
 ) -> list[dict[str, Any]]:
     """Extract Swift signatures using tree-sitter."""
-    parser = _make_parser()
+    parser = make_parser("swift", _SWIFT_LANGUAGE)
     all_funcs: list[dict[str, Any]] = []
 
     for f in files:
@@ -249,7 +243,7 @@ def _extract_with_tree_sitter(
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
     """Extract Swift call sites using tree-sitter."""
-    parser = _make_parser()
+    parser = make_parser("swift", _SWIFT_LANGUAGE)
     try:
         source = path.read_bytes()
     except OSError:

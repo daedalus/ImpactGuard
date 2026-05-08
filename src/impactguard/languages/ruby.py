@@ -43,7 +43,6 @@ from .lib.shared import (
 try:
     import tree_sitter_ruby as _ruby_lang
     from tree_sitter import Language as _RubyLanguage
-    from tree_sitter import Parser as _RubyParser
 
     _RUBY_LANGUAGE = _RubyLanguage(_ruby_lang.language())
     _TREE_SITTER_AVAILABLE = True
@@ -52,11 +51,6 @@ except ImportError:  # pragma: no cover
 
 
 # ── Tree-sitter helpers ───────────────────────────────────────────────────────
-
-
-def _make_parser() -> Any:
-    """Create a fresh tree-sitter Ruby parser."""
-    return _RubyParser(_RUBY_LANGUAGE)
 
 
 def _parse_method_parameters(
@@ -214,7 +208,7 @@ def _extract_with_tree_sitter(
     _base_path: str | None = None,
 ) -> list[dict[str, Any]]:
     """Extract Ruby signatures using tree-sitter."""
-    parser = _make_parser()
+    parser = make_parser("ruby", _RUBY_LANGUAGE)
     all_funcs: list[dict[str, Any]] = []
 
     for f in files:
@@ -268,7 +262,7 @@ def _extract_with_tree_sitter(
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
     """Extract Ruby call sites using tree-sitter."""
-    parser = _make_parser()
+    parser = make_parser("ruby", _RUBY_LANGUAGE)
     try:
         source = path.read_bytes()
     except OSError:

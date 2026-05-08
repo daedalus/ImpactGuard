@@ -31,6 +31,7 @@ from .lib.shared import (
     has_ignore_comment,
     has_ignore_comment_fallback,
     make_call_dict,
+    make_parser,
     make_signature_dict,
     node_text,
     register_extractor,
@@ -42,7 +43,6 @@ from .lib.shared import (
 try:
     import tree_sitter_java as _java_lang
     from tree_sitter import Language as _JavaLanguage
-    from tree_sitter import Parser as _JavaParser
 
     _JAVA_LANGUAGE = _JavaLanguage(_java_lang.language())
     _TREE_SITTER_AVAILABLE = True
@@ -51,11 +51,6 @@ except ImportError:  # pragma: no cover
 
 
 # ── Tree-sitter helpers ───────────────────────────────────────────────────────
-
-
-def _make_parser() -> Any:
-    """Create a fresh tree-sitter Java parser."""
-    return _JavaParser(_JAVA_LANGUAGE)
 
 
 def _parse_formal_params(
@@ -224,7 +219,7 @@ def _extract_with_tree_sitter(
     _base_path: str | None = None,
 ) -> list[dict[str, Any]]:
     """Extract Java signatures using tree-sitter."""
-    parser = _make_parser()
+    parser = make_parser("Java", _JAVA_LANGUAGE)
     all_funcs: list[dict[str, Any]] = []
 
     for f in files:
@@ -254,7 +249,7 @@ def _extract_with_tree_sitter(
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
     """Extract Java call sites using tree-sitter."""
-    parser = _make_parser()
+    parser = make_parser("Java", _JAVA_LANGUAGE)
     try:
         source = path.read_bytes()
     except OSError:

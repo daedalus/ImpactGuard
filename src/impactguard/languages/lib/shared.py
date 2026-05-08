@@ -78,8 +78,7 @@ def make_parser(language_name: str, language_object: Any) -> Any:
     try:
         from tree_sitter import Parser
 
-        parser = Parser()
-        parser.set_language(language_object)
+        parser = Parser(language_object)
         return parser
     except Exception as e:
         warnings.warn(f"Failed to create {language_name} parser: {e}", stacklevel=2)

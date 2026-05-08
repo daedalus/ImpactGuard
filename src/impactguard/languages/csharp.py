@@ -43,7 +43,6 @@ from .lib.shared import (
 try:
     import tree_sitter_c_sharp as _csharp_lang
     from tree_sitter import Language as _CSharpLanguage
-    from tree_sitter import Parser as _CSharpParser
 
     _CSHARP_LANGUAGE = _CSharpLanguage(_csharp_lang.language())
     _TREE_SITTER_AVAILABLE = True
@@ -52,11 +51,6 @@ except ImportError:  # pragma: no cover
 
 
 # ── Tree-sitter helpers ───────────────────────────────────────────────────────
-
-
-def _make_parser() -> Any:
-    """Create a fresh tree-sitter C# parser."""
-    return _CSharpParser(_CSHARP_LANGUAGE)
 
 
 def _class_name_for_member(node: Any, source: bytes) -> str | None:
@@ -226,7 +220,7 @@ def _extract_with_tree_sitter(
     _base_path: str | None = None,
 ) -> list[dict[str, Any]]:
     """Extract C# signatures using tree-sitter."""
-    parser = _make_parser()
+    parser = make_parser("csharp", _CSHARP_LANGUAGE)
     all_funcs: list[dict[str, Any]] = []
 
     for f in files:
@@ -259,7 +253,7 @@ def _extract_with_tree_sitter(
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
     """Extract C# call sites using tree-sitter."""
-    parser = _make_parser()
+    parser = make_parser("csharp", _CSHARP_LANGUAGE)
     try:
         source = path.read_bytes()
     except OSError:
