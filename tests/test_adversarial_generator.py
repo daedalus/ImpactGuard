@@ -14,14 +14,12 @@ import tempfile
 from typing import Any
 
 import pytest
-
-from impactguard.adversarial_generator import (
+from adversarial_generator import (
     AdversarialPair,
     generate,
     generate_all,
     list_strategies,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -156,7 +154,10 @@ class TestSeeding:
         for name in list_strategies():
             p1 = generate(name, seed=0)
             p2 = generate(name, seed=999)
-            if p1.old_signatures != p2.old_signatures or p1.new_signatures != p2.new_signatures:
+            if (
+                p1.old_signatures != p2.old_signatures
+                or p1.new_signatures != p2.new_signatures
+            ):
                 differs = True
                 break
         assert differs, (

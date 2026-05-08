@@ -19,6 +19,7 @@ Each :class:`AdversarialPair` carries:
 
 Strategies
 ----------
+
 1.  ``required_param_hidden_by_type_annotation``
 2.  ``positional_reorder_hidden_by_optional_add``
 3.  ``type_narrowing_disguised_as_cleanup``
@@ -33,42 +34,93 @@ Strategies
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import random
 from dataclasses import dataclass, field
 from typing import Any
-
 
 # ---------------------------------------------------------------------------
 # Name pools used by randomized strategy factories
 # ---------------------------------------------------------------------------
 
 _MODULES: list[str] = [
-    "myapp", "core", "utils", "service", "api",
-    "backend", "client", "handlers", "models", "auth",
+    "myapp",
+    "core",
+    "utils",
+    "service",
+    "api",
+    "backend",
+    "client",
+    "handlers",
+    "models",
+    "auth",
 ]
 
 _FUNC_NAMES: list[str] = [
-    "process", "transfer", "render", "connect", "log_event",
-    "fetch_name", "get_config", "create_session", "parse_config",
-    "send_request", "handle", "execute", "validate", "transform",
-    "dispatch", "publish", "query", "update", "delete",
+    "process",
+    "transfer",
+    "render",
+    "connect",
+    "log_event",
+    "fetch_name",
+    "get_config",
+    "create_session",
+    "parse_config",
+    "send_request",
+    "handle",
+    "execute",
+    "validate",
+    "transform",
+    "dispatch",
+    "publish",
+    "query",
+    "update",
+    "delete",
 ]
 
 _PARAM_NAMES: list[str] = [
-    "source", "destination", "user_id", "name", "value",
-    "data", "config", "context", "path", "key", "token",
-    "url", "host", "port", "limit", "mode", "version",
-    "payload", "request", "template", "event", "label",
-    "target", "origin", "tag", "scope", "region", "bucket",
-    "index", "cursor",
+    "source",
+    "destination",
+    "user_id",
+    "name",
+    "value",
+    "data",
+    "config",
+    "context",
+    "path",
+    "key",
+    "token",
+    "url",
+    "host",
+    "port",
+    "limit",
+    "mode",
+    "version",
+    "payload",
+    "request",
+    "template",
+    "event",
+    "label",
+    "target",
+    "origin",
+    "tag",
+    "scope",
+    "region",
+    "bucket",
+    "index",
+    "cursor",
 ]
 
 _SCALAR_TYPES: list[str] = ["str", "int", "float", "bool", "bytes"]
 
 #: Parameter names that *sound* optional but can carry no default in ``required_kwonly_added_with_misleading_name``.
 _MISLEADING_KWONLY_NAMES: list[str] = [
-    "optional_context", "extra_info", "maybe_config",
-    "optional_hints", "supplemental_data", "optional_meta",
+    "optional_context",
+    "extra_info",
+    "maybe_config",
+    "optional_hints",
+    "supplemental_data",
+    "optional_meta",
 ]
 
 _DECORATOR_NAMES: list[str] = ["cache", "lru_cache", "cached_property"]
@@ -86,8 +138,9 @@ def _rand_fqname(rng: random.Random) -> str:
     return f"{rng.choice(_MODULES)}:{rng.choice(_FUNC_NAMES)}"
 
 
-def _rand_params(rng: random.Random, n: int,
-                 exclude: list[str] | None = None) -> list[str]:
+def _rand_params(
+    rng: random.Random, n: int, exclude: list[str] | None = None
+) -> list[str]:
     """Return *n* distinct parameter names chosen without replacement."""
     pool = [p for p in _PARAM_NAMES if p not in (exclude or [])]
     return rng.sample(pool, min(n, len(pool)))
@@ -192,7 +245,7 @@ def _strategy_required_param_hidden_by_type_annotation(
             positional=[
                 _param(p_a, type_=wide_type),  # widening — non-breaking noise
                 _param(p_b),
-                _param(p_c),                    # ← BREAKING: required, no default
+                _param(p_c),  # ← BREAKING: required, no default
             ],
         )
     ]
@@ -234,9 +287,9 @@ def _strategy_positional_reorder_hidden_by_optional_add(
         _sig(
             fqname,
             positional=[
-                _param(p_dst),                         # ← BREAKING: reorder
+                _param(p_dst),  # ← BREAKING: reorder
                 _param(p_src),
-                _param(p_opt, has_default=True),       # non-breaking noise
+                _param(p_opt, has_default=True),  # non-breaking noise
             ],
         )
     ]
@@ -312,7 +365,7 @@ def _strategy_kwonly_removal_with_optional_addition(
         _sig(
             fqname,
             positional=[_param(p_pos)],
-            kwonly=[_param(p_req_kw)],              # required kwonly
+            kwonly=[_param(p_req_kw)],  # required kwonly
         )
     ]
     new = [
@@ -350,9 +403,7 @@ def _strategy_vararg_removal_with_kwarg_addition(
     """
     fqname = _rand_fqname(rng)
     (p_first,) = _rand_params(rng, 1)
-    old = [
-        _sig(fqname, positional=[_param(p_first)], vararg=True)
-    ]
+    old = [_sig(fqname, positional=[_param(p_first)], vararg=True)]
     new = [
         _sig(fqname, positional=[_param(p_first)], vararg=False, kwarg=True)
         # *args REMOVED ← BREAKING; **kwargs ADDED ← looks like expansion
@@ -386,9 +437,7 @@ def _strategy_return_type_narrowing_disguised_as_guarantee(
     (p_first,) = _rand_params(rng, 1)
     base_type = rng.choice(_SCALAR_TYPES)
     wide_type = f"{base_type} | None"
-    old = [
-        _sig(fqname, positional=[_param(p_first)], return_type=wide_type)
-    ]
+    old = [_sig(fqname, positional=[_param(p_first)], return_type=wide_type)]
     new = [
         _sig(fqname, positional=[_param(p_first)], return_type=base_type)
         # BREAKING: return type narrowed
@@ -422,9 +471,7 @@ def _strategy_decorator_removal_hidden_by_optional_kwarg(
     fqname = _rand_fqname(rng)
     p_key, p_force = _rand_params(rng, 2)
     decorator = rng.choice(_DECORATOR_NAMES)
-    old = [
-        _sig(fqname, positional=[_param(p_key)], decorators=[decorator])
-    ]
+    old = [_sig(fqname, positional=[_param(p_key)], decorators=[decorator])]
     new = [
         _sig(
             fqname,
@@ -462,9 +509,7 @@ def _strategy_required_kwonly_added_with_misleading_name(
     fqname = _rand_fqname(rng)
     (p_pos,) = _rand_params(rng, 1)
     misleading_name = rng.choice(_MISLEADING_KWONLY_NAMES)
-    old = [
-        _sig(fqname, positional=[_param(p_pos)])
-    ]
+    old = [_sig(fqname, positional=[_param(p_pos)])]
     new = [
         _sig(
             fqname,
@@ -503,11 +548,11 @@ def _strategy_function_removal_hidden_by_rename_addition(
     new_fqname = f"{module}:{func}{suffix}"
     (p_path,) = _rand_params(rng, 1)
     (p_strict,) = _rand_params(rng, 1, exclude=[p_path])
-    old = [
-        _sig(old_fqname, positional=[_param(p_path)])
-    ]
+    old = [_sig(old_fqname, positional=[_param(p_path)])]
     new = [
-        _sig(new_fqname, positional=[_param(p_path), _param(p_strict, has_default=True)])
+        _sig(
+            new_fqname, positional=[_param(p_path), _param(p_strict, has_default=True)]
+        )
         # old function REMOVED ← BREAKING; new function ADDED ← noise
     ]
     return AdversarialPair(
@@ -538,9 +583,7 @@ def _strategy_kwargs_removal_hidden_by_explicit_params(
     """
     fqname = _rand_fqname(rng)
     p_url, p1, p2, p3 = _rand_params(rng, 4)
-    old = [
-        _sig(fqname, positional=[_param(p_url)], kwarg=True)
-    ]
+    old = [_sig(fqname, positional=[_param(p_url)], kwarg=True)]
     new = [
         _sig(
             fqname,
@@ -575,9 +618,7 @@ def _strategy_kwargs_removal_hidden_by_explicit_params(
 # Registry
 # ---------------------------------------------------------------------------
 
-from collections.abc import Callable
-
-_STRATEGY_REGISTRY: dict[str, Callable[["random.Random"], "AdversarialPair"]] = {
+_STRATEGY_REGISTRY: dict[str, Callable[[random.Random], AdversarialPair]] = {
     "required_param_hidden_by_type_annotation": _strategy_required_param_hidden_by_type_annotation,
     "positional_reorder_hidden_by_optional_add": _strategy_positional_reorder_hidden_by_optional_add,
     "type_narrowing_disguised_as_cleanup": _strategy_type_narrowing_disguised_as_cleanup,
@@ -621,8 +662,7 @@ def generate(strategy_name: str, *, seed: int | str | None = None) -> Adversaria
     """
     if strategy_name not in _STRATEGY_REGISTRY:
         raise KeyError(
-            f"Unknown strategy {strategy_name!r}. "
-            f"Available: {list(_STRATEGY_REGISTRY)}"
+            f"Unknown strategy {strategy_name!r}. Available: {list(_STRATEGY_REGISTRY)}"
         )
     rng = random.Random(seed)
     return _STRATEGY_REGISTRY[strategy_name](rng)

@@ -6,18 +6,6 @@ ImpactGuard - Lightweight API impact analyzer for Python projects.
 Track function signatures, detect breaking changes, and analyze call-site impact
 using static and runtime techniques.
 """
-from .adversarial_generator import (
-    AdversarialPair,
-)
-from .adversarial_generator import (
-    generate as generate_adversarial,
-)
-from .adversarial_generator import (
-    generate_all as generate_all_adversarial,
-)
-from .adversarial_generator import (
-    list_strategies as list_adversarial_strategies,
-)
 from .analyze_module import analyze as analyze_module
 from .analyze_module import analyze_calls
 from .baseline import (
@@ -51,7 +39,6 @@ from .feedback import (
 from .feedback import (
     get_stats as get_feedback_stats,
 )
-from .kpi import compute_kpis, format_kpi_text
 from .generate_report import (
     generate_html,
     generate_html_from_file,
@@ -59,6 +46,7 @@ from .generate_report import (
     generate_markdown_from_file,
 )
 from .impact_analysis import analyze, build_call_graph, find_transitive_callers
+from .kpi import compute_kpis, format_kpi_text
 from .languages import (
     LanguageExtractor,
     detect_language,
@@ -123,7 +111,50 @@ from .trace_calls_prod import (
     install_tracer as install_tracer_prod,
 )
 
+
+def extract_signatures(files: list[str]) -> list[dict[str, Any]]:
+    """Extract function signatures from Python files.
+
+    Args:
+        files: List of Python file paths.
+
+    Returns:
+        List of signature dictionaries.
+    """
+    return extract(files)
+
+
+def compare_signatures(old_path: str, new_path: str) -> dict[str, list[str]]:
+    """Compare two signature snapshots.
+
+    Args:
+        old_path: Path to old signatures JSON.
+        new_path: Path to new signatures JSON.
+
+    Returns:
+        Dictionary with 'breaking' and 'nonbreaking' lists.
+    """
+    return compare(old_path, new_path)
+
+
+def analyze_impact(
+    sigs_path: str, calls_path: str, runtime_path: str | None = None
+) -> list[dict[str, Any]]:
+    """Analyze impact of signature changes on call sites.
+
+    Args:
+        sigs_path: Path to signatures JSON file.
+        calls_path: Path to calls JSON file.
+        runtime_path: Optional path to runtime data JSON.
+
+    Returns:
+        List of impact issues.
+    """
+    return analyze(sigs_path, calls_path, runtime_path)
+
+
 __version__ = "0.1.2"
+
 __all__ = [
     # Signature extraction
     "extract",
@@ -220,11 +251,6 @@ __all__ = [
     # KPI dashboard
     "compute_kpis",
     "format_kpi_text",
-    # Adversarial generator
-    "AdversarialPair",
-    "generate_adversarial",
-    "generate_all_adversarial",
-    "list_adversarial_strategies",
     # Language registry
     "LanguageExtractor",
     "register_language",
@@ -234,44 +260,3 @@ __all__ = [
     "list_languages",
     "list_language_extensions",
 ]
-
-
-def extract_signatures(files: list[str]) -> list[dict[str, Any]]:
-    """Extract function signatures from Python files.
-
-    Args:
-        files: List of Python file paths.
-
-    Returns:
-        List of signature dictionaries.
-    """
-    return extract(files)
-
-
-def compare_signatures(old_path: str, new_path: str) -> dict[str, list[str]]:
-    """Compare two signature snapshots.
-
-    Args:
-        old_path: Path to old signatures JSON.
-        new_path: Path to new signatures JSON.
-
-    Returns:
-        Dictionary with 'breaking' and 'nonbreaking' lists.
-    """
-    return compare(old_path, new_path)
-
-
-def analyze_impact(
-    sigs_path: str, calls_path: str, runtime_path: str | None = None
-) -> list[dict[str, Any]]:
-    """Analyze impact of signature changes on call sites.
-
-    Args:
-        sigs_path: Path to signatures JSON file.
-        calls_path: Path to calls JSON file.
-        runtime_path: Optional path to runtime data JSON.
-
-    Returns:
-        List of impact issues.
-    """
-    return analyze(sigs_path, calls_path, runtime_path)
