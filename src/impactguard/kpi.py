@@ -138,7 +138,7 @@ def format_kpi_text(kpis: dict[str, Any]) -> str:
     dist = kpis.get("risk_distribution", {})
     lines: list[str] = [
         "── ImpactGuard KPI Dashboard ──────────────────────────",
-        f"  Total changes analysed : {total}",
+        f"  Total changes analyzed : {total}",
         "",
         "  Risk distribution",
     ]
