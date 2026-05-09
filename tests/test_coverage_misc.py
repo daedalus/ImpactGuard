@@ -3921,8 +3921,8 @@ class TestTraceCallsEdges:
         import impactguard.trace_calls as tc
 
         mod = _types.ModuleType("mixed_mod")
-        mod.MY_CONSTANT = 42  # type: ignore
-        mod.MY_STRING = "hello"  # type: ignore
+        mod.MY_CONSTANT = 42  # type: ignore  # noqa: V101
+        mod.MY_STRING = "hello"  # type: ignore  # noqa: V101
 
         def real_fn():
             return 1
@@ -4034,8 +4034,8 @@ class TestTraceCallsProdEdges:
         import impactguard.trace_calls_prod as tcp
 
         mod = _types.ModuleType("prod_mixed_mod")
-        mod.CONSTANT = 99  # type: ignore
-        mod.LIST_VAL = [1, 2, 3]  # type: ignore
+        mod.CONSTANT = 99  # type: ignore  # noqa: V101
+        mod.LIST_VAL = [1, 2, 3]  # type: ignore  # noqa: V101
 
         def real_fn():
             return 2
@@ -5439,7 +5439,7 @@ def test_run_pipeline_git_with_files(tmp_path):
 
     # Mock git operations
     with patch("subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(
+        mock_run.return_value = MagicMock(  # noqa: V101
             returncode=0,
             stdout="module.py\n",
             stderr="",
@@ -5447,7 +5447,7 @@ def test_run_pipeline_git_with_files(tmp_path):
 
         with patch("pathlib.Path.exists", return_value=True):
             with patch("impactguard.pipeline.run_pipeline") as mock_pipeline:
-                mock_pipeline.return_value = {"comparison": {}, "signatures": {}}
+                mock_pipeline.return_value = {"comparison": {}, "signatures": {}}  # noqa: V101
 
                 result = run_pipeline_git(
                     old_ref="HEAD~1",
@@ -6124,7 +6124,7 @@ def test_pipeline_run_pipeline_git(tmp_path):
 
     # Mock git operations
     with patch("subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(
+        mock_run.return_value = MagicMock(  # noqa: V101
             returncode=0,
             stdout="module.py\n",
             stderr="",
@@ -6132,7 +6132,7 @@ def test_pipeline_run_pipeline_git(tmp_path):
 
         with patch("pathlib.Path.exists", return_value=True):
             with patch("impactguard.pipeline.run_pipeline") as mock_pipeline:
-                mock_pipeline.return_value = {"comparison": {}, "signatures": {}}
+                mock_pipeline.return_value = {"comparison": {}, "signatures": {}}  # noqa: V101
 
                 result = run_pipeline_git(
                     old_ref="HEAD~1",

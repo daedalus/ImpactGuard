@@ -60,7 +60,7 @@ class Analyzer(ast.NodeVisitor):
 
     # --------------- assignments ---------------
 
-    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:  # noqa: V105
         # x: MyClass
         if isinstance(node.target, ast.Name):
             typ = self._type_name(node.annotation)

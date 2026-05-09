@@ -13,14 +13,14 @@ import trace_calls
 # import mypackage
 
 
-def pytest_sessionstart(_session: object) -> None:
+def pytest_sessionstart(_session: object) -> None:  # noqa: V103
     """Install tracers before tests run."""
     # Uncomment and adjust:
     # trace_calls.install_tracer(mypackage)
     pass
 
 
-def pytest_sessionfinish(_session: object, _exitstatus: int) -> None:
+def pytest_sessionfinish(_session: object, _exitstatus: int) -> None:  # noqa: V103
     """Dump runtime calls after tests complete."""
     output_path = os.path.join(os.getcwd(), ".runtime_calls.json")
     trace_calls.dump(output_path)

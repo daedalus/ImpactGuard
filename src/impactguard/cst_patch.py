@@ -22,7 +22,7 @@ try:
             self.func_name = func_name
             self.param_name = param_name
 
-        def leave_FunctionDef(  # noqa: N802
+        def leave_FunctionDef(  # noqa: N802, V105
             self, original_node: cst.FunctionDef, updated_node: cst.FunctionDef
         ) -> cst.FunctionDef:
             if original_node.name.value != self.func_name:
@@ -45,7 +45,7 @@ try:
             self.func_name = func_name
             self.param_name = param_name
 
-        def leave_Call(  # noqa: N802
+        def leave_Call(  # noqa: N802, V105
             self, original_node: cst.Call, updated_node: cst.Call
         ) -> cst.Call:
             # match foo(...)
