@@ -27,6 +27,7 @@ from .lib.shared import (
     _TREE_SITTER_AVAILABLE,
     call_re,
     child_of_type,
+    extract_calls_with_tree_sitter,
     has_ignore_comment,
     has_ignore_comment_fallback,
     make_call_dict,
@@ -247,43 +248,11 @@ def _extract_with_tree_sitter(
 
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
-    """Extract Java call sites using tree-sitter."""
-    parser = make_parser("Java", _JAVA_LANGUAGE)
-    try:
-        source = path.read_bytes()
-    except OSError:
-        return []
-
-    tree = parser.parse(source)
-    calls: list[dict[str, Any]] = []
-
-    def visit(node: Any) -> None:
-        if node.type == "method_invocation":
-            # Children: [object '.']? name arguments
-            name_node = child_of_type(node, "identifier")
-            if name_node is not None:
-                name = node_text(name_node, source)
-                args_node = child_of_type(node, "argument_list")
-                arg_count = 0
-                if args_node is not None:
-                    arg_count = sum(
-                        1 for c in args_node.children if c.type not in ("(", ")", ",")
-                    )
-                calls.append(
-                    make_call_dict(
-                        name=name,
-                        lineno=node.start_point[0] + 1,
-                        arg_count=arg_count,
-                        file=str(path),
-                    )
-                )
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
-    return calls
-
-
+    return extract_calls_with_tree_sitter(
+        path, "Java", _JAVA_LANGUAGE,
+        call_type="method_invocation",
+        name_on_call=True,
+    )
 # ── Regex fallback ────────────────────────────────────────────────────────────
 
 # Matches Java method declarations (simplified)

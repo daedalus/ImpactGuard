@@ -27,6 +27,7 @@ from typing import Any
 from .lib.shared import (
     _TREE_SITTER_AVAILABLE,
     child_of_type,
+    extract_calls_with_tree_sitter,
     has_ignore_comment_fallback,
     make_parser,
     node_text,
@@ -529,54 +530,11 @@ def _extract_with_tree_sitter(
 
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
-    """Extract TypeScript call sites using tree-sitter."""
-    parser = make_parser("typescript", _TS_LANGUAGE)
-    try:
-        source = path.read_bytes()
-    except OSError:
-        return []
-
-    tree = parser.parse(source)
-    calls: list[dict[str, Any]] = []
-
-    def visit(node: Any) -> None:
-        if node.type == "call_expression":
-            func_node = node.children[0] if node.children else None
-            name: str | None = None
-            if func_node is not None:
-                if func_node.type == "identifier":
-                    name = node_text(func_node, source)
-                elif func_node.type == "member_expression":
-                    prop = child_of_type(func_node, "property_identifier")
-                    if prop is not None:
-                        name = node_text(prop, source)
-
-            if name is not None:
-                args_node = child_of_type(node, "arguments")
-                arg_count = 0
-                if args_node is not None:
-                    arg_count = sum(
-                        1 for c in args_node.children if c.type not in ("(", ")", ",")
-                    )
-                calls.append(
-                    {
-                        "name": name,
-                        "lineno": node.start_point[0] + 1,
-                        "args": arg_count,
-                        "kwargs": [],
-                        "has_starargs": False,
-                        "has_kwargs": False,
-                        "file": str(path),
-                    }
-                )
-
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
-    return calls
-
-
+    return extract_calls_with_tree_sitter(
+        path, "typescript", _TS_LANGUAGE,
+        args_type="arguments",
+        member_map={"member_expression": "property_identifier"},
+    )
 # ── Regex fallback ────────────────────────────────────────────────────────────
 
 # Matches: (export )? (async )? function name<...>?(params): returntype
