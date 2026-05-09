@@ -37,6 +37,7 @@ lint = [
     "prospector",
     "semgrep",
     "mypy",
+    "vulture",
 ]
 languages = [
     "tree-sitter>=0.23",

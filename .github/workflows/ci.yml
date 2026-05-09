@@ -68,6 +68,9 @@ jobs:
       - name: Run mypy
         run: mypy src/
 
+      - name: Run vulture
+        run: vulture --min-confidence 90 .
+
   test-languages:
     runs-on: ubuntu-latest
     strategy:
