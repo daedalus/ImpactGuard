@@ -3,14 +3,6 @@ import json
 from typing import Any
 
 
-def color(level: str) -> str:
-    return {
-        "HIGH": "#ff4d4f",
-        "MEDIUM": "#faad14",
-        "LOW": "#52c41a",
-        "UNKNOWN": "#d9d9d9",
-    }.get(level, "#d9d9d9")
-
 
 def _summary_stats(report_data: list[dict[str, Any]]) -> dict[str, int]:
     """Count items by risk level."""

@@ -288,14 +288,6 @@ def cmd_extract_calls(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_runtime_impact(args: argparse.Namespace) -> int:
-    """Analyze runtime impact of signature changes."""
-    # TODO: Implement runtime impact analysis
-    # Original code tried: from .runtime_impact import analyze
-    # But runtime_impact.py doesn't exist
-    print("Runtime impact analysis not yet implemented", file=sys.stderr)
-    return 1
-
 
 # Whitelist of allowed modules for tracing - used by cmd_trace
 # This dictionary approach satisfies Semgrep's static analysis (no non-literal import)
@@ -1850,8 +1842,7 @@ def main() -> int:
             "install-hooks",
             "enforce",
             "extract-calls",
-            "runtime-impact",
-            "generate-changelog",
+"generate-changelog",
             "suggest",
             "patch",
             "baseline",
@@ -1900,79 +1891,6 @@ def main() -> int:
         parser.print_help()
         return 1
 
-
-def check_staged() -> int:
-    """Run full ImpactGuard pipeline on staged changes (for pre-commit hook)."""
-    import subprocess
-    import sys
-
-    # Get staged diff
-    result = subprocess.run(
-        ["git", "diff", "--cached"],
-        capture_output=True,
-        text=True,
-    )
-
-    if not result.stdout.strip():
-        print("No staged changes, skipping ImpactGuard check.")
-        return 0
-
-    # Run check-diff with piped diff
-    cmd = ["impactguard", "check-diff", "--pipe", "--runtime", ".runtime_calls.json"]
-    proc = subprocess.run(
-        cmd,
-        input=result.stdout,
-        capture_output=True,
-        text=True,
-    )
-
-    print(proc.stdout)
-    if proc.stderr:
-        print(proc.stderr, file=sys.stderr)
-
-    return proc.returncode
-
-
-def post_commit_hook() -> int:
-    """Run full ImpactGuard pipeline post-commit (for post-commit hook)."""
-    import subprocess
-    import sys
-
-    print("ImpactGuard: Running post-commit analysis...")
-
-    # Run check-commit on HEAD
-    cmd = ["impactguard", "check-commit", "HEAD", "--runtime", ".runtime_calls.json"]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-
-    print(proc.stdout)
-    if proc.stderr:
-        print(proc.stderr, file=sys.stderr)
-
-    if proc.returncode != 0:
-        print("ImpactGuard: Warning - check-commit failed", file=sys.stderr)
-
-    # Update signature tracking
-    print("ImpactGuard: Updating signature tracking...")
-    result = subprocess.run(
-        ["impactguard", "extract"]
-        + subprocess.run(
-            ["git", "ls-files", "|", "grep", r"'\\.py$'"],
-            capture_output=True,
-            text=True,
-        ).stdout.split(),
-        capture_output=True,
-        text=True,
-    )
-
-    if result.returncode == 0:
-        print("ImpactGuard: Signatures updated successfully")
-    else:
-        print(
-            f"ImpactGuard: Warning - signature extraction failed: {result.stderr}",
-            file=sys.stderr,
-        )
-
-    return 0
 
 
 if __name__ == "__main__":
