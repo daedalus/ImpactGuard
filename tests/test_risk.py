@@ -37,13 +37,13 @@ def test_confidence():
 
 
 def test_classify():
-    risk, E, C = classify(0.9, 100, 100, 100)
+    risk, _, _ = classify(0.9, 100, 100, 100)
     assert risk == "HIGH"
-    risk, E, C = classify(0.6, 50, 100, 50)
+    risk, _, _ = classify(0.6, 50, 100, 50)
     assert risk == "MEDIUM"
-    risk, E, C = classify(0.3, 10, 100, 10)
+    risk, _, _ = classify(0.3, 10, 100, 10)
     assert risk == "UNKNOWN"
-    risk, E, C = classify(0.9, 100, 100, 10)
+    risk, _, _ = classify(0.9, 100, 100, 10)
     assert risk == "UNKNOWN"
 
 

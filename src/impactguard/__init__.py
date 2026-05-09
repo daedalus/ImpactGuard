@@ -124,18 +124,6 @@ def extract_signatures(files: list[str]) -> list[dict[str, Any]]:
     return extract(files)
 
 
-def compare_signatures(old_path: str, new_path: str) -> dict[str, list[str]]:
-    """Compare two signature snapshots.
-
-    Args:
-        old_path: Path to old signatures JSON.
-        new_path: Path to new signatures JSON.
-
-    Returns:
-        Dictionary with 'breaking' and 'nonbreaking' lists.
-    """
-    return compare(old_path, new_path)
-
 
 def analyze_impact(
     sigs_path: str, calls_path: str, runtime_path: str | None = None

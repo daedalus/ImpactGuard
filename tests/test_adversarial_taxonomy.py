@@ -902,7 +902,7 @@ class TestCompositionalAttacks:
         from impactguard.risk_model import classify
 
         # severity = 0.6 (MEDIUM without lambda)
-        risk_normal, _, _ = classify(0.6, 500, 1000, 500, lambda_=1.0)
+        _, _, _ = classify(0.6, 500, 1000, 500, lambda_=1.0)
         risk_double, _, _ = classify(0.6, 500, 1000, 500, lambda_=2.0)
         # With lambda=2, effective severity = 1.2 > 0.8 → HIGH
         assert risk_double == "HIGH"

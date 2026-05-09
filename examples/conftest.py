@@ -13,7 +13,7 @@ import trace_calls
 # import mypackage
 
 
-def pytest_sessionstart(session: object) -> None:
+def pytest_sessionstart(_session: object) -> None:
     """Install tracers before tests run."""
     # Uncomment and adjust:
     # trace_calls.install_tracer(mypackage)

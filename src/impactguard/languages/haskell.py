@@ -21,19 +21,14 @@ available at import time.
 from __future__ import annotations
 
 import re
-import warnings
 from pathlib import Path
 from typing import Any
 
 from .lib.shared import (
-    _IGNORE_TAG,
     _TREE_SITTER_AVAILABLE,
-    child_of_type,
     has_ignore_comment,
     has_ignore_comment_fallback,
-    make_call_dict,
     make_parser,
-    make_signature_dict,
     node_text,
     register_extractor,
     warn_if_no_tree_sitter,

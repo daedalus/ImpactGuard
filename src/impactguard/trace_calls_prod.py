@@ -27,6 +27,9 @@ def set_seed(seed: int) -> None:
     _rng.seed(seed)
 
 
+set_seed(42)
+
+
 def should_sample() -> bool:
     return _rng.random() < SAMPLE_RATE
 
