@@ -189,3 +189,162 @@ def make_call_dict(
         "has_kwargs": False,
         "file": file,
     }
+
+
+def _extract_call_name(
+    node: Any,
+    source: bytes,
+    member_map: dict[str, str | None] | None = None,
+    ident_type: str | None = None,
+) -> str | None:
+    """Extract the call name from a function node.
+
+    Handles simple identifiers (returns the text) and member expressions
+    using *member_map* to resolve the relevant child field.
+    When *member_map* maps a node type to a field name, only that field's
+    text is returned.  When mapped to ``None``, all named children are
+    joined with ``.``.
+    *ident_type* overrides the default ``"identifier"`` type check.
+    """
+    member_map = member_map or {}
+    target = ident_type or "identifier"
+    if node.type == target:
+        return node_text(node, source)
+    if node.type in member_map:
+        rhs_field = member_map[node.type]
+        if rhs_field is not None:
+            for child in node.named_children:
+                if child.type == rhs_field:
+                    return node_text(child, source)
+            return None
+        return ".".join(node_text(c, source) for c in node.named_children)
+    if node.named_children:
+        return _extract_call_name(
+            node.named_children[0], source, member_map, ident_type
+        )
+    return None
+
+
+def extract_calls_with_tree_sitter(
+    path: Path,
+    language_name: str,
+    language_object: Any,
+    *,
+    call_type: str = "call_expression",
+    name_on_call: bool = False,
+    fallback_ident: bool = False,
+    member_map: dict[str, str | None] | None = None,
+    args_type: str = "argument_list",
+    ident_type: str | None = None,
+    count_args: str = "named",
+    count_types: set[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Extract call sites from a file using tree-sitter.
+
+    Args:
+        path: Path to the source file.
+        language_name: Human-readable name (for error messages).
+        language_object: Tree-sitter Language object.
+        call_type: AST node type for call expressions.
+        name_on_call: When *True*, the function name is stored in a
+            named child of the call node (tried via ``child_by_field_name("name")``,
+            then ``child_by_field_name("method")``).
+        fallback_ident: When *True* and no name found via *name_on_call*,
+            scan named children for the first identifier.
+        member_map: Maps member-expression AST types to the child field
+            type used for the right-hand side (e.g., ``"field_identifier"``).
+            Map to ``None`` to join all named children with ``.``.
+        args_type: AST node type for the argument list.
+        ident_type: Node type for identifiers (e.g., ``"simple_identifier"``,
+            ``"variable"``).  When *None*, uses ``"identifier"``.
+        count_args: How to count arguments:
+            - ``"named"`` — count ``named_children`` of the args node.
+            - ``"include"`` — count children whose type is in *count_types*.
+            - ``"arithmetic"`` — for Haskell ``apply``: named_children - 1.
+        count_types: Set of child types to count when *count_args* is ``"include"``.
+
+    Returns:
+        List of call-site dictionaries.
+    """
+    if not _TREE_SITTER_AVAILABLE:
+        return []
+
+    parser = make_parser(language_name, language_object)
+    if parser is None:
+        return []
+
+    try:
+        source = path.read_bytes()
+    except OSError:
+        return []
+
+    tree = parser.parse(source)
+    calls: list[dict[str, Any]] = []
+
+    def _first_ident(node: Any) -> str | None:
+        """Return text of the first identifier-like child of *node*."""
+        target = ident_type or "identifier"
+        for child in node.named_children:
+            if child.type == target:
+                return node_text(child, source)
+            deeper = _first_ident(child)
+            if deeper is not None:
+                return deeper
+        return None
+
+    def visit(node: Any) -> None:
+        if node.type == call_type:
+            name: str | None = None
+            if name_on_call:
+                for field in ("name", "method"):
+                    n = node.child_by_field_name(field)
+                    if n is not None:
+                        name = node_text(n, source)
+                        break
+                if name is None and fallback_ident:
+                    name = _first_ident(node)
+            else:
+                func_node = node.child_by_field_name("function")
+                if func_node is None and node.named_children:
+                    func_node = node.named_children[0]
+                if func_node is not None:
+                    name = _extract_call_name(func_node, source, member_map, ident_type)
+
+            if name is not None:
+                if count_args == "arithmetic":
+                    arg_count = max(0, len(node.named_children) - 1)
+                else:
+                    args_node = node.child_by_field_name("arguments")
+                    if args_node is None:
+                        for child in node.named_children:
+                            if child.type == args_type:
+                                args_node = child
+                                break
+                    if args_node is None and node.named_children:
+                        args_node = node.named_children[-1]
+
+                    arg_count = 0
+                    if args_node is not None:
+                        if count_args == "include":
+                            types = count_types or set()
+                            if types:
+                                for child in args_node.children:
+                                    if child.type in types:
+                                        arg_count += 1
+                            else:
+                                for child in args_node.named_children:
+                                    if child.type != ",":
+                                        arg_count += 1
+                        else:
+                            for child in args_node.named_children:
+                                if child.type != ",":
+                                    arg_count += 1
+
+                lineno = node.start_point[0] + 1
+                calls.append(make_call_dict(name, lineno, arg_count, str(path)))
+
+        for child in node.children:
+            visit(child)
+
+    visit(tree.root_node)
+    return calls

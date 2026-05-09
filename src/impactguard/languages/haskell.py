@@ -26,6 +26,7 @@ from typing import Any
 
 from .lib.shared import (
     _TREE_SITTER_AVAILABLE,
+    extract_calls_with_tree_sitter,
     has_ignore_comment,
     has_ignore_comment_fallback,
     make_parser,
@@ -154,40 +155,12 @@ def _extract_with_tree_sitter(
 
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
-    """Extract Haskell call sites using tree-sitter."""
-    parser = make_parser("haskell", _HASKELL_LANGUAGE)
-    try:
-        source = path.read_bytes()
-    except OSError:
-        return []
-
-    tree = parser.parse(source)
-    calls: list[dict[str, Any]] = []
-
-    def visit(node: Any) -> None:
-        if node.type == "apply":
-            func_node = node.children[0] if node.children else None
-            if func_node is not None and func_node.type == "variable":
-                name = node_text(func_node, source)
-                arg_count = len(node.children) - 1
-                calls.append(
-                    {
-                        "name": name,
-                        "lineno": node.start_point[0] + 1,
-                        "args": arg_count,
-                        "kwargs": [],
-                        "has_starargs": False,
-                        "has_kwargs": False,
-                        "file": str(path),
-                    }
-                )
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
-    return calls
-
-
+    return extract_calls_with_tree_sitter(
+        path, "haskell", _HASKELL_LANGUAGE,
+        call_type="apply",
+        ident_type="variable",
+        count_args="arithmetic",
+    )
 # ── Regex fallback ────────────────────────────────────────────────────────────
 
 # Match Haskell type signatures: name :: Type

@@ -26,6 +26,7 @@ from typing import Any
 from .lib.shared import (
     _TREE_SITTER_AVAILABLE,
     child_of_type,
+    extract_calls_with_tree_sitter,
     has_ignore_comment,
     has_ignore_comment_fallback,
     make_parser,
@@ -267,54 +268,10 @@ def _extract_with_tree_sitter(
 
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
-    """Extract Go call sites using tree-sitter."""
-    parser = make_parser("Go", _GO_LANGUAGE)
-    try:
-        source = path.read_bytes()
-    except OSError:
-        return []
-
-    tree = parser.parse(source)
-    calls: list[dict[str, Any]] = []
-
-    def visit(node: Any) -> None:
-        if node.type == "call_expression":
-            func_node = node.children[0] if node.children else None
-            name: str | None = None
-            if func_node is not None:
-                if func_node.type == "identifier":
-                    name = node_text(func_node, source)
-                elif func_node.type == "selector_expression":
-                    field = child_of_type(func_node, "field_identifier")
-                    if field is not None:
-                        name = node_text(field, source)
-
-            if name is not None:
-                args_node = child_of_type(node, "argument_list")
-                arg_count = 0
-                if args_node is not None:
-                    arg_count = sum(
-                        1 for c in args_node.children if c.type not in ("(", ")", ",")
-                    )
-                calls.append(
-                    {
-                        "name": name,
-                        "lineno": node.start_point[0] + 1,
-                        "args": arg_count,
-                        "kwargs": [],
-                        "has_starargs": False,
-                        "has_kwargs": False,
-                        "file": str(path),
-                    }
-                )
-
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
-    return calls
-
-
+    return extract_calls_with_tree_sitter(
+        path, "Go", _GO_LANGUAGE,
+        member_map={"selector_expression": "field_identifier"},
+    )
 # ── Regex fallback ────────────────────────────────────────────────────────────
 
 _FUNC_RE = re.compile(

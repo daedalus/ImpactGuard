@@ -10,6 +10,7 @@ from .registry import (
 from .shared import (
     call_re,
     child_of_type,
+    extract_calls_with_tree_sitter,
     has_ignore_comment,
     has_ignore_comment_fallback,
     make_call_dict,
@@ -27,6 +28,7 @@ __all__ = [
     "list_extensions",
     "call_re",
     "child_of_type",
+    "extract_calls_with_tree_sitter",
     "has_ignore_comment",
     "has_ignore_comment_fallback",
     "make_call_dict",
