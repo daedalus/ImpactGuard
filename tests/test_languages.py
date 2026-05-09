@@ -118,7 +118,7 @@ class TestRegistry:
             language = "fake"
             extensions = [".fake"]
 
-            def extract_signatures(self, files, base_path=None):
+            def extract_signatures(self, *args, **kwargs):
                 return []
 
             def extract_calls(self, path):

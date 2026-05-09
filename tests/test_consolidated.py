@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from tempfile import mkdtemp
 from unittest.mock import MagicMock, patch
 
 
@@ -3477,7 +3476,6 @@ class TestSuggestFixesCST:
 
 class TestTraceCallsProdFlushTrigger:
     def test_trace_triggers_flush_when_interval_exceeded(self, tmp_path, monkeypatch):
-        import time
 
         import impactguard.trace_calls_prod as tcp
 
@@ -3826,7 +3824,6 @@ class TestRiskModelExceptionBranches:
 
         monkeypatch.setattr(cfg_mod, "get_config", lambda: mock_cfg)
         # Also patch the local import inside risk_model
-        import importlib
 
         monkeypatch.setattr(
             rm,
@@ -3923,7 +3920,7 @@ class TestTraceCallsEdges:
         # Create a callable where bind_partial raises
         original_sig = inspect.signature
 
-        def bad_sig(f, *a, **kw):
+        def bad_sig(f, *a, **_):
             raise ValueError("no signature")
 
         # Patch inspect.signature temporarily via monkeypatch-style

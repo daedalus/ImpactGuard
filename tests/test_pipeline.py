@@ -3,7 +3,6 @@
 import json
 import os
 from pathlib import Path
-from tempfile import mkdtemp
 
 
 def test_pipeline_import():

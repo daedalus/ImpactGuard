@@ -6,7 +6,6 @@ crashing or producing silently incorrect results.
 """
 
 import json
-import math
 import os
 import sys
 import tempfile
