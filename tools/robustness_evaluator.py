@@ -59,14 +59,6 @@ ADVERSARIAL_COVERAGE_MIN: float = 0.25
 # Default adversarial weight for a security-sensitive context.
 DEFAULT_ALPHA: float = 0.65
 
-# Canonical adversarial budget per category (must sum to 1.0).
-ADVERSARIAL_BUDGET: dict[str, float] = {
-    "boundary": 0.30,
-    "semantic": 0.25,
-    "evasion": 0.25,
-    "compositional": 0.20,
-}
-
 # --- Thresholds for robustness/fragility labels (configurable) ---
 # P_a below this value caps robustness label to POOR
 ADVERSARIAL_FLOOR: float = 0.3
@@ -114,7 +106,7 @@ class CategoryStats:
             return 0.0
         return self.passing / self.total
 
-    @property
+    @property  # noqa: V106
     def weighted_score(self) -> float:
         """Pass rate adjusted by difficulty (higher difficulty = more weight)."""
         return self.pass_rate * (0.5 + 0.5 * self.difficulty)

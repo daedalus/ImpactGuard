@@ -55,7 +55,7 @@ def _classify(nodeid: str) -> tuple[bool, Optional[str]]:
     return is_adv, category
 
 
-def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:  # noqa: V103
     """Collect pass/fail counts, split by adversarial vs. normal."""
     if report.when != "call":
         return
@@ -94,9 +94,9 @@ def _read_coverage() -> float:
         return 1.0
 
 
-def pytest_terminal_summary(
+def pytest_terminal_summary(  # noqa: V103
     terminalreporter: pytest.TerminalReporter,
-    exitstatus: int,  # noqa: ARG001
+    exitstatus: int,  # noqa: F841
     config: pytest.Config,  # noqa: ARG001
 ) -> None:
     """Compute and display the Robustness Evaluation report at the end of the session."""
@@ -174,7 +174,7 @@ def sample_signature_data():
     ]
 
 
-@pytest.fixture
+@pytest.fixture  # noqa: V103
 def sample_signatures_file(sample_signature_data):
     """Create a temporary signatures JSON file."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -182,7 +182,7 @@ def sample_signatures_file(sample_signature_data):
         return f.name
 
 
-@pytest.fixture
+@pytest.fixture  # noqa: V103
 def sample_python_file():
     """Create a temporary Python file with functions."""
     content = '''
@@ -203,7 +203,7 @@ class MyClass:
         return f.name
 
 
-@pytest.fixture
+@pytest.fixture  # noqa: V103
 def empty_python_file():
     """Create an empty Python file."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
@@ -220,7 +220,7 @@ def runtime_data():
     ]
 
 
-@pytest.fixture
+@pytest.fixture  # noqa: V103
 def runtime_data_file(runtime_data):
     """Create a temporary runtime data JSON file."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:

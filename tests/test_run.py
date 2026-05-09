@@ -145,7 +145,7 @@ def test_run_pipeline_git_with_files(tmp_path):
 
     # Mock git operations
     with patch("subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(
+        mock_run.return_value = MagicMock(  # noqa: V101
             returncode=0,
             stdout="module.py\n",
             stderr="",
@@ -153,7 +153,7 @@ def test_run_pipeline_git_with_files(tmp_path):
 
         with patch("pathlib.Path.exists", return_value=True):
             with patch("impactguard.pipeline.run_pipeline") as mock_pipeline:
-                mock_pipeline.return_value = {"comparison": {}, "signatures": {}}
+                mock_pipeline.return_value = {"comparison": {}, "signatures": {}}  # noqa: V101
 
                 result = run_pipeline_git(
                     old_ref="HEAD~1",

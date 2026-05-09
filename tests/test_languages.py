@@ -746,7 +746,7 @@ class TestCLILanguageFlag:
 
         # Patch stdin to avoid blocking
         with patch("sys.stdin") as mock_stdin:
-            mock_stdin.read.return_value = ""
+            mock_stdin.read.return_value = ""  # noqa: V101
             args = argparse.Namespace(files=[], language=None)
             rc = cmd_extract(args)
         assert rc == 1
@@ -793,7 +793,7 @@ class TestCLILanguageFlag:
         from impactguard.__main__ import cmd_extract_calls
 
         with patch("sys.stdin") as mock_stdin:
-            mock_stdin.read.return_value = ""
+            mock_stdin.read.return_value = ""  # noqa: V101
             args = argparse.Namespace(files=[], language=None)
             rc = cmd_extract_calls(args)
         assert rc == 1
