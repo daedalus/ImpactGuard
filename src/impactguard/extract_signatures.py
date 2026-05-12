@@ -3,7 +3,10 @@ import warnings
 from pathlib import Path
 from typing import Any
 
+from ._logging import get_logger
+
 # ImpactGuard signature extractor
+_log = get_logger(__name__)
 
 
 def _has_ignore_comment(source_lines: list[str], lineno: int) -> bool:
@@ -198,6 +201,8 @@ def extract(
     """
     all_funcs: list[dict[str, Any]] = []
 
+    _log.debug("Extracting signatures from %d file(s)", len(files))
+
     # Prefer the public `base_path` kwarg; fall back to the legacy `_base_path`.
     effective_base = base_path if base_path is not None else _base_path
 
@@ -209,6 +214,7 @@ def extract(
         except Exception as exc:
             if strict:
                 raise RuntimeError(f"ImpactGuard: failed to parse {path}: {exc}") from exc
+            _log.warning("Skipping '%s' due to parse error: %s", path, exc)
             warnings.warn(
                 f"ImpactGuard: skipping {path} due to parse error: {exc}",
                 SyntaxWarning,
@@ -267,6 +273,7 @@ def extract(
 
         visitor = ContextVisitor()
         visitor.visit(tree)
+        _log.debug("Extracted %d signature(s) from '%s'", len(visitor.functions), path)
         all_funcs.extend(visitor.functions)
 
     # Append re-export alias signatures when requested

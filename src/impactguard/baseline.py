@@ -18,6 +18,10 @@ import os
 from pathlib import Path
 from typing import Any
 
+from ._logging import get_logger
+
+_log = get_logger(__name__)
+
 DEFAULT_BASELINE_PATH = ".impactguard_baseline.json"
 DEFAULT_HISTORY_PATH = ".impactguard_history.json"
 
@@ -65,7 +69,9 @@ def save_baseline(
     with open(effective_path, "w") as f:
         json.dump(payload, f, indent=2)
 
-    return str(Path(effective_path).resolve())
+    abs_path = str(Path(effective_path).resolve())
+    _log.info("Baseline saved: %s (%d signature(s))", abs_path, len(signatures))
+    return abs_path
 
 
 def load_baseline(path: str | None = None) -> dict[str, Any]:
@@ -92,7 +98,10 @@ def load_baseline(path: str | None = None) -> dict[str, Any]:
         with open(effective_path) as f:
             data: dict[str, Any] = json.load(f)
     except json.JSONDecodeError as exc:
+        _log.error("Cannot parse baseline file '%s': %s", effective_path, exc)
         raise ValueError(f"Cannot parse baseline file: {effective_path}") from exc
+
+    _log.debug("Loaded baseline from '%s'", effective_path)
 
     # Support both wrapped {"signatures": [...]} and bare [...] formats
     if isinstance(data, list):

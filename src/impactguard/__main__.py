@@ -1295,9 +1295,20 @@ def main() -> int:
         "--version", action="version", version=f"%(prog)s {__version__}"
     )
     parser.add_argument(
+        "--log-level",
+        default=None,
+        metavar="LEVEL",
+        help=(
+            "Logging level for the impactguard logger "
+            "(DEBUG, INFO, WARNING, ERROR, CRITICAL). "
+            "Defaults to the value in impactguard.toml [impactguard.logging] level, "
+            "or WARNING when no config is found."
+        ),
+    )
+    parser.add_argument(
         "--log-file",
-        default="/tmp/impactguard.log",
-        help="Log file path (default: /tmp/impactguard.log, appended)",
+        default=None,
+        help="Optional log file path (appended). Defaults to stderr only.",
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -1859,26 +1870,16 @@ def main() -> int:
 
     args = parser.parse_args()
 
-    # Configure logging to append to specified file
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
+    # Configure the impactguard logger hierarchy using our centralised helper.
+    # Precedence: CLI --log-level > config file > built-in default (WARNING).
+    from ._logging import _level_from_config, configure_logging
 
-    # Remove existing file handlers to avoid duplicates
-    for handler in logger.handlers[:]:
-        if isinstance(handler, logging.FileHandler):
-            logger.removeHandler(handler)
+    log_level: str = args.log_level or _level_from_config()
+    log_file: str | None = args.log_file or None
+    configure_logging(level=log_level, log_file=log_file)
 
-    # Add file handler in append mode
-    file_handler = logging.FileHandler(args.log_file, mode="a")
-    file_handler.setLevel(logging.INFO)
-    formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
-
-    _logger = logging.getLogger(__name__)
-    _logger.info(f"ImpactGuard started with command: {args.command}")
+    _logger = logging.getLogger("impactguard")
+    _logger.info("ImpactGuard started with command: %s", args.command)
 
     if not args.command:
         parser.print_help()

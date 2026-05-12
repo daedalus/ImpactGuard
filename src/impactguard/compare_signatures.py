@@ -3,6 +3,10 @@ import re
 import sys
 from typing import Any
 
+from ._logging import get_logger
+
+_log = get_logger(__name__)
+
 
 def load(path: str) -> dict[str, dict[str, Any]]:
     """Load signatures from a JSON file.
@@ -18,6 +22,7 @@ def load(path: str) -> dict[str, dict[str, Any]]:
     valid, errors = validate_signatures(data)
     if not valid:
         for err in errors:
+            _log.warning("Signatures file '%s': %s", path, err)
             print(f"Warning: signatures file '{path}': {err}", file=sys.stderr)
 
     return {f["fqname"]: f for f in data}
@@ -217,6 +222,12 @@ def compare(  # noqa: MC0001
     old_sigs: dict[str, dict[str, Any]] = _load_signatures(old)
     new_sigs: dict[str, dict[str, Any]] = _load_signatures(new)
 
+    _log.debug(
+        "Comparing signatures: %d old, %d new",
+        len(old_sigs),
+        len(new_sigs),
+    )
+
     # Filter private symbols unless explicitly included
     if not include_private:
         old_sigs = {k: v for k, v in old_sigs.items() if _is_effectively_public(k, v)}
@@ -366,8 +377,18 @@ def compare(  # noqa: MC0001
         )
         breaking.extend(cascade)
 
+    breaking_sorted = sorted(set(breaking))
+    nonbreaking_sorted = sorted(set(nonbreaking))
+    suppressed_sorted = sorted(set(suppressed))
+
+    _log.debug(
+        "Comparison result: %d breaking, %d non-breaking, %d suppressed",
+        len(breaking_sorted),
+        len(nonbreaking_sorted),
+        len(suppressed_sorted),
+    )
     return {
-        "breaking": sorted(set(breaking)),
-        "nonbreaking": sorted(set(nonbreaking)),
-        "suppressed": sorted(set(suppressed)),
+        "breaking": breaking_sorted,
+        "nonbreaking": nonbreaking_sorted,
+        "suppressed": suppressed_sorted,
     }
