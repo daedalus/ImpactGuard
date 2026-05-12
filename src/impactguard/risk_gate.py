@@ -2,7 +2,10 @@ import json
 import sys
 from typing import Any
 
+from ._logging import get_logger
 from .risk_model import classify, get_severity, _effective_severity_scores
+
+_log = get_logger(__name__)
 
 
 def run(
@@ -29,6 +32,8 @@ def run(
             diff_text = f.read()
     except OSError as exc:
         raise OSError(f"Cannot read diff file '{diff_path}': {exc}") from exc
+
+    _log.debug("Running risk analysis on diff '%s'", diff_path)
 
     # Load runtime data
     try:
@@ -100,14 +105,32 @@ def run(
                 "details": f"called {count} times" if count > 0 else "not observed",
             }
         )
+        _log.debug(
+            "Risk item: %s → %s (severity=%.2f, exposure=%.4f, confidence=%.2f)",
+            fqname,
+            risk,
+            severity,
+            exp,
+            conf,
+        )
 
     # Sort by risk level
     risk_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2, "UNKNOWN": 3}
     report.sort(key=lambda x: risk_order.get(str(x["risk"]), 4))
 
+    high_count = sum(1 for r in report if r["risk"] == "HIGH")
+    _log.debug(
+        "Risk analysis complete: %d item(s) assessed, %d HIGH",
+        len(report),
+        high_count,
+    )
+    if high_count:
+        _log.warning("%d HIGH-risk API change(s) detected", high_count)
+
     if output_path:
         with open(output_path, "w") as f:
             json.dump(report, f, indent=2)
+        _log.debug("Risk report written to '%s'", output_path)
 
     return report
 
