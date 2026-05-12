@@ -22,7 +22,6 @@ CLI / application usage::
 
 import logging
 import sys
-from typing import Any
 
 # The single logger name used across the entire package.
 _ROOT_LOGGER_NAME = "impactguard"
@@ -126,7 +125,7 @@ def _level_from_config() -> str:
         return "WARNING"
 
 
-__all__: list[Any] = [
+__all__: list[str] = [
     "get_logger",
     "configure_logging",
 ]

@@ -12,7 +12,9 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-_log = logging.getLogger("impactguard.config")
+from ._logging import get_logger
+
+_log = get_logger(__name__)
 
 # ── Built-in defaults ─────────────────────────────────────────────────────────
 _DEFAULTS: dict[str, Any] = {
