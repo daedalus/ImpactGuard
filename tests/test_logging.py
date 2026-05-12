@@ -111,10 +111,8 @@ class TestConfigureLogging:
 
     def test_log_output_to_file(self):
         """Verify that log messages actually reach the file."""
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".log", delete=False
-        ) as f:
-            log_file = f.name
+        fd, log_file = tempfile.mkstemp(suffix=".log")
+        os.close(fd)
         try:
             configure_logging(level="DEBUG", log_file=log_file)
             log = get_logger("test_output")
