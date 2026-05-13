@@ -93,6 +93,8 @@ def compute_kpis(
         * ``false_positive_proxy`` — fraction of HIGH items with exposure below
           *fp_threshold*
     """
+    # Filter out any non-dict entries to be robust against malformed input
+    report_data = [item for item in report_data if isinstance(item, dict)]
     total = len(report_data)
 
     # ── mean_severity (S dimension of S×E×C) ─────────────────────────────────
