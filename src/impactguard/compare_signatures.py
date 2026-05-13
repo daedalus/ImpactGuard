@@ -37,6 +37,7 @@ def load(path: str) -> dict[str, dict[str, Any]]:
     for entry in data:
         if not isinstance(entry, dict) or "fqname" not in entry:
             _log.warning("Signatures file '%s': skipping malformed entry: %r", path, entry)
+            print(f"Warning: signatures file '{path}': skipping malformed entry: {entry!r}", file=sys.stderr)
             continue
         result[entry["fqname"]] = entry
     return result
@@ -188,7 +189,7 @@ def _load_signatures(arg: str | list[dict[str, Any]]) -> dict[str, dict[str, Any
     result: dict[str, dict[str, Any]] = {}
     for entry in arg:
         if not isinstance(entry, dict) or "fqname" not in entry:
-            _log.warning("Skipping malformed signature entry: %r", entry)
+            _log.warning("In-memory signatures: skipping malformed entry: %r", entry)
             continue
         result[entry["fqname"]] = entry
     return result
