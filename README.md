@@ -7,6 +7,7 @@
 [![Actions status](https://github.com/daedalus/impactguard/workflows/CI/badge.svg)](https://github.com/daedalus/impactguard/actions)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/daedalus/ImpactGuard)
+[![Website](https://img.shields.io/badge/website-impactguard.dev-blue)](http://impactguard.dev)
 
 ## Overview
 
