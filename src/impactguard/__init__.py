@@ -125,7 +125,6 @@ def extract_signatures(files: list[str]) -> list[dict[str, Any]]:
     return extract(files)
 
 
-
 def analyze_impact(
     sigs_path: str, calls_path: str, runtime_path: str | None = None
 ) -> list[dict[str, Any]]:
@@ -142,7 +141,7 @@ def analyze_impact(
     return analyze(sigs_path, calls_path, runtime_path)
 
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 
 __all__ = [
     # Signature extraction
