@@ -198,8 +198,8 @@ def dedupe_signatures_by_fqname(
     seen: set[str] = set()
     unique: list[dict[str, Any]] = []
     for sig in signatures:
-        fqname = sig.get("fqname")
-        if isinstance(fqname, str) and fqname not in seen:
+        fqname = sig["fqname"]
+        if fqname not in seen:
             seen.add(fqname)
             unique.append(sig)
 
