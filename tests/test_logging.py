@@ -12,7 +12,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from impactguard._logging import _ROOT_LOGGER_NAME, configure_logging, get_logger
 
-
 # ---------------------------------------------------------------------------
 # get_logger
 # ---------------------------------------------------------------------------
@@ -82,14 +81,18 @@ class TestConfigureLogging:
     def test_adds_stream_handler(self):
         configure_logging(level="WARNING")
         root = logging.getLogger(_ROOT_LOGGER_NAME)
-        managed = [h for h in root.handlers if getattr(h, "_impactguard_managed", False)]
+        managed = [
+            h for h in root.handlers if getattr(h, "_impactguard_managed", False)
+        ]
         assert any(isinstance(h, logging.StreamHandler) for h in managed)
 
     def test_reconfigure_does_not_duplicate_handlers(self):
         configure_logging(level="WARNING")
         configure_logging(level="WARNING")
         root = logging.getLogger(_ROOT_LOGGER_NAME)
-        managed = [h for h in root.handlers if getattr(h, "_impactguard_managed", False)]
+        managed = [
+            h for h in root.handlers if getattr(h, "_impactguard_managed", False)
+        ]
         assert len(managed) == 1
 
     def test_file_handler_created(self):
@@ -98,7 +101,9 @@ class TestConfigureLogging:
         try:
             configure_logging(level="DEBUG", log_file=log_file)
             root = logging.getLogger(_ROOT_LOGGER_NAME)
-            managed = [h for h in root.handlers if getattr(h, "_impactguard_managed", False)]
+            managed = [
+                h for h in root.handlers if getattr(h, "_impactguard_managed", False)
+            ]
             assert any(isinstance(h, logging.FileHandler) for h in managed)
         finally:
             # Clean up
@@ -135,7 +140,9 @@ class TestConfigureLogging:
     def test_custom_format(self):
         configure_logging(level="DEBUG", fmt="%(message)s")
         root = logging.getLogger(_ROOT_LOGGER_NAME)
-        managed = [h for h in root.handlers if getattr(h, "_impactguard_managed", False)]
+        managed = [
+            h for h in root.handlers if getattr(h, "_impactguard_managed", False)
+        ]
         assert managed[0].formatter._fmt == "%(message)s"
 
 
@@ -255,3 +262,9 @@ class TestCLILogLevel:
         """Valid --log-level with unknown command returns non-zero."""
         result = self._run(["--log-level", "WARNING"])
         assert isinstance(result, int)
+
+    def test_invalid_log_level_returns_error(self):
+        """Invalid --log-level should report a friendly error, not a traceback."""
+        result = self._run(["--log-level", "VERBOSE"])
+        assert isinstance(result, int)
+        assert result != 0

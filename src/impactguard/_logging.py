@@ -115,14 +115,33 @@ def configure_logging(
     return root
 
 
-def _level_from_config() -> str:
-    """Read the log level from the ImpactGuard config, defaulting to WARNING."""
+def _logging_config_from_config() -> dict[str, str]:
+    """Read all logging configuration options from the ImpactGuard config file.
+
+    Returns:
+        A dict with keys ``"level"``, ``"format"``, and ``"log_file"``,
+        defaulting to WARNING, the default format string, and ``""`` when
+        the config file is missing or unreadable.
+    """
     try:
         from .config import get as _cfg_get
 
-        return str(_cfg_get("logging", "level", "WARNING"))
+        return {
+            "level": str(_cfg_get("logging", "level", "WARNING")),
+            "format": str(_cfg_get("logging", "format", _DEFAULT_FORMAT)),
+            "log_file": str(_cfg_get("logging", "log_file", "")),
+        }
     except Exception:
-        return "WARNING"
+        return {
+            "level": "WARNING",
+            "format": _DEFAULT_FORMAT,
+            "log_file": "",
+        }
+
+
+def _level_from_config() -> str:
+    """Read the log level from the ImpactGuard config, defaulting to WARNING."""
+    return _logging_config_from_config()["level"]
 
 
 __all__: list[str] = [
