@@ -191,6 +191,30 @@ def make_call_dict(
     }
 
 
+def dedupe_signatures_by_fqname(
+    signatures: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Deduplicate signature dicts by ``fqname`` and return sorted output."""
+    seen: set[str] = set()
+    unique: list[dict[str, Any]] = []
+    for sig in signatures:
+        fqname = sig.get("fqname")
+        if isinstance(fqname, str) and fqname not in seen:
+            seen.add(fqname)
+            unique.append(sig)
+
+    unique.sort(key=lambda x: x["fqname"])
+    return unique
+
+
+def split_pipe_union_members(type_str: str) -> frozenset[str]:
+    """Split ``A | B`` style unions, or return a singleton member set."""
+    s = type_str.strip()
+    if "|" in s:
+        return frozenset(p.strip() for p in s.split("|"))
+    return frozenset({s})
+
+
 def _extract_call_name(
     node: Any,
     source: bytes,
