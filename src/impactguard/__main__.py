@@ -288,7 +288,6 @@ def cmd_extract_calls(args: argparse.Namespace) -> int:
     return 0
 
 
-
 # Whitelist of allowed modules for tracing - used by cmd_trace
 # This dictionary approach satisfies Semgrep's static analysis (no non-literal import)
 _ALLOWED_TRACE_MODULES = {
@@ -1853,7 +1852,7 @@ def main() -> int:
             "install-hooks",
             "enforce",
             "extract-calls",
-"generate-changelog",
+            "generate-changelog",
             "suggest",
             "patch",
             "baseline",
@@ -1892,6 +1891,70 @@ def main() -> int:
         parser.print_help()
         return 1
 
+
+def check_staged() -> int:
+    """Pre-commit hook: run full pipeline on staged changes."""
+    import os
+    import subprocess
+    import sys
+
+    if os.environ.get("SKIP_SIGNATURE_HOOK"):
+        return 0
+
+    diff = subprocess.run(["git", "diff", "--cached"], capture_output=True, text=True)
+    if not diff.stdout.strip():
+        return 0
+
+    result = subprocess.run(
+        [sys.executable, "-m", "impactguard", "check-diff", "--pipe"],
+        input=diff.stdout,
+        capture_output=True,
+        text=True,
+    )
+    if result.stdout:
+        print(result.stdout, end="")
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
+    return result.returncode
+
+
+def post_commit_hook() -> int:
+    """Post-commit hook: silently extract signatures from tracked .py files."""
+    import os
+    import subprocess
+    import sys
+
+    if os.environ.get("SKIP_SIGNATURE_HOOK"):
+        return 0
+
+    os.environ["SKIP_SIGNATURE_HOOK"] = "1"
+    try:
+        files = subprocess.run(
+            ["git", "ls-files", "*.py"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.splitlines()
+    except subprocess.CalledProcessError:
+        return 0
+
+    if not files:
+        return 0
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "impactguard", "extract", *files],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            with open("/tmp/impactguard_sigs.json", "w") as f:
+                f.write(result.stdout)
+    except Exception:
+        return 0
+    finally:
+        os.environ.pop("SKIP_SIGNATURE_HOOK", None)
+    return 0
 
 
 if __name__ == "__main__":
