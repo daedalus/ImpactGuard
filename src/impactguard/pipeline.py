@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ._logging import get_logger
+from ._pathutils import is_safe_path
 
 _log = get_logger(__name__)
 
@@ -233,7 +234,9 @@ def run_pipeline(
                     try:
                         all_calls.extend(extractor.extract_calls(Path(file_path)))
                     except Exception as exc:
-                        _log.warning("Call extraction failed for '%s': %s", file_path, exc)
+                        _log.warning(
+                            "Call extraction failed for '%s': %s", file_path, exc
+                        )
                         print(
                             f"Warning: call extraction failed for {file_path}: {exc}",
                             file=sys.stderr,
@@ -257,7 +260,9 @@ def run_pipeline(
                         }
                     )
             except (json.JSONDecodeError, OSError) as e:
-                _log.warning("Failed to process runtime data from '%s': %s", runtime_path, e)
+                _log.warning(
+                    "Failed to process runtime data from '%s': %s", runtime_path, e
+                )
                 print(f"Warning: Failed to process runtime data: {e}", file=sys.stderr)
 
         with open(calls_path, "w") as f:
@@ -730,7 +735,7 @@ def _parse_unified_diff(diff_text: str) -> dict[str, tuple[str, str]]:
     def _save_current() -> None:
         # For renamed files, prefer new_name as the canonical key.
         name = new_name if new_name is not None else old_name
-        if name and _get_extractor(name) is not None:
+        if name and _get_extractor(name) is not None and is_safe_path(name):
             files[name] = ("\n".join(old_lines), "\n".join(new_lines))
 
     for line in diff_text.splitlines():
