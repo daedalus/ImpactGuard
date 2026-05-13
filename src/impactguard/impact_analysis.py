@@ -2,7 +2,10 @@ import json
 import sys
 from typing import Any
 
+from ._logging import get_logger
 from .risk_model import exposure
+
+_log = get_logger(__name__)
 
 
 def required_positional(func: dict[str, Any]) -> int:
@@ -135,6 +138,7 @@ def analyze(
                 rt_data = json.load(f_file)
             runtime = {item["function"]: item.get("count", 1) for item in rt_data}
         except (json.JSONDecodeError, KeyError) as e:
+            _log.warning("Failed to parse runtime data from '%s': %s", runtime_path, e)
             print(f"Warning: Failed to parse runtime data: {e}", file=sys.stderr)
             runtime = {}
 
@@ -143,6 +147,12 @@ def analyze(
 
     issues: list[dict[str, Any]] = []
     directly_affected: set[str] = set()
+
+    _log.debug(
+        "Analyzing impact: %d signatures, %d call sites",
+        len(funcs),
+        len(calls),
+    )
 
     for call in calls:
         target = call.get("fqname", call.get("name", ""))
@@ -230,6 +240,11 @@ def analyze(
                 }
             )
 
+    _log.debug(
+        "Impact analysis complete: %d direct issue(s), %d transitive",
+        sum(1 for i in issues if not i.get("transitive")),
+        sum(1 for i in issues if i.get("transitive")),
+    )
     return issues
 
 

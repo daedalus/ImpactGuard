@@ -2,6 +2,10 @@ import json
 import sys
 from typing import Any
 
+from ._logging import get_logger
+
+_log = get_logger(__name__)
+
 
 def enforce(
     diff_path: str,
@@ -35,6 +39,11 @@ def enforce(
         diff_path, runtime_path, output_path, lambda_=lambda_
     )
 
+    _log.debug(
+        "Enforcement gate running: %d risk item(s), block_unknown=%s",
+        len(report),
+        block_unknown,
+    )
     has_high = False
     has_unknown = False
 
@@ -44,6 +53,7 @@ def enforce(
 
         if risk == "HIGH":
             has_high = True
+            _log.warning("HIGH-risk change detected: %s — %s", func, item.get("change", ""))
             print(f"🔴 HIGH — {func}")
             print(f"   change: {item.get('change', '')}")
             print(f"   exposure: {item.get('exposure', 0):.2%}")
@@ -51,22 +61,27 @@ def enforce(
             print()
         elif risk == "UNKNOWN":
             has_unknown = True
+            _log.info("UNKNOWN-risk change: %s — %s", func, item.get("change", ""))
             if block_unknown:
                 print(f"🟡 UNKNOWN — {func}")
                 print(f"   change: {item.get('change', '')}")
                 print()
 
     if has_high:
+        _log.error("Gate BLOCKED: HIGH risk API changes detected")
         print("❌ Blocking: HIGH risk API changes detected")
         return 1
 
     if has_unknown and block_unknown:
+        _log.error("Gate BLOCKED: UNKNOWN risk API changes (block_unknown=true)")
         print("❌ Blocking: UNKNOWN risk API changes detected (block_unknown=true)")
         return 1
 
     if has_unknown:
+        _log.warning("Unknown risk areas detected — not blocking")
         print("⚠️ Warning: Unknown risk areas detected")
 
+    _log.info("API risk acceptable — gate passed")
     print("✅ API risk acceptable")
     return 0
 
@@ -88,9 +103,11 @@ def enforce_report(report_path: str, block_unknown: bool | None = None) -> int:
         with open(report_path) as f:
             report = json.load(f)
     except OSError as exc:
+        _log.error("Could not read report '%s': %s", report_path, exc)
         print(f"⚠️ Could not read report: {exc}", file=sys.stderr)
         return 2
     except json.JSONDecodeError as exc:
+        _log.error("Could not parse report '%s' (invalid JSON): %s", report_path, exc)
         print(f"⚠️ Could not parse report (invalid JSON): {exc}", file=sys.stderr)
         return 2
 
