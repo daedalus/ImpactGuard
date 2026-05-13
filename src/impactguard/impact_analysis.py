@@ -20,16 +20,35 @@ def total_positional(func: dict[str, Any]) -> int:
 
 def load_funcs(path: str) -> dict[str, dict[str, Any]]:
     """Load function signatures from JSON file."""
-    with open(path) as f:
-        data: list[dict[str, Any]] = json.load(f)
-    return {f["fqname"]: f for f in data}
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON in signatures file '{path}': {exc}") from exc
+    if not isinstance(data, list):
+        raise ValueError(
+            f"Signatures file '{path}': expected a JSON array, got {type(data).__name__}"
+        )
+    result: dict[str, dict[str, Any]] = {}
+    for entry in data:
+        if not isinstance(entry, dict) or "fqname" not in entry:
+            continue
+        result[entry["fqname"]] = entry
+    return result
 
 
 def load_calls(path: str) -> list[dict[str, Any]]:
     """Load call sites from JSON file."""
-    with open(path) as f:
-        data: list[dict[str, Any]] = json.load(f)
-    return data
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON in call sites file '{path}': {exc}") from exc
+    if not isinstance(data, list):
+        raise ValueError(
+            f"Call sites file '{path}': expected a JSON array, got {type(data).__name__}"
+        )
+    return [entry for entry in data if isinstance(entry, dict)]
 
 
 # ── Transitive impact helpers ─────────────────────────────────────────────────
@@ -171,7 +190,7 @@ def analyze(
             continue
 
         min_args = required_positional(f)
-        max_args = total_positional(f) if not f["vararg"] else float("inf")
+        max_args = total_positional(f) if not f.get("vararg") else float("inf")
 
         argc = call.get("args", 0)
 

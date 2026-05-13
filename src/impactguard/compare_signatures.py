@@ -16,8 +16,16 @@ def load(path: str) -> dict[str, dict[str, Any]]:
     """
     from .schema import validate_signatures
 
-    with open(path) as f:
-        data = json.load(f)
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON in signatures file '{path}': {exc}") from exc
+
+    if not isinstance(data, list):
+        raise ValueError(
+            f"Signatures file '{path}': expected a JSON array, got {type(data).__name__}"
+        )
 
     valid, errors = validate_signatures(data)
     if not valid:
@@ -25,7 +33,13 @@ def load(path: str) -> dict[str, dict[str, Any]]:
             _log.warning("Signatures file '%s': %s", path, err)
             print(f"Warning: signatures file '{path}': {err}", file=sys.stderr)
 
-    return {f["fqname"]: f for f in data}
+    result: dict[str, dict[str, Any]] = {}
+    for entry in data:
+        if not isinstance(entry, dict) or "fqname" not in entry:
+            _log.warning("Signatures file '%s': skipping malformed entry: %r", path, entry)
+            continue
+        result[entry["fqname"]] = entry
+    return result
 
 
 def is_required(arg: dict[str, Any]) -> bool:
@@ -167,7 +181,17 @@ def _load_signatures(arg: str | list[dict[str, Any]]) -> dict[str, dict[str, Any
     if isinstance(arg, str):
         return load(arg)
     # Assume it's already a signature list
-    return {f["fqname"]: f for f in arg}
+    if not isinstance(arg, list):
+        raise ValueError(
+            f"Expected a list of signatures, got {type(arg).__name__}"
+        )
+    result: dict[str, dict[str, Any]] = {}
+    for entry in arg:
+        if not isinstance(entry, dict) or "fqname" not in entry:
+            _log.warning("Skipping malformed signature entry: %r", entry)
+            continue
+        result[entry["fqname"]] = entry
+    return result
 
 
 def compare(  # noqa: MC0001
