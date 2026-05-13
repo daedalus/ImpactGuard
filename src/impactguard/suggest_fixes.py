@@ -109,8 +109,7 @@ def enrich_with_fixes(
                         param_name = parts[-1].strip("()")
 
                 if param_name:
-                    # Try CST patch first
-                    patched, error = patch_function(
+                    patched, _ = patch_function(
                         source, func_name.split(".")[-1], param_name
                     )
                     if patched:
@@ -122,37 +121,14 @@ def enrich_with_fixes(
                             }
                         )
                     else:
-                        # Fallback to text-based patch
                         from .patch_generator import patch_add_default
 
-                        # Build func dict for patch_generator
                         func_dict = {
                             "file": file_path,
                             "lineno": report_item.get("lineno", 0),
                             "name": func_name,
                         }
                         gen_patch = patch_add_default(func_dict, param_name)
-                        if gen_patch:
-                            fixes.append(
-                                {
-                                    "type": "text_patch",
-                                    "patch": gen_patch,
-                                    "confidence_level": "LOW",
-                                }
-                            )
-                    if patched:
-                        fixes.append(
-                            {
-                                "type": "cst_patch",
-                                "patch": patched,
-                                "confidence_level": "MEDIUM",
-                            }
-                        )
-                    else:
-                        # Fallback to text-based patch
-                        from .patch_generator import patch_add_default
-
-                        gen_patch = patch_add_default(report_item, param_name)
                         if gen_patch:
                             fixes.append(
                                 {
