@@ -21,6 +21,7 @@ argument).  Each entry is a dict with keys:
 
 import json
 import os
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -59,11 +60,14 @@ def _is_safe_feedback_path(path: str) -> bool:
     rejected to prevent accidental or injection-driven overwrites of system
     files.  All relative paths, temp-directory paths, and user home paths
     are allowed.
-    """
-    import sys as _sys
 
+    Symlinks are resolved before checking so that a symlink pointing at a
+    sensitive file cannot bypass the safety check.
+    """
     p = Path(path)
-    if not p.is_absolute():
+    # Resolve symlinks so the check applies to the real target
+    resolved = p.resolve()
+    if not resolved.is_absolute():
         return True
 
     _SYSTEM_PREFIXES = (
@@ -78,7 +82,7 @@ def _is_safe_feedback_path(path: str) -> bool:
         "/boot/",
         "/dev/",
     )
-    norm = str(p)
+    norm = str(resolved)
     if any(norm.startswith(prefix) for prefix in _SYSTEM_PREFIXES) or norm in (
         "/etc",
         "/usr",
@@ -92,9 +96,9 @@ def _is_safe_feedback_path(path: str) -> bool:
         "/dev",
     ):
         print(
-            f"Warning: impactguard: feedback path '{path}' targets a system "
-            "directory; write rejected for safety.",
-            file=_sys.stderr,
+            f"Warning: impactguard: feedback path '{path}' (resolved to "
+            f"'{resolved}') targets a system directory; write rejected for safety.",
+            file=sys.stderr,
         )
         return False
     return True
@@ -266,7 +270,15 @@ def apply_weights_to_config(
     if not weights:
         return True
 
-    path = Path(config_path)
+    if not _is_safe_feedback_path(config_path):
+        print(
+            "Error: impactguard: config path targets a system directory; "
+            "write rejected for safety.",
+            file=sys.stderr,
+        )
+        return False
+
+    path = Path(config_path).resolve()
     # Read existing lines (preserve comments and other sections)
     existing_lines: list[str] = []
     if path.is_file():
@@ -299,7 +311,8 @@ def _load_raw(path: str) -> list[dict[str, Any]]:
 def _save_raw(path: str, outcomes: list[dict[str, Any]]) -> None:
     if not _is_safe_feedback_path(path):
         return
-    Path(path).write_text(json.dumps(outcomes, indent=2))
+    resolved = Path(path).resolve()
+    resolved.write_text(json.dumps(outcomes, indent=2))
 
 
 def _upsert_toml_section(

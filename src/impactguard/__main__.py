@@ -165,7 +165,14 @@ def cmd_risk(args: argparse.Namespace) -> "int | list[dict[str, Any]]":
 
     if pipe:
         if not sys.stdin.isatty():
-            diff_text = sys.stdin.read()
+            try:
+                diff_text = sys.stdin.read()
+            except UnicodeDecodeError:
+                print(
+                    "Error: --pipe received binary data; expected text diff.",
+                    file=sys.stderr,
+                )
+                return 1
         else:
             print("Error: --pipe requires data on stdin", file=sys.stderr)
             return 1
@@ -213,7 +220,14 @@ def cmd_enforce(args: argparse.Namespace) -> int:
 
     if pipe:
         if not sys.stdin.isatty():
-            diff_text = sys.stdin.read()
+            try:
+                diff_text = sys.stdin.read()
+            except UnicodeDecodeError:
+                print(
+                    "Error: --pipe received binary data; expected text diff.",
+                    file=sys.stderr,
+                )
+                return 1
         else:
             print("Error: --pipe requires data on stdin", file=sys.stderr)
             return 1
@@ -511,7 +525,14 @@ def cmd_check_diff(args: argparse.Namespace) -> int:
 
     if pipe:
         if not sys.stdin.isatty():
-            diff_text = sys.stdin.read()
+            try:
+                diff_text = sys.stdin.read()
+            except UnicodeDecodeError:
+                print(
+                    "Error: --pipe received binary data; expected text diff.",
+                    file=sys.stderr,
+                )
+                return 1
         else:
             print("Error: --pipe requires data on stdin", file=sys.stderr)
             return 1
@@ -806,7 +827,7 @@ jobs:
       - name: Run ImpactGuard
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            impactguard check-commits ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }}
+            impactguard check-commits "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
           else
             impactguard check-commit HEAD
           fi

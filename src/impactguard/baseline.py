@@ -40,6 +40,38 @@ def _resolve_history_path(path: str | None) -> str:
     return os.environ.get("IMPACTGUARD_HISTORY", DEFAULT_HISTORY_PATH)
 
 
+def _is_safe_baseline_path(path: str) -> bool:
+    """Return *True* if *path* does not resolve to a system directory."""
+    p = Path(path).resolve()
+    _system_prefixes = (
+        "/etc/",
+        "/usr/",
+        "/bin/",
+        "/sbin/",
+        "/lib/",
+        "/lib64/",
+        "/sys/",
+        "/proc/",
+        "/boot/",
+        "/dev/",
+    )
+    norm = str(p)
+    if any(norm.startswith(prefix) for prefix in _system_prefixes) or norm in (
+        "/etc",
+        "/usr",
+        "/bin",
+        "/sbin",
+        "/lib",
+        "/lib64",
+        "/sys",
+        "/proc",
+        "/boot",
+        "/dev",
+    ):
+        return False
+    return True
+
+
 def save_baseline(
     files: list[str],
     path: str | None = None,
@@ -56,22 +88,31 @@ def save_baseline(
 
     Returns:
         Absolute path to the saved baseline file.
+
+    Raises:
+        ValueError: When *path* targets a system directory.
     """
     from .extract_signatures import extract
 
     effective_path = _resolve_path(path)
+    if not _is_safe_baseline_path(effective_path):
+        raise ValueError(
+            f"Baseline path '{effective_path}' resolves to a system directory; "
+            "write rejected for safety."
+        )
+
     signatures = extract(files)
 
     payload: dict[str, Any] = {"signatures": signatures}
     if metadata:
         payload["metadata"] = metadata
 
-    with open(effective_path, "w") as f:
+    resolved_path = str(Path(effective_path).resolve())
+    with open(resolved_path, "w") as f:
         json.dump(payload, f, indent=2)
 
-    abs_path = str(Path(effective_path).resolve())
-    _log.info("Baseline saved: %s (%d signature(s))", abs_path, len(signatures))
-    return abs_path
+    _log.info("Baseline saved: %s (%d signature(s))", resolved_path, len(signatures))
+    return resolved_path
 
 
 def load_baseline(path: str | None = None) -> dict[str, Any]:

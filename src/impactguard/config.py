@@ -6,7 +6,6 @@ All public API reads values through :func:`get`, so the rest of the package
 never needs to hard-code thresholds.
 """
 
-import logging
 import sys
 import tomllib
 from pathlib import Path
@@ -78,11 +77,11 @@ _DEFAULTS: dict[str, Any] = {
             # Optional path for a log file.  Empty string means stderr only.
             "log_file": "",
         },
-    "analysis": {
-        "include_private": False,
-        "suppress": [],
-        "transitive_depth": 0,
-    },
+        "analysis": {
+            "include_private": False,
+            "suppress": [],
+            "transitive_depth": 0,
+        },
         "languages": {
             # Canonical language names to enable.  "python" is always available.
             # "typescript" requires tree-sitter-typescript (pip install impactguard[languages]).
@@ -111,12 +110,21 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
 
 
 def _find_config_file(start: Path | None = None) -> Path | None:
-    """Walk up from *start* (default: cwd) looking for ``impactguard.toml``."""
+    """Walk up from *start* (default: cwd) looking for ``impactguard.toml``.
+
+    Stops at the project root (where ``.git`` exists) or the filesystem root,
+    preventing configuration poisoning from shared writable directories
+    outside the project boundary.
+    """
     search = start or Path.cwd()
     for directory in [search, *search.parents]:
         candidate = directory / "impactguard.toml"
         if candidate.is_file():
             return candidate
+        if (directory / ".git").is_dir():
+            break
+        if directory == directory.parent:
+            break
     return None
 
 
@@ -258,12 +266,12 @@ def validate_config(config_path: str | None = None) -> list[str]:
         issues.append("ERROR: '[impactguard]' must be a TOML table.")
         return issues
 
-    _KNOWN_SECTIONS = set(_DEFAULTS["impactguard"].keys())
+    _known_sections = set(_DEFAULTS["impactguard"].keys())
     for section_name in ig_raw:
-        if section_name not in _KNOWN_SECTIONS:
+        if section_name not in _known_sections:
             issues.append(
                 f"WARN: Unknown section '[impactguard.{section_name}]' — "
-                f"known sections are: {', '.join(sorted(_KNOWN_SECTIONS))}."
+                f"known sections are: {', '.join(sorted(_known_sections))}."
             )
             continue
 
@@ -276,7 +284,9 @@ def validate_config(config_path: str | None = None) -> list[str]:
             )
             continue
 
-        known_keys = set(default_section.keys()) if isinstance(default_section, dict) else set()
+        known_keys = (
+            set(default_section.keys()) if isinstance(default_section, dict) else set()
+        )
         for key_name, value in user_section.items():
             if known_keys and key_name not in known_keys:
                 issues.append(
@@ -286,8 +296,12 @@ def validate_config(config_path: str | None = None) -> list[str]:
                 continue
 
             # Type / range checks
-            default_val = default_section.get(key_name) if isinstance(default_section, dict) else None
-            if isinstance(default_val, float) and isinstance(value, (int, float)):
+            default_val = (
+                default_section.get(key_name)
+                if isinstance(default_section, dict)
+                else None
+            )
+            if isinstance(default_val, float) and isinstance(value, int | float):
                 if not (0.0 <= float(value) <= 10.0):
                     issues.append(
                         f"ERROR: [impactguard.{section_name}].{key_name} = {value!r} "
