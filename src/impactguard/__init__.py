@@ -6,6 +6,7 @@ ImpactGuard - Lightweight API impact analyzer for Python projects.
 Track function signatures, detect breaking changes, and analyze call-site impact
 using static and runtime techniques.
 """
+from ._logging import configure_logging, get_logger
 from .analyze_module import analyze as analyze_module
 from .analyze_module import analyze_calls
 from .baseline import (
@@ -251,4 +252,7 @@ __all__ = [
     "extract_calls",
     "analyze_module",
     "analyze_impact",
+    # Logging
+    "get_logger",
+    "configure_logging",
 ]

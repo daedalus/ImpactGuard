@@ -111,6 +111,18 @@ verbose = false
 # Auto-open reports after generation
 auto_open = false
 
+# Logging settings
+[impactguard.logging]
+# Log level for the "impactguard" logger hierarchy.
+# Recognised values: DEBUG, INFO, WARNING, ERROR, CRITICAL.
+level = "WARNING"
+
+# Log record format string (Python logging format).
+format = "%(levelname)s [%(name)s] %(message)s"
+
+# Optional path for a log file.  Leave empty to log to stderr only.
+log_file = ""
+
 # Language support settings
 [impactguard.languages]
 # Languages to enable.  "python" is always built-in.

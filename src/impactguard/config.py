@@ -6,10 +6,15 @@ All public API reads values through :func:`get`, so the rest of the package
 never needs to hard-code thresholds.
 """
 
+import logging
 import sys
 import tomllib
 from pathlib import Path
 from typing import Any
+
+from ._logging import get_logger
+
+_log = get_logger(__name__)
 
 # ── Built-in defaults ─────────────────────────────────────────────────────────
 _DEFAULTS: dict[str, Any] = {
@@ -63,6 +68,15 @@ _DEFAULTS: dict[str, Any] = {
         "cli": {
             "verbose": False,
             "auto_open": False,
+        },
+        "logging": {
+            # Logging level for the "impactguard" logger hierarchy.
+            # Recognised values: DEBUG, INFO, WARNING, ERROR, CRITICAL.
+            "level": "WARNING",
+            # Log record format string (Python logging format).
+            "format": "%(levelname)s [%(name)s] %(message)s",
+            # Optional path for a log file.  Empty string means stderr only.
+            "log_file": "",
         },
     "analysis": {
         "include_private": False,
@@ -126,12 +140,18 @@ def load_config(config_path: str | None = None) -> dict[str, Any]:
         path = _find_config_file()
 
     if path is None or not path.is_file():
+        _log.debug("No impactguard.toml found; using built-in defaults")
         return _DEFAULTS
 
     try:
         with open(path, "rb") as f:
             raw: dict[str, Any] = tomllib.load(f)
     except Exception as exc:
+        _log.warning(
+            "Could not parse config file '%s': %s; using built-in defaults.",
+            path,
+            exc,
+        )
         print(
             f"Warning: impactguard: could not parse config file '{path}': {exc}; "
             "using built-in defaults.",
@@ -139,6 +159,7 @@ def load_config(config_path: str | None = None) -> dict[str, Any]:
         )
         return _DEFAULTS
 
+    _log.debug("Loaded configuration from '%s'", path)
     return _deep_merge(_DEFAULTS, raw)
 
 

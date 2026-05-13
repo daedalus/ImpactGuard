@@ -8,6 +8,10 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from ._logging import get_logger
+
+_log = get_logger(__name__)
+
 
 def _validate_git_ref(ref: str) -> bool:
     """Validate git ref format to prevent command injection.
@@ -137,7 +141,10 @@ def run_pipeline(
         output_dir = tempfile.mkdtemp(prefix="impactguard_")
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
+    _log.debug("Pipeline started; output_dir='%s'", output_dir)
+
     # Step 1: Extract or load signatures
+    _log.debug("Step 1: Extracting/loading signatures")
     if old_files:
         old_sigs = _extract_by_language(old_files)
         old_sigs_path = str(Path(output_dir) / "old_signatures.json")
@@ -186,6 +193,7 @@ def run_pipeline(
         implementations = find_implementations(hierarchy)
 
     # Step 2: Compare signatures
+    _log.debug("Step 2: Comparing signatures")
     comparison = compare(
         old_sigs_path,
         new_sigs_path,
@@ -193,8 +201,14 @@ def run_pipeline(
         implementations=implementations,
     )
     result["comparison"] = comparison
+    _log.info(
+        "Signature comparison: %d breaking, %d non-breaking",
+        len(comparison.get("breaking", [])),
+        len(comparison.get("nonbreaking", [])),
+    )
 
     # Step 3: Extract call sites (if not provided)
+    _log.debug("Step 3: Extracting call sites")
     if not calls_path:
         calls_path = str(Path(output_dir) / "calls.json")
         all_calls: list[dict[str, Any]] = []
@@ -219,6 +233,7 @@ def run_pipeline(
                     try:
                         all_calls.extend(extractor.extract_calls(Path(file_path)))
                     except Exception as exc:
+                        _log.warning("Call extraction failed for '%s': %s", file_path, exc)
                         print(
                             f"Warning: call extraction failed for {file_path}: {exc}",
                             file=sys.stderr,
@@ -242,16 +257,20 @@ def run_pipeline(
                         }
                     )
             except (json.JSONDecodeError, OSError) as e:
+                _log.warning("Failed to process runtime data from '%s': %s", runtime_path, e)
                 print(f"Warning: Failed to process runtime data: {e}", file=sys.stderr)
 
         with open(calls_path, "w") as f:
             json.dump(all_calls, f, indent=2)
 
     # Step 4: Analyze impact
+    _log.debug("Step 4: Analyzing impact")
     impact = analyze(new_sigs_path, calls_path, runtime_path)
     result["impact"] = impact
+    _log.debug("Impact analysis found %d issue(s)", len(impact))
 
     # Step 5: Assess risk
+    _log.debug("Step 5: Assessing risk")
     diff_path = str(Path(output_dir) / "diff.txt")
     with open(diff_path, "w") as f:
         for change in comparison["breaking"]:
@@ -260,6 +279,7 @@ def run_pipeline(
     risk_report_path = str(Path(output_dir) / "risk_report.json")
     risk = run_risk(diff_path, runtime_path or "", risk_report_path)
     result["risk"] = risk
+    _log.debug("Risk assessment: %d item(s)", len(risk))
 
     # Add file/lineno from signatures to risk items for patch generation
     if suggest_patch or show_patch:
@@ -267,6 +287,7 @@ def run_pipeline(
             with open(old_sigs_path) as f:
                 old_sigs_list = json.load(f)
         except Exception as e:
+            _log.warning("Could not load old signatures for patch generation: %s", e)
             print(f"Warning: Could not load old signatures: {e}", file=sys.stderr)
             old_sigs_list = []
 
@@ -292,6 +313,7 @@ def run_pipeline(
                     pass
 
     # Step 6: Generate HTML report
+    _log.debug("Step 6: Generating HTML report")
 
     # Step 6: Generate HTML report
     html = generate_html(risk)
@@ -357,6 +379,7 @@ def run_pipeline(
             result["patches"] = patches
 
     # Step 9: Semver recommendation
+    _log.debug("Step 9: Semver recommendation")
     from .semver import format_semver_recommendation
 
     result["semver"] = format_semver_recommendation(comparison)
@@ -367,6 +390,7 @@ def run_pipeline(
     with open(new_sigs_path) as f:
         result["signatures"]["new"] = json.load(f)
 
+    _log.info("Pipeline complete: semver=%s", result["semver"].get("bump", "patch"))
     return result
 
 
