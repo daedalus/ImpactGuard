@@ -879,8 +879,8 @@ def cmd_suggest(args: argparse.Namespace) -> int:
     from .suggest_fixes import suggest
 
     try:
-        with open(args.report) as _f:
-            report = json.load(_f)
+        with open(args.report) as f:
+            report = json.load(f)
     except (OSError, json.JSONDecodeError) as e:
         print(f"Error reading report: {e}", file=sys.stderr)
         return 1
