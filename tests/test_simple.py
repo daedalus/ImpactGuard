@@ -10,7 +10,7 @@ def test_import():
     """Test that impactguard can be imported."""
     import impactguard
 
-    assert impactguard.__version__ == "0.1.4"
+    assert impactguard.__version__ == "0.1.5"
 
 
 def test_extract():
