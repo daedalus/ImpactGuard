@@ -16,11 +16,12 @@ def cmd_extract(args: argparse.Namespace) -> int:
     Supports all registered languages (Python, TypeScript, …).  Language is
     detected from the file extension unless ``--language`` is specified.
     """
-    files = (
-        args.files
-        if args.files
-        else [f for f in sys.stdin.read().splitlines() if f.strip()]
-    )
+    if args.files:
+        files = args.files
+    elif not sys.stdin.isatty():
+        files = [f for f in sys.stdin.read().splitlines() if f.strip()]
+    else:
+        files = []
 
     if not files:
         print("Error: No input files provided", file=sys.stderr)
@@ -92,7 +93,11 @@ def cmd_compare(args: argparse.Namespace) -> int:
 
     if use_json:
         # JSON mode: compare two JSON files directly (original behavior)
-        result = compare(args.old, args.new)
+        try:
+            result = compare(args.old, args.new)
+        except (OSError, ValueError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
     else:
         # Source mode: extract signatures from source files, then compare
         from .languages.lib.registry import get_extractor
@@ -147,7 +152,11 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     """Analyze impact of signature changes on call sites."""
     from .impact_analysis import analyze
 
-    result = analyze(args.signatures, args.calls, args.runtime)
+    try:
+        result = analyze(args.signatures, args.calls, args.runtime)
+    except (OSError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
     print(json.dumps(result, indent=2))
     return 0
 
@@ -203,7 +212,11 @@ def cmd_report(args: argparse.Namespace) -> int:
     """Generate HTML report from risk JSON."""
     from .generate_report import generate_main as report_main
 
-    report_main(args.report, args.output)
+    try:
+        report_main(args.report, args.output)
+    except (OSError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
     return 0
 
 
@@ -267,11 +280,12 @@ def cmd_extract_calls(args: argparse.Namespace) -> int:
     Supports all registered languages (Python, TypeScript, …).  Language is
     detected from the file extension unless ``--language`` is specified.
     """
-    files = (
-        args.files
-        if args.files
-        else [f for f in sys.stdin.read().splitlines() if f.strip()]
-    )
+    if args.files:
+        files = args.files
+    elif not sys.stdin.isatty():
+        files = [f for f in sys.stdin.read().splitlines() if f.strip()]
+    else:
+        files = []
 
     if not files:
         print("Error: No input files provided", file=sys.stderr)
@@ -865,13 +879,23 @@ def cmd_suggest(args: argparse.Namespace) -> int:
     from .suggest_fixes import suggest
 
     try:
-        report = json.load(open(args.report))
-    except Exception as e:
+        with open(args.report) as _f:
+            report = json.load(_f)
+    except (OSError, json.JSONDecodeError) as e:
         print(f"Error reading report: {e}", file=sys.stderr)
+        return 1
+
+    if not isinstance(report, list):
+        print(
+            f"Error: report file must contain a JSON array, got {type(report).__name__}",
+            file=sys.stderr,
+        )
         return 1
 
     all_suggestions: list[str] = []
     for item in report:
+        if not isinstance(item, dict):
+            continue
         sug = suggest(item, [item])
         all_suggestions.extend(sug)
 
@@ -1018,7 +1042,11 @@ def cmd_semver(args: argparse.Namespace) -> int:
 
     if use_json:
         # JSON mode: compare two JSON files directly
-        result = compare(args.old, args.new)
+        try:
+            result = compare(args.old, args.new)
+        except (OSError, ValueError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
     else:
         # Source mode: extract signatures from source files, then compare
         from .languages.lib.registry import get_extractor
@@ -1083,7 +1111,11 @@ def cmd_report_markdown(args: argparse.Namespace) -> int:
     from .generate_report import generate_markdown_from_file
 
     output: str | None = getattr(args, "output", None)
-    md = generate_markdown_from_file(args.report, output_path=output)
+    try:
+        md = generate_markdown_from_file(args.report, output_path=output)
+    except (OSError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
     if not output:
         print(md)
     else:
@@ -1255,6 +1287,13 @@ def cmd_kpi(args: argparse.Namespace) -> int:
         return 1
     except json.JSONDecodeError as exc:
         print(f"Error parsing report JSON: {exc}", file=sys.stderr)
+        return 1
+
+    if not isinstance(report_data, list):
+        print(
+            f"Error: report file must contain a JSON array, got {type(report_data).__name__}",
+            file=sys.stderr,
+        )
         return 1
 
     feedback_outcomes = None
