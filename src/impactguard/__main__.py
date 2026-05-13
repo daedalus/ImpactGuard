@@ -1870,14 +1870,20 @@ def main() -> int:
     args = parser.parse_args()
 
     # Configure the impactguard logger hierarchy using our centralised helper.
-    # Precedence: CLI --log-level > config file > built-in default (WARNING).
-    from ._logging import _level_from_config, configure_logging
+    # Precedence: CLI > config file > built-in defaults.
+    from ._logging import _logging_config_from_config, configure_logging, get_logger
 
-    log_level: str = args.log_level or _level_from_config()
-    log_file: str | None = args.log_file or None
-    configure_logging(level=log_level, log_file=log_file)
+    _log_cfg = _logging_config_from_config()
+    log_level: str = args.log_level or _log_cfg["level"]
+    log_format: str = _log_cfg["format"]
+    log_file: str | None = args.log_file or _log_cfg["log_file"] or None
 
-    _logger = logging.getLogger("impactguard")
+    try:
+        configure_logging(level=log_level, fmt=log_format, log_file=log_file)
+    except ValueError as e:
+        parser.error(str(e))
+
+    _logger = get_logger(__name__)
     _logger.info("ImpactGuard started with command: %s", args.command)
 
     if not args.command:
