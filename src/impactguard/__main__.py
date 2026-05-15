@@ -511,6 +511,18 @@ def cmd_check_commits(args: argparse.Namespace) -> int:
             print("\n=== Risk Analysis ===")
             print(f"HIGH risk: {high}")
 
+        if "analysis_status" in result:
+            status = result["analysis_status"]
+            counters = status.get("counters", {})
+            print("\n=== Analysis Status ===")
+            print(f"Status: {status.get('status', 'unknown').upper()}")
+            print(
+                "Counters: "
+                f"parse_failures={counters.get('parse_failures', 0)}, "
+                f"skipped_files={counters.get('skipped_files', 0)}, "
+                f"fallback_used={counters.get('fallback_used', 0)}"
+            )
+
         if "report_html" in result and args.output:
             print(f"\nReport written to {args.output}")
 
@@ -594,6 +606,18 @@ def cmd_check_diff(args: argparse.Namespace) -> int:
         print("\n=== Risk Analysis ===")
         print(f"HIGH risk: {high}")
 
+    if "analysis_status" in result:
+        status = result["analysis_status"]
+        counters = status.get("counters", {})
+        print("\n=== Analysis Status ===")
+        print(f"Status: {status.get('status', 'unknown').upper()}")
+        print(
+            "Counters: "
+            f"parse_failures={counters.get('parse_failures', 0)}, "
+            f"skipped_files={counters.get('skipped_files', 0)}, "
+            f"fallback_used={counters.get('fallback_used', 0)}"
+        )
+
     output = getattr(args, "output", None)
     if output and "report_html" in result:
         from pathlib import Path as _Path
@@ -651,6 +675,18 @@ def cmd_check_commit(args: argparse.Namespace) -> int:
         high = sum(1 for r in risk_items if r.get("risk") == "HIGH")
         print("\n=== Risk Analysis ===")
         print(f"HIGH risk: {high}")
+
+    if "analysis_status" in result:
+        status = result["analysis_status"]
+        counters = status.get("counters", {})
+        print("\n=== Analysis Status ===")
+        print(f"Status: {status.get('status', 'unknown').upper()}")
+        print(
+            "Counters: "
+            f"parse_failures={counters.get('parse_failures', 0)}, "
+            f"skipped_files={counters.get('skipped_files', 0)}, "
+            f"fallback_used={counters.get('fallback_used', 0)}"
+        )
 
     if "report_html" in result and args.output:
         print(f"\nReport written to {args.output}")
