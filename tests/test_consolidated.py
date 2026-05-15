@@ -473,6 +473,12 @@ class TestPathUtils:
         # '...' is not a traversal component
         assert self._safe("...") is True
 
+    def test_windows_backslash_relative_path_safe(self):
+        assert self._safe(r"subdir\file.py") is True
+
+    def test_windows_backslash_only_safe(self):
+        assert self._safe(r".\foo.py") is True
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # patch_generator
@@ -3476,7 +3482,6 @@ class TestSuggestFixesCST:
 
 class TestTraceCallsProdFlushTrigger:
     def test_trace_triggers_flush_when_interval_exceeded(self, tmp_path, monkeypatch):
-
         import impactguard.trace_calls_prod as tcp
 
         # Force flush by setting LAST_FLUSH to a very old time

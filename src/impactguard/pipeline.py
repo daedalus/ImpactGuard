@@ -36,12 +36,14 @@ def _validate_git_ref(ref: str) -> bool:
 
 
 def _validate_git_path(path: str) -> bool:
-    """Validate file path from git to prevent path traversal."""
-    if not path or len(path) > 255:
-        return False
-    if not is_safe_path(path):
-        return False
-    return True
+    """Validate file path from git to prevent path traversal.
+
+    Delegates to :func:`is_safe_path` with ``max_length=255``, which also
+    rejects Windows drive/UNC prefixes.  This is **intentional**: git paths
+    are always relative and POSIX-style, so rejecting Windows-only patterns
+    is a safe hardening measure.
+    """
+    return is_safe_path(path, max_length=255)
 
 
 def _summarize_files(files: list[str], limit: int = 5) -> str:
