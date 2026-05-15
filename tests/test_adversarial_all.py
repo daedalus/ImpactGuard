@@ -107,6 +107,18 @@ class TestPathUtils:
         # '...' is not a traversal component
         assert self._safe("...") is True
 
+    def test_windows_backslash_traversal_unsafe(self):
+        assert self._safe(r"..\etc\passwd") is False
+
+    def test_windows_drive_absolute_unsafe(self):
+        assert self._safe(r"C:\Windows\System32\drivers\etc\hosts") is False
+
+    def test_unc_path_unsafe(self):
+        assert self._safe(r"\\server\share\secret.py") is False
+
+    def test_null_byte_rejected(self):
+        assert self._safe("foo\x00bar.py") is False
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # patch_generator

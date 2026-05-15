@@ -201,6 +201,32 @@ class TestParseUnifiedDiff:
         result = _parse_unified_diff("")
         assert result == {}
 
+    def test_windows_absolute_path_in_diff_excluded(self):
+        from impactguard.pipeline import _parse_unified_diff
+
+        diff = textwrap.dedent(r"""\
+            --- a/C:\temp\evil.py
+            +++ b/C:\temp\evil.py
+            @@ -1 +1 @@
+            -def foo(): pass
+            +def foo(x): pass
+        """)
+        result = _parse_unified_diff(diff)
+        assert result == {}
+
+    def test_backslash_traversal_path_in_diff_excluded(self):
+        from impactguard.pipeline import _parse_unified_diff
+
+        diff = textwrap.dedent(r"""\
+            --- a/..\secrets.py
+            +++ b/..\secrets.py
+            @@ -1 +1 @@
+            -def foo(): pass
+            +def foo(x): pass
+        """)
+        result = _parse_unified_diff(diff)
+        assert result == {}
+
 
 # ---------------------------------------------------------------------------
 # run_pipeline_diff
