@@ -227,6 +227,26 @@ class TestParseUnifiedDiff:
         result = _parse_unified_diff(diff)
         assert result == {}
 
+    def test_unc_path_in_diff_excluded(self):
+        from impactguard.pipeline import _parse_unified_diff
+
+        diff = textwrap.dedent(r"""\
+            --- a/\\server\share\evil.py
+            +++ b/\\server\share\evil.py
+            @@ -1 +1 @@
+            -def foo(): pass
+            +def foo(x): pass
+        """)
+        result = _parse_unified_diff(diff)
+        assert result == {}
+
+    def test_null_byte_path_in_diff_excluded(self):
+        from impactguard.pipeline import _parse_unified_diff
+
+        diff = "--- a/foo\x00bar.py\n+++ b/foo\x00bar.py\n@@ -1 +1 @@\n-def foo(): pass\n+def foo(x): pass\n"
+        result = _parse_unified_diff(diff)
+        assert result == {}
+
 
 # ---------------------------------------------------------------------------
 # run_pipeline_diff

@@ -925,7 +925,7 @@ def _parse_unified_diff(diff_text: str) -> dict[str, tuple[str, str]]:
     def _save_current() -> None:
         # For renamed files, prefer new_name as the canonical key.
         name = new_name if new_name is not None else old_name
-        if name and _get_extractor(name) is not None and _validate_git_path(name):
+        if name and _get_extractor(name) is not None and is_safe_path(name):
             files[name] = ("\n".join(old_lines), "\n".join(new_lines))
 
     for line in diff_text.splitlines():
