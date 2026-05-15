@@ -39,11 +39,9 @@ def _validate_git_path(path: str) -> bool:
     """Validate file path from git to prevent path traversal."""
     if not path or len(path) > 255:
         return False
-    # Disallow path traversal
-    if ".." in path or path.startswith("/") or path.startswith("\\"):
+    if "\\" in path:
         return False
-    # Must be a relative path
-    if Path(path).is_absolute():
+    if not is_safe_path(path):
         return False
     return True
 
@@ -929,7 +927,7 @@ def _parse_unified_diff(diff_text: str) -> dict[str, tuple[str, str]]:
     def _save_current() -> None:
         # For renamed files, prefer new_name as the canonical key.
         name = new_name if new_name is not None else old_name
-        if name and _get_extractor(name) is not None and is_safe_path(name):
+        if name and _get_extractor(name) is not None and _validate_git_path(name):
             files[name] = ("\n".join(old_lines), "\n".join(new_lines))
 
     for line in diff_text.splitlines():
