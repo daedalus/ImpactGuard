@@ -39,11 +39,7 @@ def _validate_git_path(path: str) -> bool:
     """Validate file path from git to prevent path traversal."""
     if not path or len(path) > 255:
         return False
-    # Disallow path traversal
-    if ".." in path or path.startswith("/") or path.startswith("\\"):
-        return False
-    # Must be a relative path
-    if Path(path).is_absolute():
+    if not is_safe_path(path):
         return False
     return True
 
