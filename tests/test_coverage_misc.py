@@ -2,9 +2,8 @@
 Originally: test_80_final.py, test_80_percent.py, etc.
 Combined to reduce test file sprawl.
 """
-from __future__ import annotations
-from __future__ import annotations
 
+from __future__ import annotations
 
 # =======================================
 # From: test_80_final.py
@@ -177,14 +176,11 @@ def test_extract_calls_final(tmp_path):
     result = extract(test_file)
     assert isinstance(result, list)
 
+
 # =======================================
 # From: test_80_percent.py
 # =======================================
 """More targeted tests for 80% coverage."""
-
-import json
-from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 
 def test_suggest_fixes_coverage_boost(tmp_path):
@@ -381,6 +377,7 @@ async def async_func():
     result = analyze(str(test_file))
     assert isinstance(result, dict)
 
+
 # =======================================
 # From: test_coverage_adversarial.py
 # =======================================
@@ -401,13 +398,10 @@ Targets the lowest-coverage modules:
 """
 
 
-
-import json
 import os
 import sys
 import tempfile
 import types
-from pathlib import Path
 from typing import Any
 from unittest import mock
 
@@ -492,6 +486,12 @@ class TestPathUtils:
     def test_triple_dot_safe(self):
         # '...' is not a traversal component
         assert self._safe("...") is True
+
+    def test_windows_backslash_relative_path_safe(self):
+        assert self._safe(r"subdir\file.py") is True
+
+    def test_windows_backslash_only_safe(self):
+        assert self._safe(r".\foo.py") is True
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1892,6 +1892,7 @@ class TestJavaExtractor:
 
     def test_extract_multiple_files(self):
         from impactguard.languages.java import _TREE_SITTER_AVAILABLE
+
         if not _TREE_SITTER_AVAILABLE:
             pytest.skip("tree-sitter-java not installed")
         src1 = self._write_java("public class A {\n  public void foo() {}\n}\n")
@@ -3023,21 +3024,11 @@ class TestAdversarialEdgeCases:
         calls = e.extract_calls(Path("nonexistent_xyz.java"))
         assert calls == []
 
+
 # =======================================
 # From: test_coverage_boost2.py
 # =======================================
 """Additional tests targeting CLI (__main__.py) and remaining uncovered lines."""
-
-
-
-import json
-import os
-import sys
-import tempfile
-from pathlib import Path
-from typing import Any
-
-import pytest
 
 
 def _tmp(content: str, suffix: str = ".py") -> str:
@@ -3427,7 +3418,7 @@ class TestFeedbackCalibration:
 class TestRiskModelConfig:
     def test_effective_severity_scores_no_overrides(self):
         from impactguard.risk_model import SEVERITY_SCORES, _effective_severity_scores
-        
+
         scores = _effective_severity_scores()
         # Default: should return SEVERITY_SCORES unchanged
         # Note: DECORATOR_ADDED is now 0.1 (non-breaking) instead of 0.4
@@ -3508,7 +3499,6 @@ class TestSuggestFixesCST:
 
 class TestTraceCallsProdFlushTrigger:
     def test_trace_triggers_flush_when_interval_exceeded(self, tmp_path, monkeypatch):
-
         import impactguard.trace_calls_prod as tcp
 
         # Force flush by setting LAST_FLUSH to a very old time
@@ -4085,14 +4075,11 @@ class TestTraceCallsProdEdges:
         result = safe_fn()
         assert result == 99
 
+
 # =======================================
 # From: test_final_80.py
 # =======================================
 """Final push to 80% coverage."""
-
-import json
-from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 
 def test_suggest_fixes_deep_coverage(tmp_path):
@@ -4321,15 +4308,13 @@ def helper():
     assert isinstance(result, list)
     assert len(result) > 0
 
+
 # =======================================
 # From: test_final_80_push.py
 # =======================================
 """Final push to 80% coverage - targeting remaining missed lines."""
 
 import ast
-import json
-import os
-import tempfile
 
 from impactguard.analyze_module import Analyzer
 from impactguard.impact_analysis import (
@@ -4538,9 +4523,6 @@ if __name__ == "__main__":
 # From: test_final_coverage_push.py
 # =======================================
 """Final coverage boost tests to reach 80%."""
-
-import json
-from pathlib import Path
 
 
 def test_suggest_fixes_complete(tmp_path):
@@ -4816,13 +4798,11 @@ def test_compare_signatures_complex(tmp_path):
     assert len(result["breaking"]) > 0
     assert len(result["nonbreaking"]) > 0
 
+
 # =======================================
 # From: test_final_push_80.py
 # =======================================
 """Final push to 80% - targeting specific missing lines."""
-
-import json
-from pathlib import Path
 
 
 def test_suggest_fixes_coverage_final(tmp_path):
@@ -5010,13 +4990,11 @@ def test_analyze_module_coverage_final(tmp_path):
     result = analyze(str(test_file))
     assert isinstance(result, dict)
 
+
 # =======================================
 # From: test_more_coverage.py
 # =======================================
 """Additional tests for coverage boost."""
-
-import json
-from pathlib import Path
 
 
 def test_suggest_fixes_with_cst_patch(tmp_path):
@@ -5209,14 +5187,11 @@ def test_compare_with_vararg_changes(tmp_path):
     assert len(result["breaking"]) > 0
     assert any("*args" in c for c in result["breaking"])
 
+
 # =======================================
 # From: test_pipeline_coverage.py
 # =======================================
 """Tests to boost coverage for pipeline.py."""
-
-import json
-from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 
 def test_run_pipeline_with_old_files(tmp_path):
@@ -5490,13 +5465,11 @@ def test_generate_changelog_output_path(tmp_path):
     assert output_path.exists()
     assert "## [Unreleased]" in output_path.read_text()
 
+
 # =======================================
 # From: test_reach_80.py
 # =======================================
 """Comprehensive tests to reach 80% coverage."""
-
-import json
-from pathlib import Path
 
 
 def test_suggest_fixes_full_coverage(tmp_path):
@@ -5776,6 +5749,7 @@ def test_compare_signatures_full_coverage(tmp_path):
     result = compare(str(old_path), str(new_path))
     assert len(result["breaking"]) > 0
 
+
 # =======================================
 # From: test_suggest_final.py
 # =======================================
@@ -5858,12 +5832,11 @@ def test_enrich_variants():
     result = enrich_with_fixes(item2, [item2])
     assert isinstance(result, list)
 
+
 # =======================================
 # From: test_suggest_ultra.py
 # =======================================
 """Ultra-targeted tests for suggest_fixes.py lines 79-156."""
-
-from impactguard.suggest_fixes import enrich_with_fixes, suggest
 
 
 def test_suggest_fixes_all_branches():
@@ -5961,14 +5934,11 @@ def test_suggest_with_various_change_types():
         result = suggest(item, [item])
         assert isinstance(result, list)
 
+
 # =======================================
 # From: test_targeted_lines.py
 # =======================================
 """Targeted tests for specific missing lines."""
-
-import json
-from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 
 def test_suggest_fixes_missing_lines(tmp_path):
@@ -6191,13 +6161,11 @@ def test_impactguard_class_all_methods(tmp_path):
     result = guard.check(str(old_file))
     assert "signatures" in result
 
+
 # =======================================
 # From: test_to_80_fixed.py
 # =======================================
 """Tests to push coverage from 73% to 80%."""
-
-import json
-from pathlib import Path
 
 
 def test_suggest_fixes_coverage_push(tmp_path):
@@ -6422,13 +6390,11 @@ def helper():
     assert isinstance(result, list)
     assert len(result) > 0
 
+
 # =======================================
 # From: test_ultra_targeted.py
 # =======================================
 """Ultra-targeted tests for suggest_fixes.py missing lines 79-156."""
-
-import json
-from pathlib import Path
 
 
 def test_suggest_fixes_lines_79_156(tmp_path):

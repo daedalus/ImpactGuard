@@ -119,6 +119,23 @@ class TestPathUtils:
     def test_null_byte_rejected(self):
         assert self._safe("foo\x00bar.py") is False
 
+    def test_windows_backslash_relative_path_safe(self):
+        assert self._safe(r"subdir\file.py") is True
+
+    def test_windows_backslash_only_safe(self):
+        assert self._safe(r".\foo.py") is True
+
+    def test_max_length_enforced(self):
+        from impactguard._pathutils import is_safe_path as _isp
+
+        assert self._safe("a" * 255) is True
+        assert _isp("a" * 256, max_length=255) is False
+
+    def test_max_length_zero_disabled(self):
+        from impactguard._pathutils import is_safe_path as _isp
+
+        assert _isp("a" * 10000, max_length=0) is True
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # patch_generator
@@ -1518,6 +1535,7 @@ class TestJavaExtractor:
 
     def test_extract_multiple_files(self):
         from impactguard.languages.java import _TREE_SITTER_AVAILABLE
+
         if not _TREE_SITTER_AVAILABLE:
             pytest.skip("tree-sitter-java not installed")
         src1 = self._write_java("public class A {\n  public void foo() {}\n}\n")
