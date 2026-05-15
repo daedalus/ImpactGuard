@@ -523,18 +523,6 @@ def cmd_check_commits(args: argparse.Namespace) -> int:
                 f"fallback_used={counters.get('fallback_used', 0)}"
             )
 
-        if "analysis_status" in result:
-            status = result["analysis_status"]
-            counters = status.get("counters", {})
-            print("\n=== Analysis Status ===")
-            print(f"Status: {status.get('status', 'unknown').upper()}")
-            print(
-                "Counters: "
-                f"parse_failures={counters.get('parse_failures', 0)}, "
-                f"skipped_files={counters.get('skipped_files', 0)}, "
-                f"fallback_used={counters.get('fallback_used', 0)}"
-            )
-
         if "report_html" in result and args.output:
             print(f"\nReport written to {args.output}")
 

@@ -8,6 +8,9 @@ on:
   schedule:
     - cron: "17 4 * * 1"
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -141,15 +144,25 @@ jobs:
 
       - name: Run smoke tests (no skips allowed)
         run: |
-          uv run pytest tests/test_reliability_smoke.py -q -rs | tee smoke.log
-          if grep -q "SKIPPED" smoke.log; then
-            echo "Smoke suite contains skipped tests, failing."
-            exit 1
-          fi
+          uv run pytest tests/test_reliability_smoke.py -q -rs --junitxml=smoke.xml
+          uv run python - <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          root = ET.parse("smoke.xml").getroot()
+          skipped = sum(int(s.attrib.get("skipped", "0")) for s in root.iter("testsuite"))
+          if skipped:
+              print(f"Smoke suite contains skipped tests ({skipped}), failing.")
+              sys.exit(1)
+          PY
 
   impactguard:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
 
     steps:
       - uses: actions/checkout@v4
