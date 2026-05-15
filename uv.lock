@@ -680,7 +680,7 @@ wheels = [
 
 [[package]]
 name = "impactguard"
-version = "0.1.5"
+version = "0.1.6"
 source = { editable = "." }
 dependencies = [
     { name = "libcst" },
@@ -773,20 +773,20 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "ruff", marker = "extra == 'lint'" },
     { name = "semgrep", marker = "extra == 'lint'" },
-    { name = "tree-sitter", marker = "extra == 'languages'", specifier = ">=0.23" },
-    { name = "tree-sitter-c", marker = "extra == 'languages'", specifier = ">=0.23" },
-    { name = "tree-sitter-c-sharp", marker = "extra == 'languages'", specifier = ">=0.23" },
-    { name = "tree-sitter-cpp", marker = "extra == 'languages'", specifier = ">=0.23" },
-    { name = "tree-sitter-go", marker = "extra == 'languages'", specifier = ">=0.23" },
-    { name = "tree-sitter-haskell", marker = "extra == 'languages'", specifier = ">=0.23" },
-    { name = "tree-sitter-java", marker = "extra == 'languages'", specifier = ">=0.23" },
-    { name = "tree-sitter-javascript", marker = "extra == 'languages'", specifier = ">=0.23" },
-    { name = "tree-sitter-kotlin", marker = "extra == 'languages'", specifier = ">=0.23" },
-    { name = "tree-sitter-ruby", marker = "extra == 'languages'", specifier = ">=0.23" },
-    { name = "tree-sitter-rust", marker = "extra == 'languages'", specifier = ">=0.23" },
-    { name = "tree-sitter-swift", marker = "extra == 'languages'", specifier = ">=0.7.2" },
-    { name = "tree-sitter-typescript", marker = "extra == 'languages'", specifier = ">=0.23" },
-    { name = "tree-sitter-zig", marker = "extra == 'languages'", specifier = ">=0.23" },
+    { name = "tree-sitter", marker = "extra == 'languages'", specifier = ">=0.23,<0.26" },
+    { name = "tree-sitter-c", marker = "extra == 'languages'", specifier = ">=0.23,<0.26" },
+    { name = "tree-sitter-c-sharp", marker = "extra == 'languages'", specifier = ">=0.23,<0.26" },
+    { name = "tree-sitter-cpp", marker = "extra == 'languages'", specifier = ">=0.23,<0.26" },
+    { name = "tree-sitter-go", marker = "extra == 'languages'", specifier = ">=0.23,<0.26" },
+    { name = "tree-sitter-haskell", marker = "extra == 'languages'", specifier = ">=0.23,<0.26" },
+    { name = "tree-sitter-java", marker = "extra == 'languages'", specifier = ">=0.23,<0.26" },
+    { name = "tree-sitter-javascript", marker = "extra == 'languages'", specifier = ">=0.23,<0.26" },
+    { name = "tree-sitter-kotlin", marker = "extra == 'languages'", specifier = ">=0.23,<2" },
+    { name = "tree-sitter-ruby", marker = "extra == 'languages'", specifier = ">=0.23,<0.26" },
+    { name = "tree-sitter-rust", marker = "extra == 'languages'", specifier = ">=0.23,<0.26" },
+    { name = "tree-sitter-swift", marker = "extra == 'languages'", specifier = ">=0.7.2,<0.8" },
+    { name = "tree-sitter-typescript", marker = "extra == 'languages'", specifier = ">=0.23,<0.26" },
+    { name = "tree-sitter-zig", marker = "extra == 'languages'", specifier = ">=0.23,<2" },
     { name = "vulture", marker = "extra == 'lint'" },
 ]
 provides-extras = ["dev", "test", "lint", "languages", "all"]
