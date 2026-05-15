@@ -16,6 +16,12 @@ pip install -e ".[test]"
 pytest tests/ -v
 ```
 
+Smoke reliability suite (must not skip tests in CI):
+
+```bash
+pytest tests/test_reliability_smoke.py -q -rs
+```
+
 ## Code Quality
 
 All PRs must pass:
@@ -24,6 +30,13 @@ All PRs must pass:
 - **MyPy** (strict mode): `mypy --strict src/`
 - **Tests**: `pytest tests/`
 - **Coverage**: ≥80%
+
+CI uses `uv.lock` for reproducible dependency resolution (`uv sync --locked ...`).
+When dependencies change, update the lockfile:
+
+```bash
+uv lock
+```
 
 ## Git Hooks
 
