@@ -87,6 +87,8 @@ def new_function():  # Added function
     assert "risk" in result
     assert "report_html" in result
     assert "fixes" in result
+    assert "analysis_status" in result
+    assert "counters" in result["analysis_status"]
 
     # Check that comparison detected changes
     comparison = result["comparison"]
@@ -266,6 +268,7 @@ def divide(a, b):  # New function
     assert "comparison" in result
     assert "risk" in result
     assert "report_html" in result
+    assert "analysis_status" in result
 
     # Check that HTML was generated
     html = result["report_html"]
