@@ -645,6 +645,20 @@ class TestMultiLanguageDiff:
         assert events
         assert events[0]["kind"] == "unsupported_file"
 
+    def test_summarize_files_no_truncation(self):
+        from impactguard.pipeline import _summarize_files
+
+        files = [f"f{i}.py" for i in range(3)]
+        assert _summarize_files(files) == "f0.py,f1.py,f2.py"
+
+    def test_summarize_files_truncation(self):
+        from impactguard.pipeline import _summarize_files
+
+        files = [f"f{i}.py" for i in range(7)]
+        summary = _summarize_files(files)
+        assert summary.startswith("f0.py,f1.py,f2.py,f3.py,f4.py")
+        assert "(+2 more)" in summary
+
 
 # ---------------------------------------------------------------------------
 # CLI: check-diff --pipe

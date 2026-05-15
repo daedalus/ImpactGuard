@@ -5,6 +5,11 @@ import io
 import sys
 
 
+class _PipedStdin(io.StringIO):
+    def isatty(self) -> bool:
+        return False
+
+
 def _run_cli(args: list[str], stdin_text: str | None = None) -> int:
     from impactguard.__main__ import main as cli_main
 
@@ -12,8 +17,7 @@ def _run_cli(args: list[str], stdin_text: str | None = None) -> int:
     old_stdin = sys.stdin
     sys.argv = ["impactguard"] + args
     if stdin_text is not None:
-        sys.stdin = io.StringIO(stdin_text)
-        setattr(sys.stdin, "isatty", lambda: False)
+        sys.stdin = _PipedStdin(stdin_text)
     try:
         return cli_main() or 0
     except SystemExit as exc:

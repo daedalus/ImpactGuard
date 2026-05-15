@@ -48,6 +48,15 @@ def _validate_git_path(path: str) -> bool:
     return True
 
 
+def _summarize_files(files: list[str], limit: int = 5) -> str:
+    """Return a compact, deterministic summary for file-path lists."""
+    if len(files) <= limit:
+        return ",".join(files)
+    shown = ",".join(files[:limit])
+    remaining = len(files) - limit
+    return f"{shown} (+{remaining} more)"
+
+
 def _extract_by_language(
     files: list[str],
     base_path: str | None = None,
@@ -109,7 +118,7 @@ def _extract_by_language(
                             {
                                 "level": "warning",
                                 "kind": "fallback_used",
-                                "file": ",".join(lang_files[:5]),
+                                "file": _summarize_files(lang_files),
                                 "message": msg,
                             }
                         )
@@ -121,7 +130,7 @@ def _extract_by_language(
                     {
                         "level": "error",
                         "kind": "extract_signatures_failed",
-                        "file": ",".join(lang_files[:5]),
+                        "file": _summarize_files(lang_files),
                         "message": str(exc),
                     }
                 )
@@ -189,6 +198,11 @@ def run_pipeline(
     from .suggest_fixes import enrich_with_fixes
 
     result: dict[str, Any] = {}
+    # Counter semantics:
+    # - parse_failures: primary parsing/extraction failures
+    # - skipped_files: unsupported files intentionally skipped
+    # - fallback_used: fallback parsing/extraction path used
+    # - call_extraction_failures: fallback call extraction also failed
     reliability_stats: dict[str, int] = {
         "parse_failures": 0,
         "skipped_files": 0,
@@ -551,7 +565,12 @@ def run_pipeline(
 
     partial_analysis = any(
         reliability_stats.get(k, 0) > 0
-        for k in ("parse_failures", "skipped_files", "fallback_used")
+        for k in (
+            "parse_failures",
+            "skipped_files",
+            "fallback_used",
+            "call_extraction_failures",
+        )
     )
     analysis_status = {
         "status": "partial" if partial_analysis else "complete",
