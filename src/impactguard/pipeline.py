@@ -5,6 +5,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -47,9 +48,20 @@ def _validate_git_path(path: str) -> bool:
     return True
 
 
+def _summarize_files(files: list[str], limit: int = 5) -> str:
+    """Return a compact, deterministic summary for file-path lists."""
+    if len(files) <= limit:
+        return ",".join(files)
+    shown = ",".join(files[:limit])
+    remaining = len(files) - limit
+    return f"{shown} (+{remaining} more)"
+
+
 def _extract_by_language(
     files: list[str],
     base_path: str | None = None,
+    stats: dict[str, int] | None = None,
+    events: list[dict[str, str]] | None = None,
 ) -> list[dict[str, Any]]:
     """Extract signatures from *files* using the registry extractor for each file.
 
@@ -68,6 +80,17 @@ def _extract_by_language(
     for f in files:
         extractor = _get_extractor(f)
         if extractor is None:
+            if stats is not None:
+                stats["skipped_files"] = stats.get("skipped_files", 0) + 1
+            if events is not None:
+                events.append(
+                    {
+                        "level": "warning",
+                        "kind": "unsupported_file",
+                        "file": str(f),
+                        "message": "No registered extractor; file skipped.",
+                    }
+                )
             continue
         lang = extractor.language
         if lang not in groups:
@@ -77,7 +100,46 @@ def _extract_by_language(
     all_sigs: list[dict[str, Any]] = []
     for extractor, lang_files in groups.values():
         assert extractor is not None
-        all_sigs.extend(extractor.extract_signatures(lang_files, _base_path=base_path))
+        try:
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                extracted = extractor.extract_signatures(
+                    lang_files, _base_path=base_path
+                )
+            all_sigs.extend(extracted)
+
+            for w in caught:
+                msg = str(w.message)
+                if "regex-based fallback" in msg:
+                    if stats is not None:
+                        stats["fallback_used"] = stats.get("fallback_used", 0) + 1
+                    if events is not None:
+                        events.append(
+                            {
+                                "level": "warning",
+                                "kind": "fallback_used",
+                                "file": _summarize_files(lang_files),
+                                "message": msg,
+                            }
+                        )
+        except (OSError, SyntaxError, UnicodeDecodeError, ValueError, TypeError) as exc:
+            if stats is not None:
+                stats["parse_failures"] = stats.get("parse_failures", 0) + 1
+            if events is not None:
+                events.append(
+                    {
+                        "level": "error",
+                        "kind": "extract_signatures_failed",
+                        "file": _summarize_files(lang_files),
+                        "message": str(exc),
+                    }
+                )
+            _log.warning(
+                "Signature extraction failed for language '%s' (%d file(s)): %s",
+                extractor.language,
+                len(lang_files),
+                exc,
+            )
     return all_sigs
 
 
@@ -136,6 +198,18 @@ def run_pipeline(
     from .suggest_fixes import enrich_with_fixes
 
     result: dict[str, Any] = {}
+    # Counter semantics:
+    # - parse_failures: primary parsing/extraction failures
+    # - skipped_files: unsupported files intentionally skipped
+    # - fallback_used: fallback parsing/extraction path used
+    # - call_extraction_failures: fallback call extraction also failed
+    reliability_stats: dict[str, int] = {
+        "parse_failures": 0,
+        "skipped_files": 0,
+        "fallback_used": 0,
+        "call_extraction_failures": 0,
+    }
+    analysis_events: list[dict[str, str]] = []
 
     # Use temp dir if no output_dir specified
     if output_dir is None:
@@ -147,7 +221,9 @@ def run_pipeline(
     # Step 1: Extract or load signatures
     _log.debug("Step 1: Extracting/loading signatures")
     if old_files:
-        old_sigs = _extract_by_language(old_files)
+        old_sigs = _extract_by_language(
+            old_files, stats=reliability_stats, events=analysis_events
+        )
         old_sigs_path = str(Path(output_dir) / "old_signatures.json")
         with open(old_sigs_path, "w") as f:
             json.dump(old_sigs, f, indent=2)
@@ -157,7 +233,9 @@ def run_pipeline(
         old_sigs_path = None
 
     if new_files:
-        new_sigs = _extract_by_language(new_files)
+        new_sigs = _extract_by_language(
+            new_files, stats=reliability_stats, events=analysis_events
+        )
         new_sigs_path = str(Path(output_dir) / "new_signatures.json")
         with open(new_sigs_path, "w") as f:
             json.dump(new_sigs, f, indent=2)
@@ -219,21 +297,97 @@ def run_pipeline(
             for file_path in new_files:
                 extractor = _get_extractor(file_path)
                 if extractor is None:
+                    reliability_stats["skipped_files"] += 1
+                    analysis_events.append(
+                        {
+                            "level": "warning",
+                            "kind": "unsupported_file",
+                            "file": file_path,
+                            "message": "No registered extractor for call extraction.",
+                        }
+                    )
                     continue
                 if extractor.language == "python":
                     try:
                         mod_result = analyze_module(file_path)
                         if mod_result and "calls" in mod_result:
                             all_calls.extend(mod_result["calls"])
-                    except Exception:
+                    except (
+                        OSError,
+                        SyntaxError,
+                        UnicodeDecodeError,
+                        ValueError,
+                        TypeError,
+                    ) as exc:
+                        reliability_stats["parse_failures"] += 1
+                        reliability_stats["fallback_used"] += 1
+                        analysis_events.append(
+                            {
+                                "level": "warning",
+                                "kind": "analyze_module_failed",
+                                "file": file_path,
+                                "message": str(exc),
+                            }
+                        )
                         # Fall back to basic extraction
                         from .extract_calls import extract as _extract_calls
 
-                        all_calls.extend(_extract_calls(Path(file_path)))
+                        try:
+                            all_calls.extend(_extract_calls(Path(file_path)))
+                        except (
+                            OSError,
+                            SyntaxError,
+                            UnicodeDecodeError,
+                            ValueError,
+                            TypeError,
+                        ) as fallback_exc:
+                            reliability_stats["call_extraction_failures"] += 1
+                            analysis_events.append(
+                                {
+                                    "level": "error",
+                                    "kind": "extract_calls_failed",
+                                    "file": file_path,
+                                    "message": str(fallback_exc),
+                                }
+                            )
+                            _log.warning(
+                                "Fallback call extraction failed for '%s': %s",
+                                file_path,
+                                fallback_exc,
+                            )
                 else:
                     try:
-                        all_calls.extend(extractor.extract_calls(Path(file_path)))
-                    except Exception as exc:
+                        with warnings.catch_warnings(record=True) as caught:
+                            warnings.simplefilter("always")
+                            all_calls.extend(extractor.extract_calls(Path(file_path)))
+                        for w in caught:
+                            msg = str(w.message)
+                            if "regex-based fallback" in msg:
+                                reliability_stats["fallback_used"] += 1
+                                analysis_events.append(
+                                    {
+                                        "level": "warning",
+                                        "kind": "fallback_used",
+                                        "file": file_path,
+                                        "message": msg,
+                                    }
+                                )
+                    except (
+                        OSError,
+                        SyntaxError,
+                        UnicodeDecodeError,
+                        ValueError,
+                        TypeError,
+                    ) as exc:
+                        reliability_stats["call_extraction_failures"] += 1
+                        analysis_events.append(
+                            {
+                                "level": "error",
+                                "kind": "extract_calls_failed",
+                                "file": file_path,
+                                "message": str(exc),
+                            }
+                        )
                         _log.warning(
                             "Call extraction failed for '%s': %s", file_path, exc
                         )
@@ -291,9 +445,18 @@ def run_pipeline(
         try:
             with open(old_sigs_path) as f:
                 old_sigs_list = json.load(f)
-        except Exception as e:
+        except (OSError, json.JSONDecodeError, TypeError, ValueError) as e:
             _log.warning("Could not load old signatures for patch generation: %s", e)
             print(f"Warning: Could not load old signatures: {e}", file=sys.stderr)
+            reliability_stats["parse_failures"] += 1
+            analysis_events.append(
+                {
+                    "level": "warning",
+                    "kind": "old_signatures_load_failed",
+                    "file": old_sigs_path,
+                    "message": str(e),
+                }
+            )
             old_sigs_list = []
 
         if old_sigs_list:
@@ -343,8 +506,19 @@ def run_pipeline(
                 from .feedback import apply_weights_to_config
 
                 apply_weights_to_config(calibrated)
-    except Exception:
-        pass  # Feedback loop not set up, continue without calibration
+    except ImportError:
+        pass  # Feedback loop optional dependency/use-case
+    except (OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
+        _log.warning("Feedback calibration skipped: %s", exc)
+        reliability_stats["parse_failures"] += 1
+        analysis_events.append(
+            {
+                "level": "warning",
+                "kind": "feedback_calibration_failed",
+                "file": "",
+                "message": str(exc),
+            }
+        )
 
     result["fixes"] = fixes
 
@@ -388,6 +562,26 @@ def run_pipeline(
     from .semver import format_semver_recommendation
 
     result["semver"] = format_semver_recommendation(comparison)
+
+    partial_analysis = any(
+        reliability_stats.get(k, 0) > 0
+        for k in (
+            "parse_failures",
+            "skipped_files",
+            "fallback_used",
+            "call_extraction_failures",
+        )
+    )
+    analysis_status = {
+        "status": "partial" if partial_analysis else "complete",
+        "partial_analysis": partial_analysis,
+        "counters": reliability_stats,
+        "events": analysis_events,
+    }
+    result["analysis_status"] = analysis_status
+    analysis_path = Path(output_dir) / "analysis_summary.json"
+    with open(analysis_path, "w") as f:
+        json.dump(analysis_status, f, indent=2)
 
     # Add signatures to result
     with open(old_sigs_path) as f:
