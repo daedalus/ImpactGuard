@@ -110,12 +110,20 @@ def _extract_by_language(
     all_sigs: list[dict[str, Any]] = []
     for extractor, lang_files in groups.values():
         assert extractor is not None
+        supports_strict = False
+        if strict_extraction:
+            try:
+                supports_strict = (
+                    "strict" in inspect.signature(extractor.extract_signatures).parameters
+                )
+            except (TypeError, ValueError):
+                supports_strict = False
         try:
             with warnings.catch_warnings(record=True) as caught:
                 warnings.simplefilter("always")
                 method = extractor.extract_signatures
                 kwargs: dict[str, Any] = {"_base_path": base_path}
-                if strict_extraction and "strict" in inspect.signature(method).parameters:
+                if strict_extraction and supports_strict:
                     kwargs["strict"] = True
                 extracted = method(lang_files, **kwargs)
             all_sigs.extend(extracted)
@@ -558,18 +566,13 @@ def run_pipeline(
 
     # Step 5: Assess risk
     _log.debug("Step 5: Assessing risk")
+    from .risk_gate import parse_change_line as _parse_change_line
+
     structured_breaking_changes: list[dict[str, str]] = []
     for change in comparison.get("breaking", []):
-        parts = str(change).split(":", 1)
-        if len(parts) != 2:
-            continue
-        change_type = parts[0].strip()
-        rest = parts[1].strip()
-        fqname = rest.split(" ")[0].strip()
-        if change_type and fqname:
-            structured_breaking_changes.append(
-                {"change": change_type, "function": fqname}
-            )
+        parsed = _parse_change_line(str(change))
+        if parsed is not None:
+            structured_breaking_changes.append(parsed)
     diff_path = str(Path(output_dir) / "diff.txt")
     with open(diff_path, "w") as f:
         for change in comparison["breaking"]:
@@ -1396,31 +1399,23 @@ def run_pipeline_commit(
             "Initial commits have no parent."
         ) from exc
 
-    kwargs: dict[str, Any] = {
-        "old_ref": parent_ref,
-        "new_ref": commit_ref,
-        "files": files,
-        "runtime_path": runtime_path,
-        "output_path": output_path,
-        "config": config,
-        "suggest_patch": suggest_patch,
-        "show_patch": show_patch,
-    }
-    if strict_extraction:
-        kwargs["strict_extraction"] = True
-    if max_parse_failures != 0:
-        kwargs["max_parse_failures"] = max_parse_failures
-    if max_skipped_files != 0:
-        kwargs["max_skipped_files"] = max_skipped_files
-    if max_call_extraction_failures != 0:
-        kwargs["max_call_extraction_failures"] = max_call_extraction_failures
-    if max_runtime_data_issues != 0:
-        kwargs["max_runtime_data_issues"] = max_runtime_data_issues
-    if block_unknown:
-        kwargs["block_unknown"] = True
-    if require_runtime:
-        kwargs["require_runtime"] = True
-    return run_pipeline_git(**kwargs)
+    return run_pipeline_git(
+        old_ref=parent_ref,
+        new_ref=commit_ref,
+        files=files,
+        runtime_path=runtime_path,
+        output_path=output_path,
+        config=config,
+        suggest_patch=suggest_patch,
+        show_patch=show_patch,
+        strict_extraction=strict_extraction,
+        max_parse_failures=max_parse_failures,
+        max_skipped_files=max_skipped_files,
+        max_call_extraction_failures=max_call_extraction_failures,
+        max_runtime_data_issues=max_runtime_data_issues,
+        block_unknown=block_unknown,
+        require_runtime=require_runtime,
+    )
 
 
 class ImpactGuard:

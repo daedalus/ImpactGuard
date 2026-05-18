@@ -402,6 +402,13 @@ class TestRunPipelineCommit:
                     config=None,
                     suggest_patch=False,
                     show_patch=False,
+                    strict_extraction=False,
+                    max_parse_failures=0,
+                    max_skipped_files=0,
+                    max_call_extraction_failures=0,
+                    max_runtime_data_issues=0,
+                    block_unknown=False,
+                    require_runtime=False,
                 )
                 assert result == expected
 
