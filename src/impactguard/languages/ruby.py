@@ -261,11 +261,15 @@ def _extract_with_tree_sitter(
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
     return extract_calls_with_tree_sitter(
-        path, "ruby", _RUBY_LANGUAGE,
+        path,
+        "ruby",
+        _RUBY_LANGUAGE,
         call_type="call",
         name_on_call=True,
         fallback_ident=True,
     )
+
+
 # ── Regex fallback ────────────────────────────────────────────────────────────
 
 _METHOD_RE = re.compile(

@@ -533,10 +533,14 @@ def _extract_with_tree_sitter(
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
     return extract_calls_with_tree_sitter(
-        path, "typescript", _TS_LANGUAGE,
+        path,
+        "typescript",
+        _TS_LANGUAGE,
         args_type="arguments",
         member_map={"member_expression": "property_identifier"},
     )
+
+
 # ── Regex fallback ────────────────────────────────────────────────────────────
 
 # Matches: (export )? (async )? function name<...>?(params): returntype

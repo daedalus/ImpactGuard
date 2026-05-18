@@ -1,10 +1,10 @@
 """Tests for semantic behavior analysis (semantic_analysis.py)."""
 
 import json
-import textwrap
-import tempfile
 import os
 import sys
+import tempfile
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -17,15 +17,12 @@ from impactguard.semantic_analysis import (
     compare_behavior,
 )
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
 def _write_py(content: str) -> str:
     """Write *content* to a temporary .py file and return its path."""
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".py", delete=False
-    ) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
         f.write(textwrap.dedent(content))
         return f.name
 
@@ -58,7 +55,10 @@ def test_semantic_severity_ordering():
     # Breaking changes should have higher severity than informational ones
     assert SEMANTIC_SEVERITY["ASYNC_CHANGED"] >= SEMANTIC_SEVERITY["EXCEPTION_ADDED"]
     assert SEMANTIC_SEVERITY["EXCEPTION_ADDED"] > SEMANTIC_SEVERITY["EXCEPTION_REMOVED"]
-    assert SEMANTIC_SEVERITY["SIDE_EFFECT_ADDED"] > SEMANTIC_SEVERITY["SIDE_EFFECT_REMOVED"]
+    assert (
+        SEMANTIC_SEVERITY["SIDE_EFFECT_ADDED"]
+        > SEMANTIC_SEVERITY["SIDE_EFFECT_REMOVED"]
+    )
 
 
 # ── analyze_behavior ──────────────────────────────────────────────────────────
@@ -291,10 +291,12 @@ def test_analyze_behavior_multiple_functions():
 def test_analyze_behavior_base_path():
     with tempfile.TemporaryDirectory() as tmpdir:
         pyfile = Path(tmpdir) / "module.py"
-        pyfile.write_text(textwrap.dedent("""
+        pyfile.write_text(
+            textwrap.dedent("""
             def hello():
                 return "hi"
-        """))
+        """)
+        )
         traits = analyze_behavior([str(pyfile)], base_path=tmpdir)
         fqname = next(iter(traits))
         # Should use relative path: "module.py:hello"
@@ -412,28 +414,39 @@ def test_compare_behavior_exception_added():
     old = {"mod.py:foo": _make_traits(raises=[])}
     new = {"mod.py:foo": _make_traits(raises=["ValueError"])}
     result = compare_behavior(old, new)
-    assert any("EXCEPTION_ADDED" in s and "ValueError" in s for s in result["semantic_breaking"])
+    assert any(
+        "EXCEPTION_ADDED" in s and "ValueError" in s
+        for s in result["semantic_breaking"]
+    )
 
 
 def test_compare_behavior_exception_removed():
     old = {"mod.py:foo": _make_traits(raises=["ValueError"])}
     new = {"mod.py:foo": _make_traits(raises=[])}
     result = compare_behavior(old, new)
-    assert any("EXCEPTION_REMOVED" in s and "ValueError" in s for s in result["semantic_nonbreaking"])
+    assert any(
+        "EXCEPTION_REMOVED" in s and "ValueError" in s
+        for s in result["semantic_nonbreaking"]
+    )
 
 
 def test_compare_behavior_side_effect_added():
     old = {"mod.py:foo": _make_traits(side_effects=[])}
     new = {"mod.py:foo": _make_traits(side_effects=["file_io"])}
     result = compare_behavior(old, new)
-    assert any("SIDE_EFFECT_ADDED" in s and "file_io" in s for s in result["semantic_breaking"])
+    assert any(
+        "SIDE_EFFECT_ADDED" in s and "file_io" in s for s in result["semantic_breaking"]
+    )
 
 
 def test_compare_behavior_side_effect_removed():
     old = {"mod.py:foo": _make_traits(side_effects=["stdout_write"])}
     new = {"mod.py:foo": _make_traits(side_effects=[])}
     result = compare_behavior(old, new)
-    assert any("SIDE_EFFECT_REMOVED" in s and "stdout_write" in s for s in result["semantic_nonbreaking"])
+    assert any(
+        "SIDE_EFFECT_REMOVED" in s and "stdout_write" in s
+        for s in result["semantic_nonbreaking"]
+    )
 
 
 def test_compare_behavior_returns_none_changed():
@@ -571,8 +584,10 @@ def test_end_to_end_exception_contract():
         merged_new = {old_fq: new_traits[new_fq]}
 
         result = compare_behavior(merged_old, merged_new)
-        assert any("EXCEPTION_ADDED" in s and "ZeroDivisionError" in s
-                   for s in result["semantic_breaking"])
+        assert any(
+            "EXCEPTION_ADDED" in s and "ZeroDivisionError" in s
+            for s in result["semantic_breaking"]
+        )
     finally:
         os.unlink(old_path)
         os.unlink(new_path)
@@ -598,8 +613,10 @@ def test_end_to_end_side_effect_added():
         merged_new = {old_fq: new_traits[new_fq]}
 
         result = compare_behavior(merged_old, merged_new)
-        assert any("SIDE_EFFECT_ADDED" in s and "file_io" in s
-                   for s in result["semantic_breaking"])
+        assert any(
+            "SIDE_EFFECT_ADDED" in s and "file_io" in s
+            for s in result["semantic_breaking"]
+        )
     finally:
         os.unlink(old_path)
         os.unlink(new_path)
@@ -613,19 +630,24 @@ def test_cli_analyze_behavior(tmp_path):
     old_file = tmp_path / "old.py"
     new_file = tmp_path / "new.py"
 
-    old_file.write_text(textwrap.dedent("""
+    old_file.write_text(
+        textwrap.dedent("""
         def compute(x):
             return x * 2
-    """))
-    new_file.write_text(textwrap.dedent("""
+    """)
+    )
+    new_file.write_text(
+        textwrap.dedent("""
         async def compute(x):
             return x * 2
-    """))
+    """)
+    )
 
     import argparse
-    from impactguard.__main__ import cmd_analyze_behavior
-    import io
     import contextlib
+    import io
+
+    from impactguard.__main__ import cmd_analyze_behavior
 
     args = argparse.Namespace(
         old=str(old_file),
@@ -653,6 +675,7 @@ def test_cli_analyze_behavior_json_output(tmp_path):
     new_file.write_text("async def func(): return 1\n")
 
     import argparse
+
     from impactguard.__main__ import cmd_analyze_behavior
 
     args = argparse.Namespace(
@@ -674,7 +697,7 @@ def test_cli_analyze_behavior_json_output(tmp_path):
 
 def test_risk_model_knows_semantic_types():
     """Semantic change types should be recognized by risk_model.get_severity."""
-    from impactguard.risk_model import get_severity, SEVERITY_SCORES
+    from impactguard.risk_model import SEVERITY_SCORES, get_severity
 
     for change_type in SEMANTIC_SEVERITY:
         sev = get_severity(change_type + ": mod.py:func")

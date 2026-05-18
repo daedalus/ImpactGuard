@@ -83,7 +83,9 @@ SEMANTIC_SEVERITY: dict[str, float] = {
 # ── Internal AST visitor ──────────────────────────────────────────────────────
 
 #: Call prefixes/names that indicate file-I/O side effects.
-_FILE_IO_NAMES = frozenset({"open", "io.open", "os.open", "builtins.open", "pathlib.Path.open"})
+_FILE_IO_NAMES = frozenset(
+    {"open", "io.open", "os.open", "builtins.open", "pathlib.Path.open"}
+)
 
 #: Call names that write to stdout/stderr.
 _PRINT_NAMES = frozenset({"print", "sys.stdout.write", "sys.stderr.write"})
@@ -92,7 +94,15 @@ _PRINT_NAMES = frozenset({"print", "sys.stdout.write", "sys.stderr.write"})
 _OS_PREFIXES = ("os.", "subprocess.", "shutil.", "tempfile.")
 
 #: Call prefixes that indicate network interaction.
-_NET_PREFIXES = ("socket.", "urllib.", "requests.", "http.", "httpx.", "aiohttp.", "grpc.")
+_NET_PREFIXES = (
+    "socket.",
+    "urllib.",
+    "requests.",
+    "http.",
+    "httpx.",
+    "aiohttp.",
+    "grpc.",
+)
 
 #: Call prefixes/names that indicate logging side effects.
 _LOG_PREFIXES = ("logging.", "_log.", "log.", "logger.")
@@ -186,9 +196,11 @@ class _BehaviorVisitor(ast.NodeVisitor):
 
     def visit_Assign(self, node: ast.Assign) -> None:
         for target in node.targets:
-            if isinstance(target, ast.Attribute) and isinstance(
-                target.value, ast.Name
-            ) and target.value.id == "self":
+            if (
+                isinstance(target, ast.Attribute)
+                and isinstance(target.value, ast.Name)
+                and target.value.id == "self"
+            ):
                 self.side_effects.add("self_mutation")
                 break
         self.generic_visit(node)
@@ -330,9 +342,7 @@ def analyze_behavior(
                 self.generic_visit(node)
                 self.current_class = old
 
-            def _process(
-                self, node: ast.FunctionDef | ast.AsyncFunctionDef
-            ) -> None:
+            def _process(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
                 if self.current_class:
                     fqname = f"{fq_file}:{self.current_class}.{node.name}"
                 else:
@@ -433,11 +443,7 @@ def compare_behavior(
         # ── Return-value semantics ────────────────────────────────────────
         old_none = old_traits.get("always_returns_none")
         new_none = new_traits.get("always_returns_none")
-        if (
-            old_none is not None
-            and new_none is not None
-            and old_none != new_none
-        ):
+        if old_none is not None and new_none is not None and old_none != new_none:
             semantic_breaking.append(f"RETURNS_NONE_CHANGED: {fqname}")
 
         # ── Docstring contract change ─────────────────────────────────────

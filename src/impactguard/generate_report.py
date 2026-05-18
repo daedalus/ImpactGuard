@@ -3,7 +3,6 @@ import json
 from typing import Any
 
 
-
 def _summary_stats(report_data: list[dict[str, Any]]) -> dict[str, int]:
     """Count items by risk level."""
     stats: dict[str, int] = {"HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0}
@@ -304,7 +303,9 @@ def generate_markdown_from_file(
         with open(risk_json_path) as f:
             report = json.load(f)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid JSON in report file '{risk_json_path}': {exc}") from exc
+        raise ValueError(
+            f"Invalid JSON in report file '{risk_json_path}': {exc}"
+        ) from exc
     if not isinstance(report, list):
         raise ValueError(
             f"Report file '{risk_json_path}': expected a JSON array, got {type(report).__name__}"
@@ -332,7 +333,9 @@ def generate_html_from_file(risk_json_path: str, output_path: str | None = None)
         with open(risk_json_path) as f:
             report = json.load(f)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid JSON in report file '{risk_json_path}': {exc}") from exc
+        raise ValueError(
+            f"Invalid JSON in report file '{risk_json_path}': {exc}"
+        ) from exc
     if not isinstance(report, list):
         raise ValueError(
             f"Report file '{risk_json_path}': expected a JSON array, got {type(report).__name__}"

@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+
 def test_suggest_fixes_final(tmp_path):
     """Final coverage push for suggest_fixes.py."""
     from impactguard.suggest_fixes import enrich_with_fixes, suggest
@@ -27,9 +28,10 @@ def test_suggest_fixes_final(tmp_path):
 
     enriched = enrich_with_fixes(items[0], items)
     assert isinstance(enriched, list)
+
+
 def test_main_final(tmp_path):
     """Final coverage push for __main__.py."""
-    import sys
 
     from impactguard.__main__ import main
 
@@ -42,6 +44,8 @@ def test_main_final(tmp_path):
         main()
     except SystemExit as e:
         assert e.code in [0, 1]
+
+
 def test_risk_gate_final(tmp_path):
     """Final coverage push for risk_gate.py."""
     from impactguard.risk_gate import run as run_risk
@@ -57,6 +61,8 @@ def test_risk_gate_final(tmp_path):
     result = run_risk(str(diff), str(runtime), str(output))
     assert isinstance(result, list)
     assert len(result) > 0
+
+
 def test_pipeline_final(tmp_path):
     """Final coverage push for pipeline.py."""
     from impactguard.pipeline import quick_check, run_pipeline
@@ -67,6 +73,8 @@ def test_pipeline_final(tmp_path):
 
     result = quick_check(str(test_file), str(test_file))
     assert "signatures" in result
+
+
 def test_generate_report_final(tmp_path):
     """Final coverage push for generate_report.py."""
     from impactguard.generate_report import generate_html
@@ -77,6 +85,8 @@ def test_generate_report_final(tmp_path):
 
     result = generate_html(items)
     assert "HIGH" in result
+
+
 def test_extract_signatures_final(tmp_path):
     """Final coverage push for extract_signatures.py."""
     from impactguard.extract_signatures import extract
@@ -86,6 +96,8 @@ def test_extract_signatures_final(tmp_path):
 
     result = extract([str(test_file)])
     assert len(result) >= 1
+
+
 def test_compare_signatures_final(tmp_path):
     """Final coverage push for compare_signatures.py."""
     from impactguard.compare_signatures import compare
@@ -119,6 +131,8 @@ def test_compare_signatures_final(tmp_path):
 
     result = compare(str(old_path), str(new_path))
     assert "nonbreaking" in result
+
+
 def test_impact_analysis_final(tmp_path):
     """Final coverage push for impact_analysis.py."""
     from impactguard.impact_analysis import analyze
@@ -144,6 +158,8 @@ def test_impact_analysis_final(tmp_path):
 
     result = analyze(str(sigs), str(calls))
     assert isinstance(result, list)
+
+
 def test_extract_calls_final(tmp_path):
     """Final coverage push for extract_calls.py."""
     from impactguard.extract_calls import extract
@@ -153,6 +169,7 @@ def test_extract_calls_final(tmp_path):
 
     result = extract(test_file)
     assert isinstance(result, list)
+
 
 # =======================================
 def test_suggest_fixes_coverage_boost(tmp_path):
@@ -181,9 +198,10 @@ def test_suggest_fixes_coverage_boost(tmp_path):
 
         enriched = enrich_with_fixes(item, test_items)
         assert isinstance(enriched, list)
+
+
 def test_main_cli_coverage(tmp_path):
     """Boost coverage for __main__.py."""
-    import sys
 
     from impactguard.__main__ import main
 
@@ -208,6 +226,8 @@ def test_main_cli_coverage(tmp_path):
         main()
     except SystemExit as e:
         assert e.code in [0, 1]
+
+
 def test_patch_generator_coverage(tmp_path):
     """Boost coverage for patch_generator.py."""
     try:
@@ -221,6 +241,8 @@ def test_patch_generator_coverage(tmp_path):
 
     except ImportError:
         pass
+
+
 def test_risk_gate_coverage_boost(tmp_path):
     """Boost coverage for risk_gate.py."""
     from impactguard.risk_gate import run as run_risk
@@ -241,6 +263,8 @@ def test_risk_gate_coverage_boost(tmp_path):
     empty.write_text("")
     result = run_risk(str(empty), "", str(tmp_path / "out.json"))
     assert isinstance(result, list)
+
+
 def test_pipeline_coverage_boost(tmp_path):
     """Boost coverage for pipeline.py."""
     from impactguard.pipeline import quick_check, run_pipeline
@@ -258,6 +282,8 @@ def test_pipeline_coverage_boost(tmp_path):
         output_dir=str(tmp_path / "output"),
     )
     assert "signatures" in result
+
+
 def test_impact_analysis_coverage_boost(tmp_path):
     """Boost coverage for impact_analysis.py."""
     from impactguard.impact_analysis import analyze
@@ -285,6 +311,8 @@ def test_impact_analysis_coverage_boost(tmp_path):
 
     result = analyze(str(sigs), str(calls))
     assert isinstance(result, list)
+
+
 def test_extract_calls_coverage_boost(tmp_path):
     """Boost coverage for extract_calls.py."""
     from impactguard.extract_calls import extract
@@ -312,6 +340,8 @@ def helper():
     result = extract(test_file)
     assert isinstance(result, list)
     assert len(result) > 0
+
+
 def test_analyze_module_coverage_boost(tmp_path):
     """Boost coverage for analyze_module.py."""
     from impactguard.analyze_module import analyze
@@ -335,6 +365,7 @@ async def async_func():
     result = analyze(str(test_file))
     assert isinstance(result, dict)
 
+
 # =======================================
 def test_suggest_fixes_deep_coverage(tmp_path):
     """Cover more lines in suggest_fixes.py."""
@@ -356,9 +387,10 @@ def test_suggest_fixes_deep_coverage(tmp_path):
 
     enriched = enrich_with_fixes(items[0], items)
     assert isinstance(enriched, list)
+
+
 def test_main_deep_coverage(tmp_path):
     """Cover more lines in __main__.py."""
-    import sys
 
     from impactguard.__main__ import main
 
@@ -387,6 +419,8 @@ def test_main_deep_coverage(tmp_path):
         main()
     except SystemExit as e:
         assert e.code in [0, 1]
+
+
 def test_pipeline_deep_coverage(tmp_path):
     """Cover more lines in pipeline.py."""
     from impactguard import ImpactGuard
@@ -408,6 +442,8 @@ def test_pipeline_deep_coverage(tmp_path):
         output_dir=str(tmp_path / "output"),
     )
     assert "signatures" in result
+
+
 def test_risk_gate_deep_coverage(tmp_path):
     """Cover more lines in risk_gate.py."""
     from impactguard.risk_gate import run as run_risk
@@ -423,6 +459,8 @@ def test_risk_gate_deep_coverage(tmp_path):
     result = run_risk(str(diff), str(runtime), str(output))
     assert isinstance(result, list)
     assert len(result) > 0
+
+
 def test_generate_report_deep_coverage(tmp_path):
     """Cover more lines in generate_report.py."""
     from impactguard.generate_report import generate_html
@@ -438,6 +476,8 @@ def test_generate_report_deep_coverage(tmp_path):
     assert "HIGH" in result
     assert "MEDIUM" in result
     assert "LOW" in result
+
+
 def test_extract_signatures_deep_coverage(tmp_path):
     """Cover more lines in extract_signatures.py."""
     from impactguard.extract_signatures import extract
@@ -463,6 +503,8 @@ class MyClass:
     for sig in result:
         if "method" in sig["name"]:
             assert sig["class_name"] == "MyClass"
+
+
 def test_compare_signatures_deep_coverage(tmp_path):
     """Cover more lines in compare_signatures.py."""
     from impactguard.compare_signatures import compare
@@ -498,6 +540,8 @@ def test_compare_signatures_deep_coverage(tmp_path):
     result = compare(str(old_path), str(new_path))
     assert "nonbreaking" in result
     assert len(result["nonbreaking"]) > 0
+
+
 def test_analyze_module_deep_coverage(tmp_path):
     """Cover more lines in analyze_module.py."""
     from impactguard.analyze_module import analyze
@@ -522,6 +566,8 @@ async def async_func():
     result = analyze(str(test_file))
     assert isinstance(result, dict)
     assert "calls" in result
+
+
 def test_extract_calls_deep_coverage(tmp_path):
     """Cover more lines in extract_calls.py."""
     from impactguard.extract_calls import extract
@@ -546,10 +592,12 @@ def helper():
     assert isinstance(result, list)
     assert len(result) > 0
 
+
 # =======================================
 def test_analyze_module_remaining():
     """Cover lines 60-73, 80-93, 101, 107-114, 118, 126, 131-139."""
     import ast
+
     from impactguard.analyze_module import Analyzer
 
     code = """
@@ -748,6 +796,7 @@ if __name__ == "__main__":
 
     pytest.main([__file__, "-v", "--no-cov"])
 
+
 # =======================================
 def test_suggest_fixes_complete(tmp_path):
     """Test suggest_fixes with complete data."""
@@ -768,6 +817,8 @@ def test_suggest_fixes_complete(tmp_path):
     # Test enrich_with_fixes
     enriched = enrich_with_fixes(risk_item, [risk_item])
     assert isinstance(enriched, list)
+
+
 def test_suggest_fixes_import_error(tmp_path, monkeypatch):
     """Test suggest_fixes when imports fail."""
     from impactguard.suggest_fixes import suggest
@@ -776,6 +827,8 @@ def test_suggest_fixes_import_error(tmp_path, monkeypatch):
     risk_item = {"fqname": "test:foo"}
     result = suggest(risk_item, [risk_item])
     assert isinstance(result, list)
+
+
 def test_cst_patch_if_available(tmp_path):
     """Test cst_patch if libcst is available."""
     try:
@@ -790,6 +843,8 @@ def test_cst_patch_if_available(tmp_path):
 
     except ImportError:
         pass  # libcst not installed
+
+
 def test_patch_generator_if_available(tmp_path):
     """Test patch_generator if available."""
     try:
@@ -803,6 +858,8 @@ def test_patch_generator_if_available(tmp_path):
 
     except ImportError:
         pass
+
+
 def test_runtime_impact_if_available(tmp_path):
     """Test runtime_impact if available."""
     try:
@@ -816,6 +873,8 @@ def test_runtime_impact_if_available(tmp_path):
 
     except ImportError:
         pass
+
+
 def test_impact_analysis_with_complex_data(tmp_path):
     """Test impact_analysis with complex data."""
     from impactguard.impact_analysis import analyze
@@ -843,6 +902,8 @@ def test_impact_analysis_with_complex_data(tmp_path):
 
     result = analyze(str(sigs_path), str(calls_path))
     assert isinstance(result, list)
+
+
 def test_risk_gate_with_complex_data(tmp_path):
     """Test risk_gate with complex data."""
     from impactguard.risk_gate import run as run_risk
@@ -859,6 +920,8 @@ def test_risk_gate_with_complex_data(tmp_path):
 
     result = run_risk(str(diff_path), str(runtime_path), str(output_path))
     assert isinstance(result, list)
+
+
 def test_generate_report_complex(tmp_path):
     """Test generate_report with complex data."""
     from impactguard.generate_report import generate_html
@@ -883,6 +946,8 @@ def test_generate_report_complex(tmp_path):
     result = generate_html(items)
     assert "HIGH" in result
     assert "MEDIUM" in result
+
+
 def test_pipeline_with_all_options(tmp_path):
     """Test pipeline with all options."""
     from impactguard.pipeline import run_pipeline
@@ -912,6 +977,8 @@ def test_pipeline_with_all_options(tmp_path):
     assert "comparison" in result
     assert "impact" in result
     assert "risk" in result
+
+
 def test_impactguard_with_config(tmp_path):
     """Test ImpactGuard with config."""
     from impactguard import ImpactGuard
@@ -933,6 +1000,8 @@ def test_impactguard_with_config(tmp_path):
 
     result = guard.analyze(str(old_file), str(new_file))
     assert "signatures" in result
+
+
 def test_extract_signatures_with_base_path(tmp_path):
     """Test extract_signatures with base_path."""
     from impactguard.extract_signatures import extract
@@ -945,6 +1014,8 @@ def test_extract_signatures_with_base_path(tmp_path):
     assert len(result) >= 1
     # fqname should be relative to base_path
     assert "module.py:foo" in [r["fqname"] for r in result]
+
+
 def test_compare_signatures_complex(tmp_path):
     """Test compare_signatures with complex scenarios."""
     from impactguard.compare_signatures import compare
@@ -1000,6 +1071,7 @@ def test_compare_signatures_complex(tmp_path):
     assert len(result["breaking"]) > 0
     assert len(result["nonbreaking"]) > 0
 
+
 # =======================================
 def test_suggest_fixes_coverage_final(tmp_path):
     """Target missing lines in suggest_fixes.py."""
@@ -1020,9 +1092,10 @@ def test_suggest_fixes_coverage_final(tmp_path):
 
     enriched = enrich_with_fixes(items[0], items)
     assert isinstance(enriched, list)
+
+
 def test_main_coverage_final(tmp_path):
     """Target missing lines in __main__.py."""
-    import sys
 
     from impactguard.__main__ import main
 
@@ -1037,6 +1110,8 @@ def test_main_coverage_final(tmp_path):
         main()
     except SystemExit as e:
         assert e.code in [0, 1]
+
+
 def test_risk_gate_coverage_final(tmp_path):
     """Target missing lines in risk_gate.py."""
     from impactguard.risk_gate import run as run_risk
@@ -1052,6 +1127,8 @@ def test_risk_gate_coverage_final(tmp_path):
     result = run_risk(str(diff), str(runtime), str(output))
     assert isinstance(result, list)
     assert len(result) > 0
+
+
 def test_pipeline_coverage_final(tmp_path):
     """Target missing lines in pipeline.py."""
     from impactguard.pipeline import quick_check, run_pipeline
@@ -1067,6 +1144,8 @@ def test_pipeline_coverage_final(tmp_path):
 
     result = quick_check(str(old_dir), str(new_dir))
     assert "signatures" in result
+
+
 def test_generate_report_coverage_final(tmp_path):
     """Target missing lines in generate_report.py."""
     from impactguard.generate_report import generate_html
@@ -1078,6 +1157,8 @@ def test_generate_report_coverage_final(tmp_path):
 
     result = generate_html(items)
     assert "HIGH" in result
+
+
 def test_extract_signatures_coverage_final(tmp_path):
     """Target missing lines in extract_signatures.py."""
     from impactguard.extract_signatures import extract
@@ -1087,6 +1168,8 @@ def test_extract_signatures_coverage_final(tmp_path):
 
     result = extract([str(test_file)])
     assert len(result) >= 1
+
+
 def test_compare_signatures_coverage_final(tmp_path):
     """Target missing lines in compare_signatures.py."""
     from impactguard.compare_signatures import compare
@@ -1123,6 +1206,8 @@ def test_compare_signatures_coverage_final(tmp_path):
 
     result = compare(str(old_path), str(new_path))
     assert "nonbreaking" in result
+
+
 def test_impact_analysis_coverage_final(tmp_path):
     """Target missing lines in impact_analysis.py."""
     from impactguard.impact_analysis import analyze
@@ -1148,6 +1233,8 @@ def test_impact_analysis_coverage_final(tmp_path):
 
     result = analyze(str(sigs), str(calls))
     assert isinstance(result, list)
+
+
 def test_extract_calls_coverage_final(tmp_path):
     """Target missing lines in extract_calls.py."""
     from impactguard.extract_calls import extract
@@ -1158,6 +1245,8 @@ def test_extract_calls_coverage_final(tmp_path):
     result = extract(test_file)
     assert isinstance(result, list)
     assert len(result) > 0
+
+
 def test_analyze_module_coverage_final(tmp_path):
     """Target missing lines in analyze_module.py."""
     from impactguard.analyze_module import analyze
@@ -1167,6 +1256,7 @@ def test_analyze_module_coverage_final(tmp_path):
 
     result = analyze(str(test_file))
     assert isinstance(result, dict)
+
 
 # =======================================
 def test_suggest_fixes_with_cst_patch(tmp_path):
@@ -1181,6 +1271,8 @@ def test_suggest_fixes_with_cst_patch(tmp_path):
 
     result = suggest(risk_item, [risk_item])
     assert isinstance(result, list)
+
+
 def test_suggest_fixes_with_call_sites(tmp_path):
     """Test suggest_fixes with call sites."""
     from impactguard.suggest_fixes import suggest
@@ -1193,6 +1285,8 @@ def test_suggest_fixes_with_call_sites(tmp_path):
 
     result = suggest(risk_item, [risk_item])
     assert isinstance(result, list)
+
+
 def test_enrich_with_fixes_basic(tmp_path):
     """Test enrich_with_fixes basic functionality."""
     from impactguard.suggest_fixes import enrich_with_fixes
@@ -1204,6 +1298,8 @@ def test_enrich_with_fixes_basic(tmp_path):
 
     result = enrich_with_fixes(risk_item, [risk_item])
     assert isinstance(result, list)
+
+
 def test_run_pipeline_with_calls_path(tmp_path):
     """Test run_pipeline with provided calls_path."""
     from impactguard.pipeline import run_pipeline
@@ -1226,6 +1322,8 @@ def test_run_pipeline_with_calls_path(tmp_path):
     )
 
     assert "impact" in result
+
+
 def test_run_pipeline_with_runtime_path(tmp_path):
     """Test run_pipeline with runtime data."""
     from impactguard.pipeline import run_pipeline
@@ -1248,11 +1346,15 @@ def test_run_pipeline_with_runtime_path(tmp_path):
     )
 
     assert "risk" in result
+
+
 def test_impact_analysis_import():
     """Test impact_analysis import."""
     from impactguard.impact_analysis import analyze
 
     assert callable(analyze)
+
+
 def test_impact_analysis_basic(tmp_path):
     """Test impact_analysis with basic input."""
     from impactguard.impact_analysis import analyze
@@ -1265,11 +1367,15 @@ def test_impact_analysis_basic(tmp_path):
 
     result = analyze(str(sigs_path), str(calls_path))
     assert isinstance(result, list)
+
+
 def test_risk_gate_import():
     """Test risk_gate import."""
     from impactguard.risk_gate import run as run_risk
 
     assert callable(run_risk)
+
+
 def test_risk_gate_basic(tmp_path):
     """Test risk_gate with basic input."""
     from impactguard.risk_gate import run as run_risk
@@ -1281,6 +1387,8 @@ def test_risk_gate_basic(tmp_path):
 
     result = run_risk(str(diff_path), "", str(output_path))
     assert isinstance(result, list)
+
+
 def test_compare_signatures_edge_cases(tmp_path):
     """Test compare_signatures edge cases."""
     from impactguard.compare_signatures import compare
@@ -1305,6 +1413,8 @@ def test_compare_signatures_edge_cases(tmp_path):
     result = compare(str(old_path), str(new_path))
     assert len(result["breaking"]) == 0
     assert len(result["nonbreaking"]) == 0
+
+
 def test_compare_with_vararg_changes(tmp_path):
     """Test compare with *args changes."""
     from impactguard.compare_signatures import compare
@@ -1339,6 +1449,7 @@ def test_compare_with_vararg_changes(tmp_path):
     assert len(result["breaking"]) > 0
     assert any("*args" in c for c in result["breaking"])
 
+
 # =======================================
 def test_run_pipeline_with_old_files(tmp_path):
     """Test run_pipeline with old_files parameter."""
@@ -1358,6 +1469,8 @@ def test_run_pipeline_with_old_files(tmp_path):
 
     assert "comparison" in result
     assert "signatures" in result
+
+
 def test_run_pipeline_with_sigs_path(tmp_path):
     """Test run_pipeline with signature paths."""
     from impactguard.extract_signatures import extract
@@ -1384,6 +1497,8 @@ def test_run_pipeline_with_sigs_path(tmp_path):
     )
 
     assert "comparison" in result
+
+
 def test_run_pipeline_no_old_sigs(tmp_path):
     """Test run_pipeline with no old signatures."""
     from impactguard.pipeline import run_pipeline
@@ -1398,6 +1513,8 @@ def test_run_pipeline_no_old_sigs(tmp_path):
 
     assert "signatures" in result
     assert "new" in result["signatures"]
+
+
 def test_quick_check_single_file(tmp_path):
     """Test quick_check with single files."""
     from impactguard.pipeline import quick_check
@@ -1414,6 +1531,8 @@ def test_quick_check_single_file(tmp_path):
 
     assert "comparison" in result
     assert "signatures" in result
+
+
 def test_quick_check_directory(tmp_path):
     """Test quick_check with directories."""
     from impactguard.pipeline import quick_check
@@ -1429,6 +1548,8 @@ def test_quick_check_directory(tmp_path):
     result = quick_check(str(old_dir), str(new_dir))
 
     assert "comparison" in result
+
+
 def test_quick_check_missing_file():
     """Test quick_check with missing files."""
     from impactguard.pipeline import quick_check
@@ -1437,6 +1558,8 @@ def test_quick_check_missing_file():
         quick_check("/nonexistent/path", "/another/nonexistent")
     except ValueError:
         pass  # Expected
+
+
 def test_impactguard_class_methods(tmp_path):
     """Test ImpactGuard class methods."""
     from impactguard import ImpactGuard
@@ -1493,6 +1616,8 @@ def test_impactguard_class_methods(tmp_path):
     result = guard.compare(str(old_path), str(new_path))
     assert "breaking" in result
     assert "nonbreaking" in result
+
+
 def test_impactguard_check_method(tmp_path):
     """Test ImpactGuard.check method."""
     from impactguard import ImpactGuard
@@ -1505,6 +1630,8 @@ def test_impactguard_check_method(tmp_path):
     result = guard.check(str(test_file))
     assert "signatures" in result
     assert "status" in result
+
+
 def test_run_pipeline_with_runtime(tmp_path):
     """Test run_pipeline with runtime data."""
     from impactguard.pipeline import run_pipeline
@@ -1527,6 +1654,8 @@ def test_run_pipeline_with_runtime(tmp_path):
     )
 
     assert "risk" in result
+
+
 def test_run_pipeline_git_with_files(tmp_path):
     """Test run_pipeline_git with specific files."""
     from impactguard.pipeline import run_pipeline_git
@@ -1551,6 +1680,8 @@ def test_run_pipeline_git_with_files(tmp_path):
                 )
 
                 assert "comparison" in result
+
+
 def test_generate_changelog_with_files(tmp_path):
     """Test generate_changelog function."""
     from impactguard.pipeline import generate_changelog
@@ -1568,6 +1699,8 @@ def test_generate_changelog_with_files(tmp_path):
 
     assert "## [Unreleased]" in changelog
     assert "foo" in changelog
+
+
 def test_generate_changelog_output_path(tmp_path):
     """Test generate_changelog with output path."""
     from impactguard.pipeline import generate_changelog
@@ -1588,6 +1721,7 @@ def test_generate_changelog_output_path(tmp_path):
 
     assert output_path.exists()
     assert "## [Unreleased]" in output_path.read_text()
+
 
 # =======================================
 def test_suggest_fixes_full_coverage(tmp_path):
@@ -1616,6 +1750,8 @@ def test_suggest_fixes_full_coverage(tmp_path):
 
         enriched = enrich_with_fixes(item, risk_items)
         assert isinstance(enriched, list)
+
+
 def test_enforce_gate_full_coverage(tmp_path):
     """Test enforce_gate module fully."""
     from impactguard.enforce_gate import enforce_report
@@ -1647,6 +1783,8 @@ def test_enforce_gate_full_coverage(tmp_path):
         )
     )
     assert enforce_report(str(report_path)) == 1
+
+
 def test_risk_gate_full_coverage(tmp_path):
     """Test risk_gate module fully."""
     from impactguard.risk_gate import run as run_risk
@@ -1668,6 +1806,8 @@ def test_risk_gate_full_coverage(tmp_path):
 
     result = run_risk(str(diff), str(runtime), str(tmp_path / "out2.json"))
     assert isinstance(result, list)
+
+
 def test_generate_report_full_coverage(tmp_path):
     """Test generate_report module fully."""
     from impactguard.generate_report import generate_html
@@ -1690,6 +1830,8 @@ def test_generate_report_full_coverage(tmp_path):
     assert "HIGH" in result
     assert "MEDIUM" in result
     assert "LOW" in result
+
+
 def test_extract_calls_full_coverage(tmp_path):
     """Test extract_calls module fully."""
     from impactguard.extract_calls import extract
@@ -1717,6 +1859,8 @@ def helper():
     result = extract(test_file)
     assert isinstance(result, list)
     assert len(result) > 0
+
+
 def test_analyze_module_full_coverage(tmp_path):
     """Test analyze_module fully."""
     from impactguard.analyze_module import analyze
@@ -1740,6 +1884,8 @@ async def async_func():
 
     result = analyze(str(test_file))
     assert isinstance(result, dict)
+
+
 def test_pipeline_full_coverage(tmp_path):
     """Test pipeline module fully."""
     from impactguard import ImpactGuard
@@ -1776,6 +1922,8 @@ def test_pipeline_full_coverage(tmp_path):
     assert "comparison" in result
     assert "impact" in result
     assert "risk" in result
+
+
 def test_extract_signatures_full_coverage(tmp_path):
     """Test extract_signatures fully."""
     from impactguard.extract_signatures import extract
@@ -1801,6 +1949,8 @@ class MyClass:
     for sig in result:
         if "method" in sig["name"]:
             assert sig["class_name"] == "MyClass"
+
+
 def test_compare_signatures_full_coverage(tmp_path):
     """Test compare_signatures fully."""
     from impactguard.compare_signatures import compare
@@ -1850,6 +2000,7 @@ def test_compare_signatures_full_coverage(tmp_path):
 
     result = compare(str(old_path), str(new_path))
     assert len(result["breaking"]) > 0
+
 
 # =======================================
 def test_suggest_fixes_comprehensive():
@@ -1932,6 +2083,7 @@ def test_enrich_variants():
     result = enrich_with_fixes(item2, [item2])
     assert isinstance(result, list)
 
+
 # =======================================
 def test_suggest_fixes_all_branches():
     """Test suggest() with many inputs to cover lines 79-156."""
@@ -1963,6 +2115,8 @@ def test_suggest_fixes_all_branches():
     }
     result = suggest(item3, [item3])
     assert isinstance(result, list)
+
+
 def test_enrich_with_fixes_all_branches():
     """Test enrich_with_fixes() with many inputs."""
     from impactguard.suggest_fixes import enrich_with_fixes
@@ -1989,6 +2143,8 @@ def test_enrich_with_fixes_all_branches():
     }
     result = enrich_with_fixes(item3, [item3])
     assert isinstance(result, list)
+
+
 def test_suggest_with_various_patch_types():
     """Test suggest() with various patch types."""
     from impactguard.suggest_fixes import suggest
@@ -2007,6 +2163,8 @@ def test_suggest_with_various_patch_types():
         }
         result = suggest(item, [item])
         assert isinstance(result, list)
+
+
 def test_suggest_with_various_change_types():
     """Test suggest() with various change types."""
     from impactguard.suggest_fixes import suggest
@@ -2025,6 +2183,7 @@ def test_suggest_with_various_change_types():
         }
         result = suggest(item, [item])
         assert isinstance(result, list)
+
 
 # =======================================
 def test_suggest_fixes_missing_lines(tmp_path):
@@ -2053,9 +2212,10 @@ def test_suggest_fixes_missing_lines(tmp_path):
 
         enriched = enrich_with_fixes(item, items)
         assert isinstance(enriched, list)
+
+
 def test_main_missing_lines(tmp_path):
     """Target missing lines in __main__.py - functions 79-96, 101-105, 110-126, etc."""
-    import sys
 
     from impactguard.__main__ import main
 
@@ -2106,9 +2266,10 @@ def test_main_missing_lines(tmp_path):
         main()
     except SystemExit as e:
         assert e.code in [0, 1]
+
+
 def test_main_cmd_check_commits(tmp_path):
     """Target cmd_check_commits (lines 171-204)."""
-    import sys
 
     from impactguard.__main__ import main
 
@@ -2118,9 +2279,10 @@ def test_main_cmd_check_commits(tmp_path):
         main()
     except SystemExit as e:
         assert e.code in [0, 1]
+
+
 def test_main_cmd_install_hooks(tmp_path):
     """Target cmd_install_hooks (lines 209-284)."""
-    import sys
 
     from impactguard.__main__ import main
 
@@ -2130,9 +2292,10 @@ def test_main_cmd_install_hooks(tmp_path):
         main()
     except SystemExit as e:
         assert e.code in [0, 1]
+
+
 def test_main_cmd_generate_changelog(tmp_path):
     """Target cmd_generate_changelog."""
-    import sys
 
     from impactguard.__main__ import main
 
@@ -2153,6 +2316,8 @@ def test_main_cmd_generate_changelog(tmp_path):
         main()
     except SystemExit as e:
         assert e.code in [0, 1]
+
+
 def test_pipeline_run_pipeline_git(tmp_path):
     """Target run_pipeline_git function."""
     from impactguard.pipeline import run_pipeline_git
@@ -2176,6 +2341,8 @@ def test_pipeline_run_pipeline_git(tmp_path):
                 )
 
                 assert "comparison" in result
+
+
 def test_impactguard_class_all_methods(tmp_path):
     """Test ImpactGuard class methods."""
     from impactguard import ImpactGuard
@@ -2235,6 +2402,7 @@ def test_impactguard_class_all_methods(tmp_path):
     result = guard.check(str(old_file))
     assert "signatures" in result
 
+
 # =======================================
 def test_suggest_fixes_coverage_push(tmp_path):
     """Push suggest_fixes.py coverage up."""
@@ -2255,9 +2423,10 @@ def test_suggest_fixes_coverage_push(tmp_path):
 
     enriched = enrich_with_fixes(items[0], items)
     assert isinstance(enriched, list)
+
+
 def test_main_coverage_push(tmp_path):
     """Push __main__.py coverage up."""
-    import sys
 
     from impactguard.__main__ import main
 
@@ -2272,6 +2441,8 @@ def test_main_coverage_push(tmp_path):
         main()
     except SystemExit as e:
         assert e.code in [0, 1]
+
+
 def test_risk_gate_coverage_push(tmp_path):
     """Push risk_gate.py coverage up."""
     from impactguard.risk_gate import run as run_risk
@@ -2287,6 +2458,8 @@ def test_risk_gate_coverage_push(tmp_path):
     result = run_risk(str(diff), str(runtime), str(output))
     assert isinstance(result, list)
     assert len(result) > 0
+
+
 def test_pipeline_coverage_push(tmp_path):
     """Push pipeline.py coverage up."""
     from impactguard.pipeline import quick_check, run_pipeline
@@ -2311,6 +2484,8 @@ def test_pipeline_coverage_push(tmp_path):
     )
     assert "comparison" in result
     assert "signatures" in result
+
+
 def test_generate_report_coverage_push(tmp_path):
     """Push generate_report.py coverage up."""
     from impactguard.generate_report import generate_html
@@ -2327,6 +2502,8 @@ def test_generate_report_coverage_push(tmp_path):
     result = generate_html(items)
     assert "HIGH" in result
     assert "LOW" in result
+
+
 def test_extract_signatures_coverage_push(tmp_path):
     """Push extract_signatures.py coverage up."""
     from impactguard.extract_signatures import extract
@@ -2349,6 +2526,8 @@ class MyClass:
     for sig in result:
         if "method" in sig["name"]:
             assert sig["class_name"] == "MyClass"
+
+
 def test_compare_signatures_coverage_push(tmp_path):
     """Push compare_signatures.py coverage up."""
     from impactguard.compare_signatures import compare
@@ -2392,6 +2571,8 @@ def test_compare_signatures_coverage_push(tmp_path):
     result = compare(str(old_path), str(new_path))
     assert "nonbreaking" in result
     assert len(result["nonbreaking"]) > 0
+
+
 def test_impact_analysis_coverage_push(tmp_path):
     """Push impact_analysis.py coverage up."""
     from impactguard.impact_analysis import analyze
@@ -2419,6 +2600,8 @@ def test_impact_analysis_coverage_push(tmp_path):
 
     result = analyze(str(sigs), str(calls))
     assert isinstance(result, list)
+
+
 def test_extract_calls_coverage_push(tmp_path):
     """Push extract_calls.py coverage up."""
     from impactguard.extract_calls import extract
@@ -2441,6 +2624,7 @@ def helper():
     result = extract(test_file)
     assert isinstance(result, list)
     assert len(result) > 0
+
 
 # =======================================
 def test_suggest_fixes_lines_79_156(tmp_path):
@@ -2469,6 +2653,8 @@ def test_suggest_fixes_lines_79_156(tmp_path):
 
         enriched = enrich_with_fixes(item, test_items)
         assert isinstance(enriched, list)
+
+
 def test_suggest_fixes_with_patch_types(tmp_path):
     """Test various patch types to cover more lines."""
     from impactguard.suggest_fixes import suggest
@@ -2488,6 +2674,8 @@ def test_suggest_fixes_with_patch_types(tmp_path):
         }
         result = suggest(item, [item])
         assert isinstance(result, list)
+
+
 def test_enrich_with_fixes_variants(tmp_path):
     """Test enrich_with_fixes with various inputs."""
     from impactguard.suggest_fixes import enrich_with_fixes

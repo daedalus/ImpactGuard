@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
-import os  
+import os
 import sys
-import tempfile  
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
 
 def test_patch_generator_coverage(tmp_path):
     """Boost coverage for patch_generator.py."""
@@ -23,6 +24,7 @@ def test_patch_generator_coverage(tmp_path):
     except ImportError:
         pass
 
+
 def test_patch_generator_if_available(tmp_path):
     """Test patch_generator if available."""
     try:
@@ -36,4 +38,3 @@ def test_patch_generator_if_available(tmp_path):
 
     except ImportError:
         pass
-

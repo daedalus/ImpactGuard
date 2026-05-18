@@ -156,11 +156,15 @@ def _extract_with_tree_sitter(
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
     return extract_calls_with_tree_sitter(
-        path, "haskell", _HASKELL_LANGUAGE,
+        path,
+        "haskell",
+        _HASKELL_LANGUAGE,
         call_type="apply",
         ident_type="variable",
         count_args="arithmetic",
     )
+
+
 # ── Regex fallback ────────────────────────────────────────────────────────────
 
 # Match Haskell type signatures: name :: Type

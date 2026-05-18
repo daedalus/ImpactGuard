@@ -107,7 +107,9 @@ def _normalize_runtime_entry(entry: object) -> dict[str, Any] | None:
     args_count = _first_not_none(
         [_coerce_non_negative_int(entry.get(key)) for key in _RUNTIME_ARGC_KEYS]
     )
-    kwargs = _first_not_none([_coerce_kwargs(entry.get(key)) for key in _RUNTIME_KWARGS_KEYS])
+    kwargs = _first_not_none(
+        [_coerce_kwargs(entry.get(key)) for key in _RUNTIME_KWARGS_KEYS]
+    )
 
     normalized: dict[str, Any] = {
         "function": name,
@@ -193,7 +195,9 @@ def lookup_runtime_count(runtime: dict[str, int], *names: str) -> int:
     return 0
 
 
-def runtime_callsite_entries(observations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def runtime_callsite_entries(
+    observations: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """Convert runtime observations with invocation-shape data into call entries."""
     calls: list[dict[str, Any]] = []
     for item in observations:

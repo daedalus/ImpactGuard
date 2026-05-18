@@ -242,13 +242,17 @@ def _extract_with_tree_sitter(
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
     return extract_calls_with_tree_sitter(
-        path, "swift", _SWIFT_LANGUAGE,
+        path,
+        "swift",
+        _SWIFT_LANGUAGE,
         args_type="call_suffix",
         ident_type="simple_identifier",
         member_map={"navigation_expression": None},
         count_args="include",
         count_types={"value_argument"},
     )
+
+
 # ── Regex fallback ────────────────────────────────────────────────────────────
 
 _FUNC_RE = re.compile(

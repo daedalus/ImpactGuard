@@ -47,7 +47,9 @@ def parse_change_line(line: str) -> dict[str, str] | None:
     return _parse_change_line(line)
 
 
-def _normalize_changes(changes: list[str] | list[dict[str, Any]]) -> list[dict[str, str]]:
+def _normalize_changes(
+    changes: list[str] | list[dict[str, Any]],
+) -> list[dict[str, str]]:
     """Normalize mixed textual/structured changes to structured records."""
     normalized: list[dict[str, str]] = []
     for item in changes:
@@ -74,7 +76,9 @@ def run_from_changes(
     """Run risk analysis pipeline from structured change entries."""
     normalized_changes = _normalize_changes(changes)
 
-    _log.debug("Running risk analysis on %d structured change(s)", len(normalized_changes))
+    _log.debug(
+        "Running risk analysis on %d structured change(s)", len(normalized_changes)
+    )
 
     # Load runtime data
     try:
@@ -113,7 +117,9 @@ def run_from_changes(
             continue
 
         count = lookup_runtime_count(runtime, fqname)
-        risk, exp, conf = classify(severity, count, max_count, count, lambda_, change_type)
+        risk, exp, conf = classify(
+            severity, count, max_count, count, lambda_, change_type
+        )
 
         report.append(
             {

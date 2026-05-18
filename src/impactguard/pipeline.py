@@ -114,7 +114,8 @@ def _extract_by_language(
         if strict_extraction:
             try:
                 supports_strict = (
-                    "strict" in inspect.signature(extractor.extract_signatures).parameters
+                    "strict"
+                    in inspect.signature(extractor.extract_signatures).parameters
                 )
             except (TypeError, ValueError):
                 supports_strict = False
@@ -202,7 +203,9 @@ def _evaluate_analysis_policy(
         },
     }
     violations = {
-        key: detail for key, detail in checks.items() if detail["value"] > detail["max_allowed"]
+        key: detail
+        for key, detail in checks.items()
+        if detail["value"] > detail["max_allowed"]
     }
     return {
         "checks": checks,

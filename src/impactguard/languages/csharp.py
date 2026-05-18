@@ -250,12 +250,16 @@ def _extract_with_tree_sitter(
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
     return extract_calls_with_tree_sitter(
-        path, "csharp", _CSHARP_LANGUAGE,
+        path,
+        "csharp",
+        _CSHARP_LANGUAGE,
         call_type="invocation_expression",
         member_map={"member_access_expression": None},
         count_args="include",
         count_types={"argument"},
     )
+
+
 # ── Regex fallback ────────────────────────────────────────────────────────────
 
 _FUNC_RE = re.compile(
