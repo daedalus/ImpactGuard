@@ -251,10 +251,14 @@ def _extract_with_tree_sitter(
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
     return extract_calls_with_tree_sitter(
-        path, "Java", _JAVA_LANGUAGE,
+        path,
+        "Java",
+        _JAVA_LANGUAGE,
         call_type="method_invocation",
         name_on_call=True,
     )
+
+
 # ── Regex fallback ────────────────────────────────────────────────────────────
 
 # Matches Java method declarations (simplified)

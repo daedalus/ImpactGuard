@@ -53,7 +53,9 @@ def enforce(
 
         if risk == "HIGH":
             has_high = True
-            _log.warning("HIGH-risk change detected: %s — %s", func, item.get("change", ""))
+            _log.warning(
+                "HIGH-risk change detected: %s — %s", func, item.get("change", "")
+            )
             print(f"🔴 HIGH — {func}")
             print(f"   change: {item.get('change', '')}")
             print(f"   exposure: {item.get('exposure', 0):.2%}")

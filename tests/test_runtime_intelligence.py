@@ -8,7 +8,11 @@ def test_normalize_runtime_payload_accepts_multiple_shapes():
         {
             "runtime": [
                 {"symbol": "src::lib::Api::call", "hits": 7, "argc": 2},
-                {"function": "pkg/module.py:helper", "count": 3, "kwargs": {"debug": True}},
+                {
+                    "function": "pkg/module.py:helper",
+                    "count": 3,
+                    "kwargs": {"debug": True},
+                },
             ]
         }
     )
@@ -40,7 +44,11 @@ def test_runtime_callsite_entries_skip_count_only_observations():
         [
             {"function": "src::lib::Api::call", "count": 7},
             {"function": "pkg/module.py:helper", "count": 3, "args_count": 1},
-            {"function": "pkg/module.py:debug", "count": 2, "kwargs": {"verbose": True}},
+            {
+                "function": "pkg/module.py:debug",
+                "count": 2,
+                "kwargs": {"verbose": True},
+            },
         ]
     )
 
@@ -62,7 +70,7 @@ def test_runtime_callsite_entries_skip_count_only_observations():
             "kwargs": ["verbose"],
             "has_starargs": False,
             "has_kwargs": False,
-        }
+        },
     ]
 
 

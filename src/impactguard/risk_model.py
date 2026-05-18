@@ -111,12 +111,14 @@ def confidence(samples: int, threshold: int = 100) -> float:
     return min(1.0, samples / threshold)
 
 
-_UNCONDITIONAL_HIGH = frozenset({
-    "REMOVED",
-    "POSITIONAL_REMOVED",
-    "REQUIRED_POSITIONAL_ADDED",
-    "REQUIRED_KWONLY_ADDED",
-})
+_UNCONDITIONAL_HIGH = frozenset(
+    {
+        "REMOVED",
+        "POSITIONAL_REMOVED",
+        "REQUIRED_POSITIONAL_ADDED",
+        "REQUIRED_KWONLY_ADDED",
+    }
+)
 
 
 def _is_unconditional_high(change_type: str) -> bool:
@@ -132,12 +134,16 @@ def _is_unconditional_high(change_type: str) -> bool:
 
 
 def classify(
-    severity: float, count: int, max_count: int, samples: int, lambda_: float = 1.0,
-    change_type: str = ""
+    severity: float,
+    count: int,
+    max_count: int,
+    samples: int,
+    lambda_: float = 1.0,
+    change_type: str = "",
 ) -> tuple[str, float, float]:
     try:
         from .config import get as cfg_get
-        
+
         conf_threshold: float = cfg_get("risk", "confidence_threshold", 0.3)
         high_exp_min: float = cfg_get("risk", "high_exposure_min", 0.1)
         med_exp_min: float = cfg_get("risk", "medium_exposure_min", 0.01)
@@ -145,27 +151,27 @@ def classify(
         conf_threshold = 0.3
         high_exp_min = 0.1
         med_exp_min = 0.01
-    
+
     # Unconditional HIGH for definitionally-breaking changes
     # Uses explicit allowlist with prefix matching to avoid false matches
     if _is_unconditional_high(change_type):
         exposure_val = exposure(count, max_count)
         return "HIGH", exposure_val, 1.0
-    
+
     exposure_val = exposure(count, max_count)
     confidence_val = confidence(samples)
-    
+
     if confidence_val < conf_threshold:
         return "UNKNOWN", exposure_val, confidence_val
-    
+
     effective_severity = severity * lambda_
-    
+
     if effective_severity > 0.8 and exposure_val > high_exp_min:
         return "HIGH", exposure_val, confidence_val
-    
+
     if effective_severity > 0.5 and exposure_val > med_exp_min:
         return "MEDIUM", exposure_val, confidence_val
-    
+
     return "LOW", exposure_val, confidence_val
 
 
