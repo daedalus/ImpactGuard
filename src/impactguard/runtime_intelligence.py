@@ -161,7 +161,7 @@ def normalize_runtime_payload(data: object) -> list[dict[str, Any]]:
                     else None
                 )
             if normalized is None:
-                return []
+                continue
             observations.append(normalized)
         return observations
 

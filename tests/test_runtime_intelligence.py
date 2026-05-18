@@ -40,6 +40,7 @@ def test_runtime_callsite_entries_skip_count_only_observations():
         [
             {"function": "src::lib::Api::call", "count": 7},
             {"function": "pkg/module.py:helper", "count": 3, "args_count": 1},
+            {"function": "pkg/module.py:debug", "count": 2, "kwargs": {"verbose": True}},
         ]
     )
 
@@ -50,6 +51,15 @@ def test_runtime_callsite_entries_skip_count_only_observations():
             "lineno": 0,
             "args": 1,
             "kwargs": [],
+            "has_starargs": False,
+            "has_kwargs": False,
+        },
+        {
+            "fqname": "pkg.module.debug",
+            "file": "runtime",
+            "lineno": 0,
+            "args": 0,
+            "kwargs": ["verbose"],
             "has_starargs": False,
             "has_kwargs": False,
         }
