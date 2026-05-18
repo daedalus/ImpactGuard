@@ -89,6 +89,11 @@ from .risk_model import (
     exposure,
     get_severity,
 )
+from .runtime_intelligence import (
+    canonical_runtime_name,
+    load_runtime_observations,
+    normalize_runtime_payload,
+)
 from .schema import (
     validate,
     validate_risk_report,
@@ -164,6 +169,9 @@ __all__ = [
     "confidence",
     "classify",
     "compute_risk",
+    "canonical_runtime_name",
+    "normalize_runtime_payload",
+    "load_runtime_observations",
     # Patch confidence
     "compute_confidence",
     "classify_patch",
