@@ -499,6 +499,9 @@ def cmd_check_commits(args: argparse.Namespace) -> int:
     max_runtime_data_issues: int = getattr(args, "max_runtime_data_issues", 0)
 
     if strict_analysis:
+        # strict_analysis intentionally implies zero-tolerance CI behavior:
+        # gate enforcement + strict extraction + zero thresholds for all
+        # analysis degradation counters.
         strict_extraction = True
         enforce_gate = True
         max_parse_failures = 0

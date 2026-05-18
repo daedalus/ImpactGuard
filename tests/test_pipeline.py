@@ -362,3 +362,25 @@ def test_pipeline_passes_structured_changes_to_risk_gate(tmp_path):
     first = captured["changes"][0]
     assert isinstance(first, dict)
     assert {"change", "function"} <= set(first.keys())
+
+
+def test_evaluate_analysis_policy_threshold_edges():
+    """Policy helper should only violate when counters are above thresholds."""
+    from impactguard.pipeline import _evaluate_analysis_policy
+
+    counters = {
+        "parse_failures": 1,
+        "skipped_files": 0,
+        "call_extraction_failures": 2,
+        "runtime_data_issues": 1,
+    }
+    policy = _evaluate_analysis_policy(
+        counters,
+        max_parse_failures=1,
+        max_skipped_files=0,
+        max_call_extraction_failures=1,
+        max_runtime_data_issues=1,
+    )
+    assert policy["passes"] is False
+    assert "call_extraction_failures" in policy["violations"]
+    assert "parse_failures" not in policy["violations"]

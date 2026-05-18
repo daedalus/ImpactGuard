@@ -11,6 +11,7 @@ from .runtime_intelligence import (
 )
 
 _log = get_logger(__name__)
+_UNKNOWN_SEVERITY = 0.5
 
 
 def _get_first(item: dict[str, Any], keys: tuple[str, ...], default: str = "") -> str:
@@ -41,12 +42,17 @@ def _parse_change_line(line: str) -> dict[str, str] | None:
     return {"change": change_type, "function": fqname}
 
 
+def parse_change_line(line: str) -> dict[str, str] | None:
+    """Public helper for parsing textual change lines to structured records."""
+    return _parse_change_line(line)
+
+
 def _normalize_changes(changes: list[str] | list[dict[str, Any]]) -> list[dict[str, str]]:
     """Normalize mixed textual/structured changes to structured records."""
     normalized: list[dict[str, str]] = []
     for item in changes:
         if isinstance(item, str):
-            parsed = _parse_change_line(item)
+            parsed = parse_change_line(item)
             if parsed is not None:
                 normalized.append(parsed)
             continue
@@ -101,7 +107,7 @@ def run_from_changes(
             continue
 
         severity = get_severity(change_type)
-        if severity == 0.5 and not any(
+        if severity == _UNKNOWN_SEVERITY and not any(
             change_type.startswith(k) for k in known_change_prefixes
         ):
             continue
