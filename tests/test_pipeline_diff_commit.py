@@ -518,6 +518,16 @@ class TestRunPipelineDiffContent:
         with pytest.raises(ValueError, match="No supported file changes found"):
             run_pipeline_diff_content("")
 
+    def test_strict_extraction_raises_on_parse_error(self):
+        from impactguard.pipeline import run_pipeline_diff_content
+
+        old_src = "def foo(x):\n    return x\n"
+        new_src = "def foo(\n    return 1\n"
+        diff_text = _make_unified_diff(old_src, new_src)
+
+        with pytest.raises(RuntimeError):
+            run_pipeline_diff_content(diff_text, strict_extraction=True)
+
     def test_output_dir_is_respected(self, tmp_path):
         from impactguard.pipeline import run_pipeline_diff_content
 

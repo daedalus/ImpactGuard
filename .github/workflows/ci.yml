@@ -187,6 +187,9 @@ jobs:
           uv run python -m impactguard check-commits \
             ${{ github.event.pull_request.base.sha }} \
             ${{ github.event.pull_request.head.sha }} \
+            --enforce-gate \
+            --strict-analysis \
+            --block-unknown \
             -o impactguard-output
 
       - name: Generate changelog from signature diffs
@@ -202,15 +205,7 @@ jobs:
         run: |
           test -f impactguard-output/risk_report.json
           test -f impactguard-output/analysis_summary.json
-
-      - name: Check risk gate
-        if: always()
-        run: |
-          uv run python - <<'PY'
-          import sys
-          from impactguard.enforce_gate import enforce_report
-          sys.exit(enforce_report("impactguard-output/risk_report.json"))
-          PY
+          test -f impactguard-output/gate_summary.json
 
       - name: Append analysis summary
         if: always()
@@ -218,9 +213,46 @@ jobs:
           {
             echo "## ImpactGuard analysis summary"
             if [ -f impactguard-output/analysis_summary.json ]; then
-              cat impactguard-output/analysis_summary.json
+              uv run python - <<'PY'
+              import json
+              from pathlib import Path
+              summary = json.loads(Path("impactguard-output/analysis_summary.json").read_text())
+              counters = summary.get("counters", {})
+              print(f"- status: {summary.get('status')}")
+              print(f"- parse_failures: {counters.get('parse_failures', 0)}")
+              print(f"- skipped_files: {counters.get('skipped_files', 0)}")
+              print(f"- unsupported_files: {counters.get('unsupported_files', 0)}")
+              print(f"- call_extraction_failures: {counters.get('call_extraction_failures', 0)}")
+              print(f"- runtime_data_issues: {counters.get('runtime_data_issues', 0)}")
+              print(f"- fqname_collision_risk: {counters.get('fqname_collision_risk', 0)}")
+              runtime = summary.get("runtime", {})
+              print(f"- runtime_state: {runtime.get('state', 'unknown')}")
+              policy = summary.get("policy", {})
+              violations = policy.get("violations", {})
+              print(f"- policy_violations: {len(violations)}")
+              if violations:
+                  for key, detail in violations.items():
+                      print(f"  - {key}: {detail.get('value')} > {detail.get('max_allowed')}")
+              PY
             else
               echo "analysis_summary.json missing"
+            fi
+            if [ -f impactguard-output/gate_summary.json ]; then
+              echo ""
+              echo "### Gate"
+              uv run python - <<'PY'
+              import json
+              from pathlib import Path
+              gate = json.loads(Path("impactguard-output/gate_summary.json").read_text())
+              print(f"- blocked: {gate.get('blocked', False)}")
+              print(f"- high: {gate.get('risk', {}).get('high', 0)}")
+              print(f"- unknown: {gate.get('risk', {}).get('unknown', 0)}")
+              reasons = gate.get("reasons", [])
+              if reasons:
+                  print("- reasons:")
+                  for reason in reasons:
+                      print(f"  - {reason}")
+              PY
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -254,6 +286,25 @@ jobs:
               comment += `- HIGH risk: ${high}\n`;
               comment += `- MEDIUM risk: ${medium}\n`;
               comment += `- LOW risk: ${low}\n`;
+            }
+            if (fs.existsSync('impactguard-output/analysis_summary.json')) {
+              const analysis = JSON.parse(fs.readFileSync('impactguard-output/analysis_summary.json', 'utf8'));
+              const counters = analysis.counters || {};
+              comment += '\n### Analysis Coverage\n';
+              comment += `- Status: ${analysis.status || 'unknown'}\n`;
+              comment += `- parse_failures: ${counters.parse_failures || 0}\n`;
+              comment += `- skipped_files: ${counters.skipped_files || 0}\n`;
+              comment += `- call_extraction_failures: ${counters.call_extraction_failures || 0}\n`;
+              comment += `- runtime_data_issues: ${counters.runtime_data_issues || 0}\n`;
+            }
+            if (fs.existsSync('impactguard-output/gate_summary.json')) {
+              const gate = JSON.parse(fs.readFileSync('impactguard-output/gate_summary.json', 'utf8'));
+              comment += '\n### Gate\n';
+              comment += `- Blocked: ${gate.blocked ? 'yes' : 'no'}\n`;
+              if (Array.isArray(gate.reasons) && gate.reasons.length > 0) {
+                comment += '- Reasons:\n';
+                for (const reason of gate.reasons) comment += `  - ${reason}\n`;
+              }
             }
 
             if (fs.existsSync('CHANGELOG_PR.md')) {
