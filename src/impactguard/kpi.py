@@ -199,7 +199,7 @@ def format_kpi_text(kpis: dict[str, Any]) -> str:
         "  Risk distribution",
     ]
 
-    _LEVEL_ICONS = {
+    _level_icons = {
         "HIGH": "🔴",
         "MEDIUM": "🟡",
         "LOW": "🟢",
@@ -207,7 +207,7 @@ def format_kpi_text(kpis: dict[str, Any]) -> str:
     }
     for level in ("HIGH", "MEDIUM", "LOW", "UNKNOWN"):
         entry = dist.get(level, {"count": 0, "rate": 0.0})
-        icon = _LEVEL_ICONS.get(level, "  ")
+        icon = _level_icons.get(level, "  ")
         lines.append(
             f"    {icon}  {level:<8}  {entry['count']:4d}  ({entry['rate']:.0%})"
         )
