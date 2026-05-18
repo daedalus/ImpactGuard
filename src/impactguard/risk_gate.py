@@ -3,7 +3,12 @@ import sys
 from typing import Any
 
 from ._logging import get_logger
-from .risk_model import classify, get_severity, _effective_severity_scores
+from .risk_model import _effective_severity_scores, classify, get_severity
+from .runtime_intelligence import (
+    build_runtime_index,
+    load_runtime_observations,
+    lookup_runtime_count,
+)
 
 _log = get_logger(__name__)
 
@@ -37,10 +42,8 @@ def run(
 
     # Load runtime data
     try:
-        with open(runtime_path) as f:
-            runtime_data = json.load(f)
-        runtime = {item["function"]: item.get("count", 1) for item in runtime_data}
-    except Exception:
+        runtime = build_runtime_index(load_runtime_observations(runtime_path))
+    except (json.JSONDecodeError, KeyError, OSError):
         runtime = {}
 
     max_count = max(runtime.values()) if runtime else 1
@@ -60,10 +63,10 @@ def run(
             continue
         change_type = parts[0].strip()
         func_name = parts[1].strip()
-        
+
         # Isolate the fqname (before first space) - change entries like
         # "TYPE_CHANGED: mod.py:foo arg 'x' int -> str" have extra text
-        fqname = func_name.split(' ')[0].strip()
+        fqname = func_name.split(" ")[0].strip()
 
         # Skip if we've already processed this function
         if fqname in seen_functions:
@@ -83,13 +86,7 @@ def run(
             # Not a recognized change type, skip
             continue
 
-        count = runtime.get(fqname, 0)
-        if count == 0:
-            # Try normalizing "module.py:func_name" → "module.func_name"
-            normalized = fqname.strip()
-            if ".py:" in normalized:
-                normalized = normalized.replace(".py:", ".")
-                count = runtime.get(normalized, 0)
+        count = lookup_runtime_count(runtime, fqname)
         current_change = change_type
         risk, exp, conf = classify(
             severity, count, max_count, count, lambda_, current_change

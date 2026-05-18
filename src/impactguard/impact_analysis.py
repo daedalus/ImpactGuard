@@ -4,6 +4,11 @@ from typing import Any
 
 from ._logging import get_logger
 from .risk_model import exposure
+from .runtime_intelligence import (
+    build_runtime_index,
+    load_runtime_observations,
+    lookup_runtime_count,
+)
 
 _log = get_logger(__name__)
 
@@ -153,12 +158,14 @@ def analyze(
     runtime: dict[str, int] = {}
     if runtime_path:
         try:
-            with open(runtime_path) as f_file:
-                rt_data = json.load(f_file)
-            runtime = {item["function"]: item.get("count", 1) for item in rt_data}
+            runtime = build_runtime_index(load_runtime_observations(runtime_path))
         except (json.JSONDecodeError, KeyError) as e:
             _log.warning("Failed to parse runtime data from '%s': %s", runtime_path, e)
             print(f"Warning: Failed to parse runtime data: {e}", file=sys.stderr)
+            runtime = {}
+        except OSError as e:
+            _log.warning("Failed to read runtime data from '%s': %s", runtime_path, e)
+            print(f"Warning: Failed to read runtime data: {e}", file=sys.stderr)
             runtime = {}
 
     # Get max count for exposure calculation
@@ -201,14 +208,12 @@ def analyze(
             # 2. func_name (bare name like "func")
             # 3. Converted runtime key (like "module.func")
             runtime_key = _fqname_to_runtime_key(target)
-            count = runtime.get(target, runtime.get(func_name, runtime.get(runtime_key, 1)))
+            count = lookup_runtime_count(runtime, target, func_name, runtime_key) or 1
             exp = exposure(count, max_count)
-            
-            # Determine change type for proper risk classification
-            change_type = "missing args" if argc < min_args else "too many args"
+
             severity = 0.9 if argc < min_args else 0.3
-            
-            # REMOVED and REQIARED changes are unconditionally HIGH
+
+            # REMOVED and REQUIRED changes are unconditionally HIGH
             # (bypass confidence check since these are guaranteed breaking)
             if argc < min_args:
                 risk_level = "HIGH"

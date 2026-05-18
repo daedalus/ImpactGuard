@@ -11,6 +11,7 @@ from typing import Any
 
 from ._logging import get_logger
 from ._pathutils import is_safe_path
+from .runtime_intelligence import load_runtime_observations, runtime_callsite_entries
 
 _log = get_logger(__name__)
 
@@ -397,20 +398,9 @@ def run_pipeline(
         # Also include runtime data if available
         if runtime_path and Path(runtime_path).exists():
             try:
-                with open(runtime_path) as f:
-                    rt_data = json.load(f)
-                for item in rt_data:
-                    all_calls.append(
-                        {
-                            "fqname": item.get("function", ""),
-                            "file": "runtime",
-                            "lineno": 0,
-                            "args": item.get("args_count", 0),
-                            "kwargs": item.get("kwargs", []),
-                            "has_starargs": False,
-                            "has_kwargs": False,
-                        }
-                    )
+                all_calls.extend(
+                    runtime_callsite_entries(load_runtime_observations(runtime_path))
+                )
             except (json.JSONDecodeError, OSError) as e:
                 _log.warning(
                     "Failed to process runtime data from '%s': %s", runtime_path, e

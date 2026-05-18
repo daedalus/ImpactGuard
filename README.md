@@ -33,7 +33,7 @@ It provides a quantitative risk framework to help developers understand the cons
 | Impact Analysis | `impact_analysis.py` | Correlates changes with call sites |
 | Risk Model | `risk_model.py` | S × E × C × λ risk scoring |
 | Risk Gate | `risk_gate.py`, `enforce_gate.py` | CI enforcement engine |
-| Runtime Tracing | `trace_calls.py`, `trace_calls_prod.py` | Development and production tracers |
+| Runtime Intelligence | `trace_calls.py`, `trace_calls_prod.py`, `runtime_intelligence.py` | Python tracers plus language-agnostic runtime normalization |
 | Patch Generation | `cst_patch.py`, `patch_generator.py` | Format-preserving automated fixes |
 | Reporting | `generate_report.py` | Static HTML report generation |
 | Robustness Evaluation | `tools/robustness_evaluator.py` | Composite robustness score, fragility index, diversity |
@@ -123,7 +123,9 @@ impactguard extract $(git ls-files '*.java' '*.go' '*.rs' '*.ts' '*.js' '*.kt' '
 impactguard extract-calls $(git ls-files '*.java' '*.go' '*.rs' '*.ts' '*.js' '*.kt' '*.swift' '*.cs' '*.rb' '*.hs' '*.zig') > .calls.json
 
 # 2. Capture runtime exposure (optional)
+# Python projects can emit runtime data directly:
 impactguard trace dump .runtime_calls.json
+# Other languages can write equivalent JSON (list/map/envelope) and reuse the same pipeline
 
 # 3. Compare and analyze risk
 impactguard risk diff.txt .runtime_calls.json report.json
@@ -259,6 +261,10 @@ Optimized for minimal overhead in live environments. It employs a probabilistic 
 
 - **Sampling Logic:** Only records data if `random.random() < SAMPLE_RATE`
 - **Background Flushing:** Periodically flushes captured counts to disk (default every 10 seconds)
+
+### Language-Agnostic Runtime Inputs (`runtime_intelligence.py`)
+
+ImpactGuard's risk and impact stages accept runtime observations from any language as long as they can be serialized to JSON. Supported shapes include the existing Python tracer list format, single observation objects, map-style payloads such as `{"pkg::fn": 12}`, and envelope objects like `{"runtime": [...]}`. Names are normalized across separators such as `:`, `::`, `/`, and `#`, so non-Python collectors can contribute exposure/confidence data without using the Python decorators.
 
 | Feature | Development Tracer | Production Sampler |
 |---------|-------------------|-------------------|
