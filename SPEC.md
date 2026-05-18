@@ -330,6 +330,14 @@ Wrapper for `impact_analysis.analyze()`.
 ]
 ```
 
+Runtime ingestion is normalization-based rather than Python-specific. In addition to the canonical list-of-objects format above, the runtime loader also accepts:
+
+- Single observation objects such as `{"function": "pkg/module.py:fn", "count": 4}`
+- Map-style payloads such as `{"pkg::fn": 12, "pkg::other": 3}`
+- Envelope objects such as `{"runtime": [...]}`
+
+Function names are normalized across separators like `:`, `::`, `/`, and `#` so that non-Python collectors can provide exposure/confidence data using the same risk pipeline.
+
 ### Risk Report JSON
 ```json
 [
