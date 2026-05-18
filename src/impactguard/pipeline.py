@@ -1,5 +1,6 @@
 """Pipeline orchestrator - connects all ImpactGuard components."""
 
+import inspect
 import json
 import re
 import subprocess
@@ -14,6 +15,14 @@ from ._pathutils import is_safe_path
 from .runtime_intelligence import load_runtime_observations, runtime_callsite_entries
 
 _log = get_logger(__name__)
+_PARTIAL_ANALYSIS_COUNTERS = (
+    "parse_failures",
+    "skipped_files",
+    "fallback_used",
+    "call_extraction_failures",
+    "runtime_data_issues",
+    "fqname_collision_risk",
+)
 
 
 def _validate_git_ref(ref: str) -> bool:
@@ -61,6 +70,7 @@ def _extract_by_language(
     base_path: str | None = None,
     stats: dict[str, int] | None = None,
     events: list[dict[str, str]] | None = None,
+    strict_extraction: bool = False,
 ) -> list[dict[str, Any]]:
     """Extract signatures from *files* using the registry extractor for each file.
 
@@ -81,6 +91,7 @@ def _extract_by_language(
         if extractor is None:
             if stats is not None:
                 stats["skipped_files"] = stats.get("skipped_files", 0) + 1
+                stats["unsupported_files"] = stats.get("unsupported_files", 0) + 1
             if events is not None:
                 events.append(
                     {
@@ -99,12 +110,22 @@ def _extract_by_language(
     all_sigs: list[dict[str, Any]] = []
     for extractor, lang_files in groups.values():
         assert extractor is not None
+        supports_strict = False
+        if strict_extraction:
+            try:
+                supports_strict = (
+                    "strict" in inspect.signature(extractor.extract_signatures).parameters
+                )
+            except (TypeError, ValueError):
+                supports_strict = False
         try:
             with warnings.catch_warnings(record=True) as caught:
                 warnings.simplefilter("always")
-                extracted = extractor.extract_signatures(
-                    lang_files, _base_path=base_path
-                )
+                method = extractor.extract_signatures
+                kwargs: dict[str, Any] = {"_base_path": base_path}
+                if strict_extraction and supports_strict:
+                    kwargs["strict"] = True
+                extracted = method(lang_files, **kwargs)
             all_sigs.extend(extracted)
 
             for w in caught:
@@ -142,6 +163,60 @@ def _extract_by_language(
     return all_sigs
 
 
+def _has_basename_collisions(files: list[str]) -> bool:
+    """Return True when two or more files share the same basename."""
+    seen: set[str] = set()
+    for f in files:
+        name = Path(f).name
+        if name in seen:
+            return True
+        seen.add(name)
+    return False
+
+
+def _evaluate_analysis_policy(
+    counters: dict[str, int],
+    *,
+    max_parse_failures: int,
+    max_skipped_files: int,
+    max_call_extraction_failures: int,
+    max_runtime_data_issues: int,
+) -> dict[str, Any]:
+    """Evaluate configured analysis-completeness thresholds."""
+    checks = {
+        "parse_failures": {
+            "value": int(counters.get("parse_failures", 0)),
+            "max_allowed": int(max_parse_failures),
+        },
+        "skipped_files": {
+            "value": int(counters.get("skipped_files", 0)),
+            "max_allowed": int(max_skipped_files),
+        },
+        "call_extraction_failures": {
+            "value": int(counters.get("call_extraction_failures", 0)),
+            "max_allowed": int(max_call_extraction_failures),
+        },
+        "runtime_data_issues": {
+            "value": int(counters.get("runtime_data_issues", 0)),
+            "max_allowed": int(max_runtime_data_issues),
+        },
+    }
+    violations = {
+        key: detail for key, detail in checks.items() if detail["value"] > detail["max_allowed"]
+    }
+    return {
+        "checks": checks,
+        "violations": violations,
+        "passes": not violations,
+    }
+
+
+def _compute_base_path(path: str) -> str:
+    """Return a stable base path for fqname normalization."""
+    p = Path(path).resolve()
+    return str(p if p.is_dir() else p.parent)
+
+
 def run_pipeline(
     old_files: list[str] | None = None,
     new_files: list[str] | None = None,
@@ -153,6 +228,15 @@ def run_pipeline(
     config: dict[str, Any] | None = None,
     suggest_patch: bool = False,
     show_patch: bool = False,
+    strict_extraction: bool = False,
+    old_base_path: str | None = None,
+    new_base_path: str | None = None,
+    max_parse_failures: int = 0,
+    max_skipped_files: int = 0,
+    max_call_extraction_failures: int = 0,
+    max_runtime_data_issues: int = 0,
+    block_unknown: bool = False,
+    require_runtime: bool = False,
 ) -> dict[str, Any]:
     """Run the full ImpactGuard pipeline.
 
@@ -205,8 +289,11 @@ def run_pipeline(
     reliability_stats: dict[str, int] = {
         "parse_failures": 0,
         "skipped_files": 0,
+        "unsupported_files": 0,
         "fallback_used": 0,
         "call_extraction_failures": 0,
+        "runtime_data_issues": 0,
+        "fqname_collision_risk": 0,
     }
     analysis_events: list[dict[str, str]] = []
 
@@ -220,8 +307,24 @@ def run_pipeline(
     # Step 1: Extract or load signatures
     _log.debug("Step 1: Extracting/loading signatures")
     if old_files:
+        if old_base_path is None and _has_basename_collisions(old_files):
+            reliability_stats["fqname_collision_risk"] += 1
+            analysis_events.append(
+                {
+                    "level": "warning",
+                    "kind": "fqname_collision_risk",
+                    "file": _summarize_files(old_files),
+                    "message": (
+                        "Duplicate basenames detected without base path; fqname collisions are possible."
+                    ),
+                }
+            )
         old_sigs = _extract_by_language(
-            old_files, stats=reliability_stats, events=analysis_events
+            old_files,
+            base_path=old_base_path,
+            stats=reliability_stats,
+            events=analysis_events,
+            strict_extraction=strict_extraction,
         )
         old_sigs_path = str(Path(output_dir) / "old_signatures.json")
         with open(old_sigs_path, "w") as f:
@@ -232,8 +335,24 @@ def run_pipeline(
         old_sigs_path = None
 
     if new_files:
+        if new_base_path is None and _has_basename_collisions(new_files):
+            reliability_stats["fqname_collision_risk"] += 1
+            analysis_events.append(
+                {
+                    "level": "warning",
+                    "kind": "fqname_collision_risk",
+                    "file": _summarize_files(new_files),
+                    "message": (
+                        "Duplicate basenames detected without base path; fqname collisions are possible."
+                    ),
+                }
+            )
         new_sigs = _extract_by_language(
-            new_files, stats=reliability_stats, events=analysis_events
+            new_files,
+            base_path=new_base_path,
+            stats=reliability_stats,
+            events=analysis_events,
+            strict_extraction=strict_extraction,
         )
         new_sigs_path = str(Path(output_dir) / "new_signatures.json")
         with open(new_sigs_path, "w") as f:
@@ -297,6 +416,7 @@ def run_pipeline(
                 extractor = _get_extractor(file_path)
                 if extractor is None:
                     reliability_stats["skipped_files"] += 1
+                    reliability_stats["unsupported_files"] += 1
                     analysis_events.append(
                         {
                             "level": "warning",
@@ -405,7 +525,35 @@ def run_pipeline(
                 _log.warning(
                     "Failed to process runtime data from '%s': %s", runtime_path, e
                 )
+                reliability_stats["runtime_data_issues"] += 1
+                analysis_events.append(
+                    {
+                        "level": "error",
+                        "kind": "runtime_data_invalid",
+                        "file": runtime_path,
+                        "message": str(e),
+                    }
+                )
                 print(f"Warning: Failed to process runtime data: {e}", file=sys.stderr)
+        elif runtime_path:
+            reliability_stats["runtime_data_issues"] += 1
+            analysis_events.append(
+                {
+                    "level": "error",
+                    "kind": "runtime_data_missing",
+                    "file": runtime_path,
+                    "message": "Runtime data path does not exist.",
+                }
+            )
+        else:
+            analysis_events.append(
+                {
+                    "level": "warning",
+                    "kind": "runtime_data_not_provided",
+                    "file": "",
+                    "message": "No runtime data provided; confidence may be reduced.",
+                }
+            )
 
         with open(calls_path, "w") as f:
             json.dump(all_calls, f, indent=2)
@@ -418,13 +566,27 @@ def run_pipeline(
 
     # Step 5: Assess risk
     _log.debug("Step 5: Assessing risk")
+    from .risk_gate import parse_change_line as _parse_change_line
+
+    structured_breaking_changes: list[dict[str, str]] = []
+    for change in comparison.get("breaking", []):
+        parsed = _parse_change_line(str(change))
+        if parsed is not None:
+            structured_breaking_changes.append(parsed)
     diff_path = str(Path(output_dir) / "diff.txt")
     with open(diff_path, "w") as f:
         for change in comparison["breaking"]:
             f.write(f"{change}\n")
-
+    structured_path = Path(output_dir) / "changes_structured.json"
+    with open(structured_path, "w") as f:
+        json.dump(structured_breaking_changes, f, indent=2)
     risk_report_path = str(Path(output_dir) / "risk_report.json")
-    risk = run_risk(diff_path, runtime_path or "", risk_report_path)
+    risk = run_risk(
+        diff_path,
+        runtime_path or "",
+        risk_report_path,
+        changes=structured_breaking_changes,
+    )
     result["risk"] = risk
     _log.debug("Risk assessment: %d item(s)", len(risk))
 
@@ -473,6 +635,13 @@ def run_pipeline(
 
     # Step 6: Generate HTML report
     html = generate_html(risk)
+    if any(reliability_stats.get(k, 0) > 0 for k in _PARTIAL_ANALYSIS_COUNTERS):
+        disclaimer = (
+            "<p><strong>Analysis coverage warning:</strong> "
+            "this report was generated from partial analysis. Review analysis_summary.json "
+            "for skipped/failed extraction details before treating LOW/MEDIUM findings as complete.</p>"
+        )
+        html = html.replace("<body>", f"<body>{disclaimer}", 1)
     result["report_html"] = html
 
     # Step 7: Suggest fixes with confidence
@@ -552,24 +721,65 @@ def run_pipeline(
     result["semver"] = format_semver_recommendation(comparison)
 
     partial_analysis = any(
-        reliability_stats.get(k, 0) > 0
-        for k in (
-            "parse_failures",
-            "skipped_files",
-            "fallback_used",
-            "call_extraction_failures",
-        )
+        reliability_stats.get(k, 0) > 0 for k in _PARTIAL_ANALYSIS_COUNTERS
     )
+    runtime_state = (
+        "loaded"
+        if runtime_path and reliability_stats.get("runtime_data_issues", 0) == 0
+        else ("invalid_or_missing" if runtime_path else "not_provided")
+    )
+    policy = _evaluate_analysis_policy(
+        reliability_stats,
+        max_parse_failures=max_parse_failures,
+        max_skipped_files=max_skipped_files,
+        max_call_extraction_failures=max_call_extraction_failures,
+        max_runtime_data_issues=max_runtime_data_issues,
+    )
+    high_count = sum(1 for item in risk if item.get("risk") == "HIGH")
+    unknown_count = sum(1 for item in risk if item.get("risk") == "UNKNOWN")
+    risk_gate_blocked = high_count > 0 or (block_unknown and unknown_count > 0)
+    analysis_gate_blocked = not policy["passes"]
+    runtime_gate_blocked = require_runtime and runtime_state != "loaded"
+    gate_blocked = risk_gate_blocked or analysis_gate_blocked or runtime_gate_blocked
+    gate_reasons: list[str] = []
+    if high_count > 0:
+        gate_reasons.append(f"HIGH risk items detected: {high_count}")
+    if block_unknown and unknown_count > 0:
+        gate_reasons.append(
+            f"UNKNOWN risk items blocked by policy (block_unknown=true): {unknown_count}"
+        )
+    for key, detail in policy["violations"].items():
+        gate_reasons.append(
+            f"analysis policy violation: {key}={detail['value']} exceeds {detail['max_allowed']}"
+        )
+    if runtime_gate_blocked:
+        gate_reasons.append("runtime data is required but missing/invalid")
+
     analysis_status = {
         "status": "partial" if partial_analysis else "complete",
         "partial_analysis": partial_analysis,
         "counters": reliability_stats,
         "events": analysis_events,
+        "runtime": {"state": runtime_state, "required": require_runtime},
+        "policy": policy,
     }
     result["analysis_status"] = analysis_status
     analysis_path = Path(output_dir) / "analysis_summary.json"
     with open(analysis_path, "w") as f:
         json.dump(analysis_status, f, indent=2)
+    gate_status = {
+        "blocked": gate_blocked,
+        "risk_gate_blocked": risk_gate_blocked,
+        "analysis_gate_blocked": analysis_gate_blocked,
+        "runtime_gate_blocked": runtime_gate_blocked,
+        "block_unknown": block_unknown,
+        "risk": {"high": high_count, "unknown": unknown_count},
+        "reasons": gate_reasons,
+    }
+    result["gate"] = gate_status
+    gate_path = Path(output_dir) / "gate_summary.json"
+    with open(gate_path, "w") as f:
+        json.dump(gate_status, f, indent=2)
 
     # Add signatures to result
     with open(old_sigs_path) as f:
@@ -587,6 +797,13 @@ def quick_check(
     runtime_path: str | None = None,
     suggest_patch: bool = False,
     show_patch: bool = False,
+    strict_extraction: bool = False,
+    max_parse_failures: int = 0,
+    max_skipped_files: int = 0,
+    max_call_extraction_failures: int = 0,
+    max_runtime_data_issues: int = 0,
+    block_unknown: bool = False,
+    require_runtime: bool = False,
 ) -> dict[str, Any]:
     """Quick check between two Python files or directories.
 
@@ -618,6 +835,8 @@ def quick_check(
 
     old_files = collect_files(old_path)
     new_files = collect_files(new_path)
+    old_base = _compute_base_path(old_path)
+    new_base = _compute_base_path(new_path)
 
     return run_pipeline(
         old_files=old_files,
@@ -625,6 +844,15 @@ def quick_check(
         runtime_path=runtime_path,
         suggest_patch=suggest_patch,
         show_patch=show_patch,
+        strict_extraction=strict_extraction,
+        old_base_path=old_base,
+        new_base_path=new_base,
+        max_parse_failures=max_parse_failures,
+        max_skipped_files=max_skipped_files,
+        max_call_extraction_failures=max_call_extraction_failures,
+        max_runtime_data_issues=max_runtime_data_issues,
+        block_unknown=block_unknown,
+        require_runtime=require_runtime,
     )
 
 
@@ -792,6 +1020,13 @@ def run_pipeline_git(
     config: dict[str, Any] | None = None,
     suggest_patch: bool = False,
     show_patch: bool = False,
+    strict_extraction: bool = False,
+    max_parse_failures: int = 0,
+    max_skipped_files: int = 0,
+    max_call_extraction_failures: int = 0,
+    max_runtime_data_issues: int = 0,
+    block_unknown: bool = False,
+    require_runtime: bool = False,
 ) -> dict[str, Any]:
     """Run pipeline comparing two git commits.
 
@@ -892,6 +1127,15 @@ def run_pipeline_git(
             config=config,
             suggest_patch=suggest_patch,
             show_patch=show_patch,
+            strict_extraction=strict_extraction,
+            old_base_path=str(Path(old_dir).resolve()),
+            new_base_path=str(Path(new_dir).resolve()),
+            max_parse_failures=max_parse_failures,
+            max_skipped_files=max_skipped_files,
+            max_call_extraction_failures=max_call_extraction_failures,
+            max_runtime_data_issues=max_runtime_data_issues,
+            block_unknown=block_unknown,
+            require_runtime=require_runtime,
         )
 
 
@@ -959,6 +1203,13 @@ def run_pipeline_diff_content(
     config: dict[str, Any] | None = None,
     suggest_patch: bool = False,
     show_patch: bool = False,
+    strict_extraction: bool = False,
+    max_parse_failures: int = 0,
+    max_skipped_files: int = 0,
+    max_call_extraction_failures: int = 0,
+    max_runtime_data_issues: int = 0,
+    block_unknown: bool = False,
+    require_runtime: bool = False,
 ) -> dict[str, Any]:
     """Run the full ImpactGuard pipeline on unified diff content (as a string).
 
@@ -1019,6 +1270,15 @@ def run_pipeline_diff_content(
             config=config,
             suggest_patch=suggest_patch,
             show_patch=show_patch,
+            strict_extraction=strict_extraction,
+            old_base_path=str(old_dir.resolve()),
+            new_base_path=str(new_dir.resolve()),
+            max_parse_failures=max_parse_failures,
+            max_skipped_files=max_skipped_files,
+            max_call_extraction_failures=max_call_extraction_failures,
+            max_runtime_data_issues=max_runtime_data_issues,
+            block_unknown=block_unknown,
+            require_runtime=require_runtime,
         )
 
 
@@ -1029,6 +1289,13 @@ def run_pipeline_diff(
     config: dict[str, Any] | None = None,
     suggest_patch: bool = False,
     show_patch: bool = False,
+    strict_extraction: bool = False,
+    max_parse_failures: int = 0,
+    max_skipped_files: int = 0,
+    max_call_extraction_failures: int = 0,
+    max_runtime_data_issues: int = 0,
+    block_unknown: bool = False,
+    require_runtime: bool = False,
 ) -> dict[str, Any]:
     """Run the full ImpactGuard pipeline on a unified diff / patch file.
 
@@ -1061,6 +1328,13 @@ def run_pipeline_diff(
             config=config,
             suggest_patch=suggest_patch,
             show_patch=show_patch,
+            strict_extraction=strict_extraction,
+            max_parse_failures=max_parse_failures,
+            max_skipped_files=max_skipped_files,
+            max_call_extraction_failures=max_call_extraction_failures,
+            max_runtime_data_issues=max_runtime_data_issues,
+            block_unknown=block_unknown,
+            require_runtime=require_runtime,
         )
     except ValueError as exc:
         # Re-raise with the file path included in the error message.
@@ -1075,6 +1349,13 @@ def run_pipeline_commit(
     config: dict[str, Any] | None = None,
     suggest_patch: bool = False,
     show_patch: bool = False,
+    strict_extraction: bool = False,
+    max_parse_failures: int = 0,
+    max_skipped_files: int = 0,
+    max_call_extraction_failures: int = 0,
+    max_runtime_data_issues: int = 0,
+    block_unknown: bool = False,
+    require_runtime: bool = False,
 ) -> dict[str, Any]:
     """Run the full ImpactGuard pipeline on a single git commit.
 
@@ -1127,6 +1408,13 @@ def run_pipeline_commit(
         config=config,
         suggest_patch=suggest_patch,
         show_patch=show_patch,
+        strict_extraction=strict_extraction,
+        max_parse_failures=max_parse_failures,
+        max_skipped_files=max_skipped_files,
+        max_call_extraction_failures=max_call_extraction_failures,
+        max_runtime_data_issues=max_runtime_data_issues,
+        block_unknown=block_unknown,
+        require_runtime=require_runtime,
     )
 
 
