@@ -15,7 +15,7 @@ _T = TypeVar("_T")
 def _coerce_non_negative_int(value: object) -> int | None:
     if isinstance(value, bool):
         return None
-    if isinstance(value, int | float):
+    if isinstance(value, (int, float)):
         return max(0, int(value))
     return None
 
