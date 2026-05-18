@@ -213,7 +213,7 @@ def analyze(
 
             severity = 0.9 if argc < min_args else 0.3
 
-            # REMOVED and REQIARED changes are unconditionally HIGH
+            # REMOVED and REQUIRED changes are unconditionally HIGH
             # (bypass confidence check since these are guaranteed breaking)
             if argc < min_args:
                 risk_level = "HIGH"
