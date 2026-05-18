@@ -15,6 +15,14 @@ from ._pathutils import is_safe_path
 from .runtime_intelligence import load_runtime_observations, runtime_callsite_entries
 
 _log = get_logger(__name__)
+_PARTIAL_ANALYSIS_COUNTERS = (
+    "parse_failures",
+    "skipped_files",
+    "fallback_used",
+    "call_extraction_failures",
+    "runtime_data_issues",
+    "fqname_collision_risk",
+)
 
 
 def _validate_git_ref(ref: str) -> bool:
@@ -193,6 +201,12 @@ def _evaluate_analysis_policy(
         "violations": violations,
         "passes": not violations,
     }
+
+
+def _compute_base_path(path: str) -> str:
+    """Return a stable base path for fqname normalization."""
+    p = Path(path).resolve()
+    return str(p if p.is_dir() else p.parent)
 
 
 def run_pipeline(
@@ -618,17 +632,7 @@ def run_pipeline(
 
     # Step 6: Generate HTML report
     html = generate_html(risk)
-    if any(
-        reliability_stats.get(k, 0) > 0
-        for k in (
-            "parse_failures",
-            "skipped_files",
-            "fallback_used",
-            "call_extraction_failures",
-            "runtime_data_issues",
-            "fqname_collision_risk",
-        )
-    ):
+    if any(reliability_stats.get(k, 0) > 0 for k in _PARTIAL_ANALYSIS_COUNTERS):
         disclaimer = (
             "<p><strong>Analysis coverage warning:</strong> "
             "this report was generated from partial analysis. Review analysis_summary.json "
@@ -714,15 +718,7 @@ def run_pipeline(
     result["semver"] = format_semver_recommendation(comparison)
 
     partial_analysis = any(
-        reliability_stats.get(k, 0) > 0
-        for k in (
-            "parse_failures",
-            "skipped_files",
-            "fallback_used",
-            "call_extraction_failures",
-            "runtime_data_issues",
-            "fqname_collision_risk",
-        )
+        reliability_stats.get(k, 0) > 0 for k in _PARTIAL_ANALYSIS_COUNTERS
     )
     runtime_state = (
         "loaded"
@@ -836,8 +832,8 @@ def quick_check(
 
     old_files = collect_files(old_path)
     new_files = collect_files(new_path)
-    old_base = str(Path(old_path).resolve()) if Path(old_path).is_dir() else str(Path(old_path).resolve().parent)
-    new_base = str(Path(new_path).resolve()) if Path(new_path).is_dir() else str(Path(new_path).resolve().parent)
+    old_base = _compute_base_path(old_path)
+    new_base = _compute_base_path(new_path)
 
     return run_pipeline(
         old_files=old_files,

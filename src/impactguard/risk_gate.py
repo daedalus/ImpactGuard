@@ -13,6 +13,18 @@ from .runtime_intelligence import (
 _log = get_logger(__name__)
 
 
+def _get_first(item: dict[str, Any], keys: tuple[str, ...], default: str = "") -> str:
+    """Return first non-empty string value from a dict for candidate keys."""
+    for key in keys:
+        value = item.get(key)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return default
+
+
 def _parse_change_line(line: str) -> dict[str, str] | None:
     """Parse a textual change line into a structured change record."""
     text = line.strip()
@@ -40,18 +52,8 @@ def _normalize_changes(changes: list[str] | list[dict[str, Any]]) -> list[dict[s
             continue
         if not isinstance(item, dict):
             continue
-        change_type = str(
-            item.get("change")
-            or item.get("change_type")
-            or item.get("type")
-            or ""
-        ).strip()
-        function = str(
-            item.get("function")
-            or item.get("fqname")
-            or item.get("symbol")
-            or ""
-        ).strip()
+        change_type = _get_first(item, ("change", "change_type", "type"))
+        function = _get_first(item, ("function", "fqname", "symbol"))
         if change_type and function:
             normalized.append({"change": change_type, "function": function})
     return normalized
