@@ -23,12 +23,11 @@ from impactguard.semantic_analysis import (
 
 def _write_py(content: str) -> str:
     """Write *content* to a temporary .py file and return its path."""
-    f = tempfile.NamedTemporaryFile(
+    with tempfile.NamedTemporaryFile(
         mode="w", suffix=".py", delete=False
-    )
-    f.write(textwrap.dedent(content))
-    f.close()
-    return f.name
+    ) as f:
+        f.write(textwrap.dedent(content))
+        return f.name
 
 
 # ── SEMANTIC_SEVERITY ─────────────────────────────────────────────────────────
@@ -610,7 +609,7 @@ def test_end_to_end_side_effect_added():
 
 
 def test_cli_analyze_behavior(tmp_path):
-    """Test the analyze-behavior CLI subcommand."""
+    """Test the analyze-behavior CLI subcommand outputs change counts."""
     old_file = tmp_path / "old.py"
     new_file = tmp_path / "new.py"
 
@@ -623,23 +622,29 @@ def test_cli_analyze_behavior(tmp_path):
             return x * 2
     """))
 
-    from impactguard.__main__ import main as cli_main
+    import argparse
+    from impactguard.__main__ import cmd_analyze_behavior
     import io
-
-    sys.argv = ["impactguard", "analyze-behavior", str(old_file), str(new_file)]
-    captured = io.StringIO()
     import contextlib
 
-    with contextlib.suppress(SystemExit):
-        old_stdout, sys.stdout = sys.stdout, captured
-        try:
-            cli_main()
-        finally:
-            sys.stdout = old_stdout
+    args = argparse.Namespace(
+        old=str(old_file),
+        new=str(new_file),
+        base_path=None,
+        output=None,
+    )
+
+    captured = io.StringIO()
+    with contextlib.redirect_stdout(captured):
+        cmd_analyze_behavior(args)
+
+    output = captured.getvalue()
+    assert "Semantic breaking changes:" in output
+    assert "Semantic non-breaking changes:" in output
 
 
 def test_cli_analyze_behavior_json_output(tmp_path):
-    """analyze-behavior writes valid JSON to --output file."""
+    """analyze-behavior writes valid JSON with expected keys to --output file."""
     old_file = tmp_path / "old.py"
     new_file = tmp_path / "new.py"
     out_file = tmp_path / "diff.json"
@@ -656,14 +661,12 @@ def test_cli_analyze_behavior_json_output(tmp_path):
         base_path=None,
         output=str(out_file),
     )
-    # Remap fqnames manually would be needed for a full integration test;
-    # here we just confirm the command writes valid JSON.
     cmd_analyze_behavior(args)
 
-    if out_file.exists():
-        data = json.loads(out_file.read_text())
-        assert "semantic_breaking" in data
-        assert "semantic_nonbreaking" in data
+    assert out_file.exists(), "Output JSON file should be created"
+    data = json.loads(out_file.read_text())
+    assert "semantic_breaking" in data
+    assert "semantic_nonbreaking" in data
 
 
 # ── risk_model integration ────────────────────────────────────────────────────

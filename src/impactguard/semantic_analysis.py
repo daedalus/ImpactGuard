@@ -229,7 +229,7 @@ def _hash_docstring(docstring: str | None) -> str | None:
     """Return an 8-character MD5 hex digest of *docstring*, or *None*."""
     if docstring is None:
         return None
-    return hashlib.md5(docstring.strip().encode()).hexdigest()[:8]  # noqa: S324
+    return hashlib.sha256(docstring.strip().encode()).hexdigest()[:8]
 
 
 def _analyze_function_body(
@@ -351,7 +351,8 @@ def analyze_behavior(
 
         file_visitor = _FileVisitor()
         file_visitor.visit(tree)
-        _log.debug("Analyzed behavior of %d function(s) from '%s'", len(result), path)
+        file_count = sum(1 for k in result if k.startswith(fq_file + ":"))
+        _log.debug("Analyzed behavior of %d function(s) from '%s'", file_count, path)
 
     return result
 
