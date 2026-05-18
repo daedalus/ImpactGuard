@@ -1361,10 +1361,12 @@ def cmd_analyze_behavior(args: argparse.Namespace) -> int:
     from .semantic_analysis import analyze_behavior, compare_behavior
 
     base_path: str | None = getattr(args, "base_path", None)
+    old_files = [args.old] if isinstance(args.old, str) else list(args.old)
+    new_files = [args.new] if isinstance(args.new, str) else list(args.new)
 
     try:
-        old_traits = analyze_behavior(args.old if isinstance(args.old, list) else [args.old], base_path=base_path)
-        new_traits = analyze_behavior(args.new if isinstance(args.new, list) else [args.new], base_path=base_path)
+        old_traits = analyze_behavior(old_files, base_path=base_path)
+        new_traits = analyze_behavior(new_files, base_path=base_path)
     except Exception as exc:
         print(f"Error during behavior analysis: {exc}", file=sys.stderr)
         return 1
@@ -1976,14 +1978,14 @@ def main() -> int:
         "analyze-behavior",
         help="Detect semantic/behavioral changes between two Python source files",
         description=(
-            "Compare two Python source files (or lists of files) to surface "
-            "behavioral changes beyond signature-level diffing: async/sync "
-            "transitions, exception contracts, side effects, return semantics, "
-            "and docstring contract changes."
+            "Compare two Python source files to surface behavioral changes beyond "
+            "signature-level diffing: async/sync transitions, generator changes, "
+            "exception contracts, side effects, return semantics, and docstring "
+            "contract changes."
         ),
     )
-    behavior_parser.add_argument("old", help="Old Python source file")
-    behavior_parser.add_argument("new", help="New Python source file")
+    behavior_parser.add_argument("old", help="Old Python source file to analyse")
+    behavior_parser.add_argument("new", help="New Python source file to analyse")
     behavior_parser.add_argument(
         "--base-path",
         dest="base_path",
