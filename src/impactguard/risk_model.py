@@ -52,6 +52,22 @@ SEVERITY_SCORES = {
     "DEPRECATED_REMOVED": 0.15,
     "TYPE_WIDENED": 0.05,
     "RETURN_TYPE_WIDENED": 0.05,
+    # ── Semantic / behavioral change types (from semantic_analysis module) ──
+    # sync↔async shift and generator changes break calling conventions.
+    "ASYNC_CHANGED": 0.8,
+    "YIELD_REMOVED": 0.8,
+    "YIELD_ADDED": 0.7,
+    # New side effects (file I/O, OS calls, network, global state mutation).
+    "SIDE_EFFECT_ADDED": 0.6,
+    # New exception type may propagate to callers lacking the right except clause.
+    "EXCEPTION_ADDED": 0.5,
+    # Return-value semantics changed (e.g. now always returns None).
+    "RETURNS_NONE_CHANGED": 0.5,
+    # Informational / non-breaking semantic changes.
+    "SIDE_EFFECT_REMOVED": 0.3,
+    "CONTRACT_CHANGED": 0.3,
+    "CONTRACT_REMOVED": 0.2,
+    "EXCEPTION_REMOVED": 0.2,
 }
 
 
