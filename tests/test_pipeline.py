@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+from unittest import mock
 
 
 def test_pipeline_import():
@@ -307,3 +308,57 @@ def test_pipeline_comparison_breaking(tmp_path):
             break
 
     assert found, f"Expected REMOVED in breaking changes, got: {breaking}"
+
+
+def test_pipeline_gate_blocks_when_skipped_files_exceed_threshold(tmp_path):
+    """Gate should block when skipped/unsupported files exceed policy threshold."""
+    from impactguard.pipeline import run_pipeline
+
+    old_file = tmp_path / "mod_old.py"
+    old_file.write_text("def foo(a):\n    return a\n")
+
+    new_file = tmp_path / "mod_new.py"
+    new_file.write_text("def foo(a, b=0):\n    return a + b\n")
+
+    unsupported = tmp_path / "README.md"
+    unsupported.write_text("# docs\n")
+
+    result = run_pipeline(
+        old_files=[str(old_file)],
+        new_files=[str(new_file), str(unsupported)],
+        output_dir=str(tmp_path / "out"),
+        max_skipped_files=0,
+    )
+
+    assert result["analysis_status"]["policy"]["passes"] is False
+    assert "skipped_files" in result["analysis_status"]["policy"]["violations"]
+    assert result["gate"]["blocked"] is True
+
+
+def test_pipeline_passes_structured_changes_to_risk_gate(tmp_path):
+    """Risk wiring should pass structured change objects instead of only free-form text."""
+    from impactguard.pipeline import run_pipeline
+
+    old_file = tmp_path / "mod.py"
+    old_file.write_text("def foo(a, b):\n    return a + b\n")
+    new_file = tmp_path / "mod_new.py"
+    new_file.write_text("def foo(a):\n    return a\n")
+
+    captured: dict[str, object] = {}
+
+    def _fake_risk_run(diff_path, runtime_path, output_path=None, lambda_=1.0, changes=None):
+        captured["changes"] = changes
+        return []
+
+    with mock.patch("impactguard.risk_gate.run", side_effect=_fake_risk_run):
+        run_pipeline(
+            old_files=[str(old_file)],
+            new_files=[str(new_file)],
+            output_dir=str(tmp_path / "out"),
+        )
+
+    assert isinstance(captured.get("changes"), list)
+    assert captured["changes"]
+    first = captured["changes"][0]
+    assert isinstance(first, dict)
+    assert {"change", "function"} <= set(first.keys())

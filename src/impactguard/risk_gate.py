@@ -13,11 +13,145 @@ from .runtime_intelligence import (
 _log = get_logger(__name__)
 
 
+def _parse_change_line(line: str) -> dict[str, str] | None:
+    """Parse a textual change line into a structured change record."""
+    text = line.strip()
+    if not text:
+        return None
+    parts = text.split(":", 1)
+    if len(parts) < 2:
+        return None
+    change_type = parts[0].strip()
+    remainder = parts[1].strip()
+    fqname = remainder.split(" ")[0].strip()
+    if not change_type or not fqname:
+        return None
+    return {"change": change_type, "function": fqname}
+
+
+def _normalize_changes(changes: list[str] | list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Normalize mixed textual/structured changes to structured records."""
+    normalized: list[dict[str, str]] = []
+    for item in changes:
+        if isinstance(item, str):
+            parsed = _parse_change_line(item)
+            if parsed is not None:
+                normalized.append(parsed)
+            continue
+        if not isinstance(item, dict):
+            continue
+        change_type = str(
+            item.get("change")
+            or item.get("change_type")
+            or item.get("type")
+            or ""
+        ).strip()
+        function = str(
+            item.get("function")
+            or item.get("fqname")
+            or item.get("symbol")
+            or ""
+        ).strip()
+        if change_type and function:
+            normalized.append({"change": change_type, "function": function})
+    return normalized
+
+
+def run_from_changes(
+    changes: list[str] | list[dict[str, Any]],
+    runtime_path: str,
+    output_path: str | None = None,
+    lambda_: float = 1.0,
+) -> list[dict[str, Any]]:
+    """Run risk analysis pipeline from structured change entries."""
+    normalized_changes = _normalize_changes(changes)
+
+    _log.debug("Running risk analysis on %d structured change(s)", len(normalized_changes))
+
+    # Load runtime data
+    try:
+        runtime = build_runtime_index(load_runtime_observations(runtime_path))
+    except (json.JSONDecodeError, KeyError, OSError):
+        runtime = {}
+
+    max_count = max(runtime.values()) if runtime else 1
+
+    report: list[dict[str, Any]] = []
+    seen_functions: set[str] = set()
+    known_change_prefixes = tuple(_effective_severity_scores().keys())
+
+    for change in normalized_changes:
+        change_type = str(change["change"]).strip()
+        fqname = str(change["function"]).strip()
+        if not change_type or not fqname:
+            continue
+
+        if fqname in seen_functions:
+            continue
+        seen_functions.add(fqname)
+
+        if (
+            change_type.startswith("OPTIONAL")
+            or change_type.startswith("ADDED")
+            or change_type.startswith("TYPE_WIDENED")
+            or change_type.startswith("RETURN_TYPE_WIDENED")
+        ):
+            continue
+
+        severity = get_severity(change_type)
+        if severity == 0.5 and not any(
+            change_type.startswith(k) for k in known_change_prefixes
+        ):
+            continue
+
+        count = lookup_runtime_count(runtime, fqname)
+        risk, exp, conf = classify(severity, count, max_count, count, lambda_, change_type)
+
+        report.append(
+            {
+                "function": fqname,
+                "risk": risk,
+                "change": change_type,
+                "exposure": exp,
+                "confidence": conf,
+                "details": f"called {count} times" if count > 0 else "not observed",
+            }
+        )
+        _log.debug(
+            "Risk item: %s → %s (severity=%.2f, exposure=%.4f, confidence=%.2f)",
+            fqname,
+            risk,
+            severity,
+            exp,
+            conf,
+        )
+
+    risk_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2, "UNKNOWN": 3}
+    report.sort(key=lambda x: risk_order.get(str(x["risk"]), 4))
+
+    high_count = sum(1 for r in report if r["risk"] == "HIGH")
+    _log.debug(
+        "Risk analysis complete: %d item(s) assessed, %d HIGH",
+        len(report),
+        high_count,
+    )
+    if high_count:
+        _log.warning("%d HIGH-risk API change(s) detected", high_count)
+
+    if output_path:
+        with open(output_path, "w") as f:
+            json.dump(report, f, indent=2)
+        _log.debug("Risk report written to '%s'", output_path)
+
+    return report
+
+
 def run(
     diff_path: str,
     runtime_path: str,
     output_path: str | None = None,
     lambda_: float = 1.0,
+    changes: list[str] | list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Run risk analysis pipeline.
 
@@ -40,96 +174,12 @@ def run(
 
     _log.debug("Running risk analysis on diff '%s'", diff_path)
 
-    # Load runtime data
-    try:
-        runtime = build_runtime_index(load_runtime_observations(runtime_path))
-    except (json.JSONDecodeError, KeyError, OSError):
-        runtime = {}
-
-    max_count = max(runtime.values()) if runtime else 1
-
-    # Parse breaking/non-breaking from diff
-    report: list[dict[str, Any]] = []
-    seen_functions: set[str] = set()
-
-    for line in diff_text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-
-        # Extract change type (before first colon)
-        parts = line.split(":", 1)
-        if len(parts) < 2:
-            continue
-        change_type = parts[0].strip()
-        func_name = parts[1].strip()
-
-        # Isolate the fqname (before first space) - change entries like
-        # "TYPE_CHANGED: mod.py:foo arg 'x' int -> str" have extra text
-        fqname = func_name.split(" ")[0].strip()
-
-        # Skip if we've already processed this function
-        if fqname in seen_functions:
-            continue
-        seen_functions.add(fqname)
-
-        # Skip non-breaking entries (these are informational only)
-        if change_type.startswith("OPTIONAL") or change_type.startswith("ADDED") or change_type.startswith("TYPE_WIDENED") or change_type.startswith("RETURN_TYPE_WIDENED"):
-            continue
-
-        # Get severity - validates that this is a known change type
-        severity = get_severity(line)
-        # Skip if not a recognized change type (unknown types return 0.5 default)
-        if severity == 0.5 and not any(
-            change_type.startswith(k) for k in _effective_severity_scores().keys()
-        ):
-            # Not a recognized change type, skip
-            continue
-
-        count = lookup_runtime_count(runtime, fqname)
-        current_change = change_type
-        risk, exp, conf = classify(
-            severity, count, max_count, count, lambda_, current_change
-        )
-
-        report.append(
-            {
-                "function": fqname,
-                "risk": risk,
-                "change": current_change,
-                "exposure": exp,
-                "confidence": conf,
-                "details": f"called {count} times" if count > 0 else "not observed",
-            }
-        )
-        _log.debug(
-            "Risk item: %s → %s (severity=%.2f, exposure=%.4f, confidence=%.2f)",
-            fqname,
-            risk,
-            severity,
-            exp,
-            conf,
-        )
-
-    # Sort by risk level
-    risk_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2, "UNKNOWN": 3}
-    report.sort(key=lambda x: risk_order.get(str(x["risk"]), 4))
-
-    high_count = sum(1 for r in report if r["risk"] == "HIGH")
-    _log.debug(
-        "Risk analysis complete: %d item(s) assessed, %d HIGH",
-        len(report),
-        high_count,
-    )
-    if high_count:
-        _log.warning("%d HIGH-risk API change(s) detected", high_count)
-
-    if output_path:
-        with open(output_path, "w") as f:
-            json.dump(report, f, indent=2)
-        _log.debug("Risk report written to '%s'", output_path)
-
-    return report
+    effective_changes: list[str] | list[dict[str, Any]]
+    if changes is not None:
+        effective_changes = changes
+    else:
+        effective_changes = diff_text.splitlines()
+    return run_from_changes(effective_changes, runtime_path, output_path, lambda_)
 
 
 def risk_main_cli(

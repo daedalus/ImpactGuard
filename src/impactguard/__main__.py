@@ -488,6 +488,24 @@ def cmd_check_commits(args: argparse.Namespace) -> int:
     from .pipeline import run_pipeline_git
 
     suggest_patch: bool = getattr(args, "suggest_patch", False)
+    strict_extraction: bool = getattr(args, "strict_extraction", False)
+    enforce_gate: bool = getattr(args, "enforce_gate", False)
+    strict_analysis: bool = getattr(args, "strict_analysis", False)
+    block_unknown: bool = getattr(args, "block_unknown", False)
+    require_runtime: bool = getattr(args, "require_runtime", False)
+    max_parse_failures: int = getattr(args, "max_parse_failures", 0)
+    max_skipped_files: int = getattr(args, "max_skipped_files", 0)
+    max_call_extraction_failures: int = getattr(args, "max_call_extraction_failures", 0)
+    max_runtime_data_issues: int = getattr(args, "max_runtime_data_issues", 0)
+
+    if strict_analysis:
+        strict_extraction = True
+        enforce_gate = True
+        max_parse_failures = 0
+        max_skipped_files = 0
+        max_call_extraction_failures = 0
+        max_runtime_data_issues = 0
+
     print(f"Checking impact: {args.old_ref} → {args.new_ref}")
 
     try:
@@ -498,6 +516,13 @@ def cmd_check_commits(args: argparse.Namespace) -> int:
             runtime_path=args.runtime,
             output_path=args.output,
             suggest_patch=suggest_patch,
+            strict_extraction=strict_extraction,
+            max_parse_failures=max_parse_failures,
+            max_skipped_files=max_skipped_files,
+            max_call_extraction_failures=max_call_extraction_failures,
+            max_runtime_data_issues=max_runtime_data_issues,
+            block_unknown=block_unknown,
+            require_runtime=require_runtime,
         )
 
         print("\n=== Comparison ===")
@@ -520,8 +545,23 @@ def cmd_check_commits(args: argparse.Namespace) -> int:
                 "Counters: "
                 f"parse_failures={counters.get('parse_failures', 0)}, "
                 f"skipped_files={counters.get('skipped_files', 0)}, "
-                f"fallback_used={counters.get('fallback_used', 0)}"
+                f"fallback_used={counters.get('fallback_used', 0)}, "
+                f"call_extraction_failures={counters.get('call_extraction_failures', 0)}, "
+                f"runtime_data_issues={counters.get('runtime_data_issues', 0)}"
             )
+            runtime = status.get("runtime", {})
+            if runtime:
+                print(f"Runtime state: {runtime.get('state', 'unknown')}")
+
+        if "gate" in result:
+            gate = result["gate"]
+            print("\n=== Gate Summary ===")
+            print(f"Blocked: {str(gate.get('blocked', False)).lower()}")
+            reasons = gate.get("reasons", [])
+            if reasons:
+                print("Reasons:")
+                for reason in reasons:
+                    print(f"  - {reason}")
 
         if "report_html" in result and args.output:
             print(f"\nReport written to {args.output}")
@@ -534,6 +574,9 @@ def cmd_check_commits(args: argparse.Namespace) -> int:
                     print(f"  - {func_name}: {patch_info.get('type', 'unknown')} patch")
                     print(f"    File: {patch_info.get('file', '')}")
 
+        if enforce_gate:
+            gate = result.get("gate", {})
+            return 1 if gate.get("blocked", False) else 0
         return 0
     except Exception as e:
         print(f"Error: {e}")
@@ -548,6 +591,7 @@ def cmd_check_diff(args: argparse.Namespace) -> int:
     diff_path: str | None = getattr(args, "diff", None)
     suggest_patch: bool = getattr(args, "suggest_patch", False)
     show_patch: bool = getattr(args, "show_patch", False)
+    strict_extraction: bool = getattr(args, "strict_extraction", False)
 
     if pipe:
         if not sys.stdin.isatty():
@@ -570,6 +614,7 @@ def cmd_check_diff(args: argparse.Namespace) -> int:
                 output_dir=getattr(args, "output", None),
                 suggest_patch=suggest_patch,
                 show_patch=show_patch,
+                strict_extraction=strict_extraction,
             )
         except ValueError as e:
             print(f"Error: {e}", file=sys.stderr)
@@ -585,6 +630,7 @@ def cmd_check_diff(args: argparse.Namespace) -> int:
                 runtime_path=getattr(args, "runtime", None),
                 output_dir=getattr(args, "output", None),
                 suggest_patch=suggest_patch,
+                strict_extraction=strict_extraction,
             )
         except (FileNotFoundError, ValueError) as e:
             print(f"Error: {e}", file=sys.stderr)
@@ -646,6 +692,7 @@ def cmd_check_commit(args: argparse.Namespace) -> int:
     from .pipeline import run_pipeline_commit
 
     suggest_patch: bool = getattr(args, "suggest_patch", False)
+    strict_extraction: bool = getattr(args, "strict_extraction", False)
     print(f"Analyzing commit: {args.commit_ref}")
 
     try:
@@ -655,6 +702,7 @@ def cmd_check_commit(args: argparse.Namespace) -> int:
             runtime_path=getattr(args, "runtime", None),
             output_path=getattr(args, "output", None),
             suggest_patch=suggest_patch,
+            strict_extraction=strict_extraction,
         )
     except (ValueError, RuntimeError) as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -1680,6 +1728,12 @@ def main() -> int:
         dest="show_patch",
         help="Show how old file would look if patched",
     )
+    check_diff_parser.add_argument(
+        "--strict-extraction",
+        action="store_true",
+        default=False,
+        help="Treat signature extraction failures as fatal when supported by the extractor.",
+    )
     check_diff_parser.set_defaults(func=cmd_check_diff)
 
     # check-commit subcommand (single commit vs its parent)
@@ -1707,6 +1761,12 @@ def main() -> int:
         action="store_true",
         dest="show_patch",
         help="Show how old file would look if patched",
+    )
+    check_commit_parser.add_argument(
+        "--strict-extraction",
+        action="store_true",
+        default=False,
+        help="Treat signature extraction failures as fatal when supported by the extractor.",
     )
     check_commit_parser.set_defaults(func=cmd_check_commit)
 
@@ -1738,6 +1798,63 @@ def main() -> int:
         action="store_true",
         dest="show_patch",
         help="Show how old file would look if patched",
+    )
+    check_commits_parser.add_argument(
+        "--strict-extraction",
+        action="store_true",
+        default=False,
+        help="Treat signature extraction failures as fatal when supported by the extractor.",
+    )
+    check_commits_parser.add_argument(
+        "--enforce-gate",
+        action="store_true",
+        default=False,
+        help="Return non-zero when gate status is blocked (single authoritative CI outcome).",
+    )
+    check_commits_parser.add_argument(
+        "--strict-analysis",
+        action="store_true",
+        default=False,
+        help=(
+            "Enable strict CI policy: enforce gate, strict extraction, and zero-tolerance "
+            "thresholds for parse/skipped/call/runtime analysis failures."
+        ),
+    )
+    check_commits_parser.add_argument(
+        "--block-unknown",
+        action="store_true",
+        default=False,
+        help="Block on UNKNOWN-risk items in addition to HIGH-risk items.",
+    )
+    check_commits_parser.add_argument(
+        "--require-runtime",
+        action="store_true",
+        default=False,
+        help="Require valid runtime data; missing/invalid runtime blocks the gate.",
+    )
+    check_commits_parser.add_argument(
+        "--max-parse-failures",
+        type=int,
+        default=0,
+        help="Maximum allowed parse/signature extraction failures before gate blocks.",
+    )
+    check_commits_parser.add_argument(
+        "--max-skipped-files",
+        type=int,
+        default=0,
+        help="Maximum allowed skipped/unsupported files before gate blocks.",
+    )
+    check_commits_parser.add_argument(
+        "--max-call-extraction-failures",
+        type=int,
+        default=0,
+        help="Maximum allowed call extraction failures before gate blocks.",
+    )
+    check_commits_parser.add_argument(
+        "--max-runtime-data-issues",
+        type=int,
+        default=0,
+        help="Maximum allowed runtime data load/parse issues before gate blocks.",
     )
     check_commits_parser.set_defaults(func=cmd_check_commits)
 
