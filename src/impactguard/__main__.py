@@ -1350,6 +1350,47 @@ def cmd_kpi(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_analyze_behavior(args: argparse.Namespace) -> int:
+    """Detect semantic/behavioral changes between two Python source files.
+
+    Compares function bodies to surface behavioral shifts that are invisible
+    to signature-level diffing: async/sync transitions, generator changes,
+    exception contract changes, side-effect additions/removals, return-value
+    semantics, and docstring contract changes.
+    """
+    from .semantic_analysis import analyze_behavior, compare_behavior
+
+    base_path: str | None = getattr(args, "base_path", None)
+
+    try:
+        old_traits = analyze_behavior(args.old if isinstance(args.old, list) else [args.old], base_path=base_path)
+        new_traits = analyze_behavior(args.new if isinstance(args.new, list) else [args.new], base_path=base_path)
+    except Exception as exc:
+        print(f"Error during behavior analysis: {exc}", file=sys.stderr)
+        return 1
+
+    result = compare_behavior(old_traits, new_traits)
+
+    breaking = result.get("semantic_breaking", [])
+    nonbreaking = result.get("semantic_nonbreaking", [])
+
+    print(f"Semantic breaking changes:     {len(breaking)}")
+    print(f"Semantic non-breaking changes: {len(nonbreaking)}")
+
+    for item in breaking:
+        print(f"  ⚠ {item}")
+    for item in nonbreaking:
+        print(f"  ℹ {item}")
+
+    output = getattr(args, "output", None)
+    if output:
+        with open(output, "w") as f:
+            json.dump(result, f, indent=2)
+        print(f"\nSemantic diff written to {output}")
+
+    return 1 if breaking else 0
+
+
 def cmd_validate_config(args: argparse.Namespace) -> int:
     """Validate the impactguard.toml configuration file."""
     from .config import validate_config
@@ -1930,6 +1971,35 @@ def main() -> int:
     )
     kpi_parser.set_defaults(func=cmd_kpi)
 
+    # analyze-behavior subcommand
+    behavior_parser = subparsers.add_parser(
+        "analyze-behavior",
+        help="Detect semantic/behavioral changes between two Python source files",
+        description=(
+            "Compare two Python source files (or lists of files) to surface "
+            "behavioral changes beyond signature-level diffing: async/sync "
+            "transitions, exception contracts, side effects, return semantics, "
+            "and docstring contract changes."
+        ),
+    )
+    behavior_parser.add_argument("old", help="Old Python source file")
+    behavior_parser.add_argument("new", help="New Python source file")
+    behavior_parser.add_argument(
+        "--base-path",
+        dest="base_path",
+        metavar="PATH",
+        help=(
+            "Root directory used to make fqnames relative "
+            "(same semantics as the 'extract' subcommand's base_path)"
+        ),
+    )
+    behavior_parser.add_argument(
+        "-o",
+        "--output",
+        help="Write semantic diff as JSON to this file (default: text to stdout)",
+    )
+    behavior_parser.set_defaults(func=cmd_analyze_behavior)
+
     if (
         len(sys.argv) > 1
         and sys.argv[1]
@@ -1957,6 +2027,7 @@ def main() -> int:
             "history",
             "validate-config",
             "kpi",
+            "analyze-behavior",
         ]
         and not sys.argv[1].startswith("-")
     ):

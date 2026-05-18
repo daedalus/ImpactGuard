@@ -105,6 +105,11 @@ from .schema import (
 from .schema import (
     validate_signatures as validate_signatures_data,
 )
+from .semantic_analysis import (
+    SEMANTIC_SEVERITY,
+    analyze_behavior,
+    compare_behavior,
+)
 from .semver import format_semver_recommendation, suggest_semver
 from .suggest_fixes import enrich_with_fixes, get_line, suggest
 from .trace_calls import dump as dump_trace
@@ -259,6 +264,10 @@ __all__ = [
     "extract_calls",
     "analyze_module",
     "analyze_impact",
+    # Semantic behavior analysis
+    "analyze_behavior",
+    "compare_behavior",
+    "SEMANTIC_SEVERITY",
     # Logging
     "get_logger",
     "configure_logging",
