@@ -483,6 +483,59 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def _print_check_result(
+    result: dict[str, Any], args: argparse.Namespace, suggest_patch: bool
+) -> None:
+    comparison = result.get("comparison", {})
+    print("\n=== Comparison ===")
+    print(f"Breaking changes: {len(comparison.get('breaking', []))}")
+    print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
+
+    if "risk" in result:
+        risk_items = result["risk"]
+        high = sum(1 for r in risk_items if r.get("risk") == "HIGH")
+        print("\n=== Risk Analysis ===")
+        print(f"HIGH risk: {high}")
+
+    if "analysis_status" in result:
+        status = result["analysis_status"]
+        counters = status.get("counters", {})
+        print("\n=== Analysis Status ===")
+        print(f"Status: {status.get('status', 'unknown').upper()}")
+        print(
+            "Counters: "
+            f"parse_failures={counters.get('parse_failures', 0)}, "
+            f"skipped_files={counters.get('skipped_files', 0)}, "
+            f"fallback_used={counters.get('fallback_used', 0)}, "
+            f"call_extraction_failures={counters.get('call_extraction_failures', 0)}, "
+            f"runtime_data_issues={counters.get('runtime_data_issues', 0)}"
+        )
+        runtime = status.get("runtime", {})
+        if runtime:
+            print(f"Runtime state: {runtime.get('state', 'unknown')}")
+
+    if "gate" in result:
+        gate = result["gate"]
+        print("\n=== Gate Summary ===")
+        print(f"Blocked: {str(gate.get('blocked', False)).lower()}")
+        reasons = gate.get("reasons", [])
+        if reasons:
+            print("Reasons:")
+            for reason in reasons:
+                print(f"  - {reason}")
+
+    if "report_html" in result and args.output:
+        print(f"\nReport written to {args.output}")
+
+    if suggest_patch and "patches" in result:
+        patches = result["patches"]
+        if patches:
+            print(f"\n=== Generated Patches ({len(patches)}) ===")
+            for func_name, patch_info in patches.items():
+                print(f"  - {func_name}: {patch_info.get('type', 'unknown')} patch")
+                print(f"    File: {patch_info.get('file', '')}")
+
+
 def cmd_check_commits(args: argparse.Namespace) -> int:
     """Run ImpactGuard pipeline comparing two git commits."""
     from .pipeline import run_pipeline_git
@@ -490,18 +543,15 @@ def cmd_check_commits(args: argparse.Namespace) -> int:
     suggest_patch: bool = getattr(args, "suggest_patch", False)
     strict_extraction: bool = getattr(args, "strict_extraction", False)
     enforce_gate: bool = getattr(args, "enforce_gate", False)
-    strict_analysis: bool = getattr(args, "strict_analysis", False)
     block_unknown: bool = getattr(args, "block_unknown", False)
     require_runtime: bool = getattr(args, "require_runtime", False)
+
     max_parse_failures: int = getattr(args, "max_parse_failures", 0)
     max_skipped_files: int = getattr(args, "max_skipped_files", 0)
     max_call_extraction_failures: int = getattr(args, "max_call_extraction_failures", 0)
     max_runtime_data_issues: int = getattr(args, "max_runtime_data_issues", 0)
 
-    if strict_analysis:
-        # strict_analysis intentionally implies zero-tolerance CI behavior:
-        # gate enforcement + strict extraction + zero thresholds for all
-        # analysis degradation counters.
+    if getattr(args, "strict_analysis", False):
         strict_extraction = True
         enforce_gate = True
         max_parse_failures = 0
@@ -509,7 +559,7 @@ def cmd_check_commits(args: argparse.Namespace) -> int:
         max_call_extraction_failures = 0
         max_runtime_data_issues = 0
 
-    print(f"Checking impact: {args.old_ref} → {args.new_ref}")
+    print(f"Checking impact: {args.old_ref} \u2192 {args.new_ref}")
 
     try:
         result = run_pipeline_git(
@@ -528,54 +578,7 @@ def cmd_check_commits(args: argparse.Namespace) -> int:
             require_runtime=require_runtime,
         )
 
-        print("\n=== Comparison ===")
-        comparison = result.get("comparison", {})
-        print(f"Breaking changes: {len(comparison.get('breaking', []))}")
-        print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
-
-        if "risk" in result:
-            risk_items = result["risk"]
-            high = sum(1 for r in risk_items if r.get("risk") == "HIGH")
-            print("\n=== Risk Analysis ===")
-            print(f"HIGH risk: {high}")
-
-        if "analysis_status" in result:
-            status = result["analysis_status"]
-            counters = status.get("counters", {})
-            print("\n=== Analysis Status ===")
-            print(f"Status: {status.get('status', 'unknown').upper()}")
-            print(
-                "Counters: "
-                f"parse_failures={counters.get('parse_failures', 0)}, "
-                f"skipped_files={counters.get('skipped_files', 0)}, "
-                f"fallback_used={counters.get('fallback_used', 0)}, "
-                f"call_extraction_failures={counters.get('call_extraction_failures', 0)}, "
-                f"runtime_data_issues={counters.get('runtime_data_issues', 0)}"
-            )
-            runtime = status.get("runtime", {})
-            if runtime:
-                print(f"Runtime state: {runtime.get('state', 'unknown')}")
-
-        if "gate" in result:
-            gate = result["gate"]
-            print("\n=== Gate Summary ===")
-            print(f"Blocked: {str(gate.get('blocked', False)).lower()}")
-            reasons = gate.get("reasons", [])
-            if reasons:
-                print("Reasons:")
-                for reason in reasons:
-                    print(f"  - {reason}")
-
-        if "report_html" in result and args.output:
-            print(f"\nReport written to {args.output}")
-
-        if suggest_patch and "patches" in result:
-            patches = result["patches"]
-            if patches:
-                print(f"\n=== Generated Patches ({len(patches)}) ===")
-                for func_name, patch_info in patches.items():
-                    print(f"  - {func_name}: {patch_info.get('type', 'unknown')} patch")
-                    print(f"    File: {patch_info.get('file', '')}")
+        _print_check_result(result, args, suggest_patch)
 
         if enforce_gate:
             gate = result.get("gate", {})
@@ -586,68 +589,74 @@ def cmd_check_commits(args: argparse.Namespace) -> int:
         return 1
 
 
-def cmd_check_diff(args: argparse.Namespace) -> int:
-    """Run ImpactGuard pipeline on a unified diff / patch file."""
-    from .pipeline import run_pipeline_diff, run_pipeline_diff_content
+def _run_diff_pipe(
+    args: argparse.Namespace,
+    suggest_patch: bool,
+    show_patch: bool,
+    strict_extraction: bool,
+) -> dict[str, Any] | None:
+    from .pipeline import run_pipeline_diff_content
 
-    pipe: bool = getattr(args, "pipe", False)
-    diff_path: str | None = getattr(args, "diff", None)
-    suggest_patch: bool = getattr(args, "suggest_patch", False)
-    show_patch: bool = getattr(args, "show_patch", False)
-    strict_extraction: bool = getattr(args, "strict_extraction", False)
+    if sys.stdin.isatty():
+        print("Error: --pipe requires data on stdin", file=sys.stderr)
+        return None
+    try:
+        diff_text = sys.stdin.read()
+    except UnicodeDecodeError:
+        print(
+            "Error: --pipe received binary data; expected text diff.", file=sys.stderr
+        )
+        return None
+    print("Analyzing diff from stdin")
+    try:
+        return run_pipeline_diff_content(
+            diff_text=diff_text,
+            runtime_path=getattr(args, "runtime", None),
+            output_dir=getattr(args, "output", None),
+            suggest_patch=suggest_patch,
+            show_patch=show_patch,
+            strict_extraction=strict_extraction,
+        )
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return None
 
-    if pipe:
-        if not sys.stdin.isatty():
-            try:
-                diff_text = sys.stdin.read()
-            except UnicodeDecodeError:
-                print(
-                    "Error: --pipe received binary data; expected text diff.",
-                    file=sys.stderr,
-                )
-                return 1
-        else:
-            print("Error: --pipe requires data on stdin", file=sys.stderr)
-            return 1
-        print("Analyzing diff from stdin")
-        try:
-            result = run_pipeline_diff_content(
-                diff_text=diff_text,
-                runtime_path=getattr(args, "runtime", None),
-                output_dir=getattr(args, "output", None),
-                suggest_patch=suggest_patch,
-                show_patch=show_patch,
-                strict_extraction=strict_extraction,
-            )
-        except ValueError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            return 1
-    else:
-        if not diff_path:
-            print("Error: provide a diff path or use --pipe", file=sys.stderr)
-            return 1
-        print(f"Analyzing diff: {diff_path}")
-        try:
-            result = run_pipeline_diff(
-                diff_path=diff_path,
-                runtime_path=getattr(args, "runtime", None),
-                output_dir=getattr(args, "output", None),
-                suggest_patch=suggest_patch,
-                strict_extraction=strict_extraction,
-            )
-        except (FileNotFoundError, ValueError) as e:
-            print(f"Error: {e}", file=sys.stderr)
-            return 1
 
-    print("\n=== Comparison ===")
+def _run_diff_file(
+    args: argparse.Namespace, strict_extraction: bool
+) -> dict[str, Any] | None:
+    from .pipeline import run_pipeline_diff
+
+    diff_path = getattr(args, "diff", None)
+    if not diff_path:
+        print("Error: provide a diff path or use --pipe", file=sys.stderr)
+        return None
+    print(f"Analyzing diff: {diff_path}")
+    try:
+        return run_pipeline_diff(
+            diff_path=diff_path,
+            runtime_path=getattr(args, "runtime", None),
+            output_dir=getattr(args, "output", None),
+            suggest_patch=getattr(args, "suggest_patch", False),
+            strict_extraction=strict_extraction,
+        )
+    except (FileNotFoundError, ValueError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return None
+
+
+def _print_diff_result(
+    result: dict[str, Any], args: argparse.Namespace, suggest_patch: bool
+) -> None:
     comparison = result.get("comparison", {})
+    print("\n=== Comparison ===")
     print(f"Breaking changes: {len(comparison.get('breaking', []))}")
     print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
 
     if "semver" in result:
         sv = result["semver"]
         print("\n=== Semver Recommendation ===")
-        print(f"Bump: {sv.get('bump', 'patch').upper()}  — {sv.get('reason', '')}")
+        print(f"Bump: {sv.get('bump', 'patch').upper()}  \u2014 {sv.get('reason', '')}")
 
     if "risk" in result:
         risk_items = result["risk"]
@@ -687,6 +696,23 @@ def cmd_check_diff(args: argparse.Namespace) -> int:
                 print(f"  - {func_name}: {patch_info.get('type', 'unknown')} patch")
                 print(f"    File: {patch_info.get('file', '')}")
 
+
+def cmd_check_diff(args: argparse.Namespace) -> int:
+    """Run ImpactGuard pipeline on a unified diff / patch file."""
+    suggest_patch: bool = getattr(args, "suggest_patch", False)
+    show_patch: bool = getattr(args, "show_patch", False)
+    strict_extraction: bool = getattr(args, "strict_extraction", False)
+
+    if getattr(args, "pipe", False):
+        result = _run_diff_pipe(args, suggest_patch, show_patch, strict_extraction)
+    else:
+        result = _run_diff_file(args, strict_extraction)
+
+    if result is None:
+        return 1
+
+    _print_diff_result(result, args, suggest_patch)
+    comparison = result.get("comparison", {})
     return 1 if comparison.get("breaking") else 0
 
 
@@ -821,7 +847,9 @@ def _write_precommit_text(
     print(f"Created .pre-commit-config.yaml: {config_path}")
 
 
-def _install_precommit_hooks(repo_path: Path, install_pre: bool, install_post: bool) -> int:
+def _install_precommit_hooks(
+    repo_path: Path, install_pre: bool, install_post: bool
+) -> int:
     """Install pre-commit hooks into the target repository."""
     import subprocess
 
@@ -1058,94 +1086,104 @@ def cmd_patch(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_baseline(args: argparse.Namespace) -> int:
-    """Manage ImpactGuard baselines."""
-    from .baseline import (
-        DEFAULT_BASELINE_PATH,
-        baseline_exists,
-        compare_with_baseline,
-        load_baseline,
-        save_baseline,
+def _baseline_save(args: argparse.Namespace, baseline_path: str | None) -> int:
+    from .baseline import save_baseline
+
+    files = getattr(args, "files", None) or []
+    if not files:
+        import glob as _glob
+
+        files = list(_glob.glob("**/*.py", recursive=True))
+        if not files:
+            print("Error: No Python files found", file=sys.stderr)
+            return 1
+
+    import datetime
+
+    metadata = {
+        "saved_at": datetime.datetime.now(datetime.UTC).isoformat(),
+        "files_count": len(files),
+    }
+    saved = save_baseline(files, baseline_path, metadata)
+    print(f"Baseline saved: {saved} ({len(files)} file(s))")
+    return 0
+
+
+def _baseline_status(_args: argparse.Namespace, baseline_path: str | None) -> int:
+    from .baseline import DEFAULT_BASELINE_PATH, baseline_exists, load_baseline
+
+    effective = baseline_path or DEFAULT_BASELINE_PATH
+    if baseline_exists(effective):
+        data = load_baseline(effective)
+        meta = data.get("metadata", {})
+        sigs = data.get("signatures", [])
+        print(f"Baseline: {effective}")
+        print(f"  Functions: {len(sigs)}")
+        if meta.get("saved_at"):
+            print(f"  Saved at:  {meta['saved_at']}")
+    else:
+        print(f"No baseline found at: {effective}")
+        print("Run `impactguard baseline save` to create one.")
+    return 0
+
+
+def _baseline_compare(args: argparse.Namespace, baseline_path: str | None) -> int:
+    from .baseline import compare_with_baseline
+
+    files = getattr(args, "files", None) or []
+    if not files:
+        import glob as _glob
+
+        files = list(_glob.glob("**/*.py", recursive=True))
+        if not files:
+            print("Error: No Python files found", file=sys.stderr)
+            return 1
+
+    try:
+        result = compare_with_baseline(files, baseline_path)
+    except FileNotFoundError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    comparison = result["comparison"]
+    semver = result["semver"]
+    print(f"Breaking changes:     {len(comparison.get('breaking', []))}")
+    print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
+    print(
+        f"Semver recommendation: {semver.get('bump', 'patch').upper()} \u2014 {semver.get('reason', '')}"
     )
 
+    for item in comparison.get("breaking", []):
+        print(f"  \u26a0 {item}")
+
+    output = getattr(args, "output", None)
+    if output:
+        import json
+
+        with open(output, "w") as f:
+            json.dump(result, f, indent=2)
+        print(f"\nResult written to {output}")
+
+    return 1 if comparison.get("breaking") else 0
+
+
+_SUBCOMMANDS = {
+    "save": _baseline_save,
+    "status": _baseline_status,
+    "compare": _baseline_compare,
+}
+
+
+def cmd_baseline(args: argparse.Namespace) -> int:
+    """Manage ImpactGuard baselines."""
     subcommand: str = args.baseline_cmd or "status"
     baseline_path: str | None = getattr(args, "baseline_path", None)
 
-    if subcommand == "save":
-        files = getattr(args, "files", None) or []
-        if not files:
-            # Collect all tracked Python files
-            import glob as _glob
-
-            files = list(_glob.glob("**/*.py", recursive=True))
-            if not files:
-                print("Error: No Python files found", file=sys.stderr)
-                return 1
-
-        import datetime
-
-        metadata = {
-            "saved_at": datetime.datetime.now(datetime.UTC).isoformat(),
-            "files_count": len(files),
-        }
-        saved = save_baseline(files, baseline_path, metadata)
-        print(f"Baseline saved: {saved} ({len(files)} file(s))")
-        return 0
-
-    elif subcommand == "status":
-        effective = baseline_path or DEFAULT_BASELINE_PATH
-        if baseline_exists(effective):
-            data = load_baseline(effective)
-            meta = data.get("metadata", {})
-            sigs = data.get("signatures", [])
-            print(f"Baseline: {effective}")
-            print(f"  Functions: {len(sigs)}")
-            if meta.get("saved_at"):
-                print(f"  Saved at:  {meta['saved_at']}")
-        else:
-            print(f"No baseline found at: {effective}")
-            print("Run `impactguard baseline save` to create one.")
-        return 0
-
-    elif subcommand == "compare":
-        files = getattr(args, "files", None) or []
-        if not files:
-            import glob as _glob
-
-            files = list(_glob.glob("**/*.py", recursive=True))
-            if not files:
-                print("Error: No Python files found", file=sys.stderr)
-                return 1
-
-        try:
-            result = compare_with_baseline(files, baseline_path)
-        except FileNotFoundError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            return 1
-
-        comparison = result["comparison"]
-        semver = result["semver"]
-        print(f"Breaking changes:     {len(comparison.get('breaking', []))}")
-        print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
-        print(
-            f"Semver recommendation: {semver.get('bump', 'patch').upper()} — {semver.get('reason', '')}"
-        )
-
-        for item in comparison.get("breaking", []):
-            print(f"  ⚠ {item}")
-
-        output = getattr(args, "output", None)
-        if output:
-            import json
-
-            with open(output, "w") as f:
-                json.dump(result, f, indent=2)
-            print(f"\nResult written to {output}")
-
-        return 1 if comparison.get("breaking") else 0
-
-    print(f"Unknown baseline subcommand: {subcommand}", file=sys.stderr)
-    return 1
+    handler = _SUBCOMMANDS.get(subcommand)
+    if handler is None:
+        print(f"Unknown baseline subcommand: {subcommand}", file=sys.stderr)
+        return 1
+    return handler(args, baseline_path)
 
 
 def cmd_semver(args: argparse.Namespace) -> int:
