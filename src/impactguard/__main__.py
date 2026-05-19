@@ -2243,7 +2243,10 @@ def post_commit_hook() -> int:
             text=True,
         )
         if result.returncode == 0 and result.stdout.strip():
-            with open("/tmp/impactguard_sigs.json", "w") as f:
+            import tempfile
+
+            sigs_path = os.path.join(tempfile.gettempdir(), "impactguard_sigs.json")
+            with open(sigs_path, "w") as f:
                 f.write(result.stdout)
     except Exception:
         return 0
