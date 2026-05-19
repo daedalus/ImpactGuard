@@ -67,52 +67,41 @@ def _normalize_changes(
     return normalized
 
 
-def run_from_changes(
-    changes: list[str] | list[dict[str, Any]],
-    runtime_path: str,
-    output_path: str | None = None,
-    lambda_: float = 1.0,
+_SKIP_PREFIXES = ("OPTIONAL", "ADDED", "TYPE_WIDENED", "RETURN_TYPE_WIDENED")
+
+
+def _should_skip_change(change_type: str, fqname: str, seen: set[str]) -> bool:
+    if not change_type or not fqname:
+        return True
+    if fqname in seen:
+        return True
+    for p in _SKIP_PREFIXES:
+        if change_type.startswith(p):
+            return True
+    return False
+
+
+def _build_risk_report(
+    normalized_changes: list[dict[str, Any]],
+    runtime: dict[str, int],
+    max_count: int,
+    lambda_: float,
 ) -> list[dict[str, Any]]:
-    """Run risk analysis pipeline from structured change entries."""
-    normalized_changes = _normalize_changes(changes)
-
-    _log.debug(
-        "Running risk analysis on %d structured change(s)", len(normalized_changes)
-    )
-
-    # Load runtime data
-    try:
-        runtime = build_runtime_index(load_runtime_observations(runtime_path))
-    except (json.JSONDecodeError, KeyError, OSError):
-        runtime = {}
-
-    max_count = max(runtime.values()) if runtime else 1
-
+    seen: set[str] = set()
+    known_prefixes = tuple(_effective_severity_scores().keys())
     report: list[dict[str, Any]] = []
-    seen_functions: set[str] = set()
-    known_change_prefixes = tuple(_effective_severity_scores().keys())
 
     for change in normalized_changes:
         change_type = str(change["change"]).strip()
         fqname = str(change["function"]).strip()
-        if not change_type or not fqname:
-            continue
 
-        if fqname in seen_functions:
+        if _should_skip_change(change_type, fqname, seen):
             continue
-        seen_functions.add(fqname)
-
-        if (
-            change_type.startswith("OPTIONAL")
-            or change_type.startswith("ADDED")
-            or change_type.startswith("TYPE_WIDENED")
-            or change_type.startswith("RETURN_TYPE_WIDENED")
-        ):
-            continue
+        seen.add(fqname)
 
         severity = get_severity(change_type)
         if severity == _UNKNOWN_SEVERITY and not any(
-            change_type.startswith(k) for k in known_change_prefixes
+            change_type.startswith(k) for k in known_prefixes
         ):
             continue
 
@@ -131,23 +120,39 @@ def run_from_changes(
                 "details": f"called {count} times" if count > 0 else "not observed",
             }
         )
-        _log.debug(
-            "Risk item: %s → %s (severity=%.2f, exposure=%.4f, confidence=%.2f)",
-            fqname,
-            risk,
-            severity,
-            exp,
-            conf,
-        )
 
     risk_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2, "UNKNOWN": 3}
     report.sort(key=lambda x: risk_order.get(str(x["risk"]), 4))
+    return report
+
+
+def _load_runtime_data(runtime_path: str) -> tuple[dict[str, int], int]:
+    try:
+        runtime = build_runtime_index(load_runtime_observations(runtime_path))
+    except (json.JSONDecodeError, KeyError, OSError):
+        runtime = {}
+    max_count = max(runtime.values()) if runtime else 1
+    return runtime, max_count
+
+
+def run_from_changes(
+    changes: list[str] | list[dict[str, Any]],
+    runtime_path: str,
+    output_path: str | None = None,
+    lambda_: float = 1.0,
+) -> list[dict[str, Any]]:
+    """Run risk analysis pipeline from structured change entries."""
+    normalized_changes = _normalize_changes(changes)
+    _log.debug(
+        "Running risk analysis on %d structured change(s)", len(normalized_changes)
+    )
+
+    runtime, max_count = _load_runtime_data(runtime_path)
+    report = _build_risk_report(normalized_changes, runtime, max_count, lambda_)
 
     high_count = sum(1 for r in report if r["risk"] == "HIGH")
     _log.debug(
-        "Risk analysis complete: %d item(s) assessed, %d HIGH",
-        len(report),
-        high_count,
+        "Risk analysis complete: %d item(s) assessed, %d HIGH", len(report), high_count
     )
     if high_count:
         _log.warning("%d HIGH-risk API change(s) detected", high_count)

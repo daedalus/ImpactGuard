@@ -27,6 +27,15 @@ repos:
   - id: check-added-large-files
 - repo: local
   hooks:
+  - id: lizard
+    name: lizard - Code Complexity Check
+    entry: lizard src/ -x .venv --languages python --CCN 15 -w
+    language: system
+    files: ^src/impactguard/.*\.py$
+    pass_filenames: false
+    stages:
+      - pre-commit
+      - manual
   - id: impactguard-check
     name: ImpactGuard - Full Pipeline Check
     entry: impactguard-check-staged

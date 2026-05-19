@@ -80,6 +80,20 @@ def _has_modifier(node: Any, source: bytes, modifier: str) -> bool:
     return False
 
 
+def _parse_parameter_child(c: Any, source: bytes, acc: dict[str, Any]) -> None:
+    ct = c.type
+    if ct in ("simple_identifier", "wildcard_pattern") and acc["name"] is None:
+        acc["name"] = node_text(c, source)
+    elif ct == ":":
+        acc["colon_seen"] = True
+    elif acc["colon_seen"] and ct not in ("=",) and acc["type_str"] is None:
+        acc["type_str"] = node_text(c, source).strip()
+    elif ct == "=":
+        acc["has_default"] = True
+    elif ct == "...":
+        acc["is_variadic"] = True
+
+
 def _parse_params(
     params_node: Any | None,
     source: bytes,
@@ -95,31 +109,53 @@ def _parse_params(
         if child.type in ("(", ")", ","):
             continue
         if child.type == "parameter":
-            # Swift params: [label] name: Type [= default]
-            name: str | None = None
-            type_str: str | None = None
-            has_default = False
-            is_variadic = False
-            colon_seen = False
+            acc: dict[str, Any] = {
+                "name": None,
+                "type_str": None,
+                "has_default": False,
+                "is_variadic": False,
+                "colon_seen": False,
+            }
             for c in child.children:
-                if c.type in ("simple_identifier", "wildcard_pattern"):
-                    if name is None:
-                        name = node_text(c, source)
-                elif c.type == ":":
-                    colon_seen = True
-                elif colon_seen and c.type not in ("=",) and type_str is None:
-                    type_str = node_text(c, source).strip()
-                elif c.type == "=":
-                    has_default = True
-                elif c.type == "...":
-                    is_variadic = True
-            if is_variadic:
+                _parse_parameter_child(c, source, acc)
+            if acc["is_variadic"]:
                 has_vararg = True
             positional.append(
-                {"name": name or "_", "has_default": has_default, "type": type_str}
+                {
+                    "name": acc["name"] or "_",
+                    "has_default": acc["has_default"],
+                    "type": acc["type_str"],
+                }
             )
 
     return positional, has_vararg
+
+
+def _arrow_return_type(node: Any, source: bytes) -> str | None:
+    arrow_seen = False
+    for child in node.children:
+        if child.type == "->":
+            arrow_seen = True
+        elif arrow_seen and child.type not in ("{", ";"):
+            return node_text(child, source).strip()
+    return None
+
+
+def _lookahead_async(node: Any, source: bytes) -> bool:
+    parent = node.parent
+    if parent is None:
+        return False
+    found_self = False
+    for child in parent.children:
+        if found_self:
+            break
+        if child == node:
+            found_self = True
+        elif child.type == "async" or (
+            child.type == "ERROR" and node_text(child, source).strip() == "async"
+        ):
+            return True
+    return False
 
 
 def _process_function(
@@ -140,35 +176,7 @@ def _process_function(
     params_node = child_of_type(node, "parameter_clause", "function_value_parameters")
     positional, has_vararg = _parse_params(params_node, source)
 
-    # Return type: after ->
-    return_type: str | None = None
-    arrow_seen = False
-    for child in node.children:
-        if child.type == "->":
-            arrow_seen = True
-        elif arrow_seen and child.type not in ("{", ";"):
-            return_type = node_text(child, source).strip()
-            break
-
-    # Check for async modifier (can be a child, or before 'func' in an ERROR node)
-    is_async = _has_modifier(node, source, "async")
-    if not is_async:
-        # Check if there's an 'async' node before this function_declaration
-        # (tree-sitter may put it in an ERROR node before the function)
-        parent = node.parent
-        if parent is not None:
-            found_self = False
-            for child in parent.children:
-                if found_self:
-                    break
-                if child == node:
-                    found_self = True
-                elif child.type == "async" or (
-                    child.type == "ERROR"
-                    and node_text(child, source).strip() == "async"
-                ):
-                    is_async = True
-                    break
+    is_async = _has_modifier(node, source, "async") or _lookahead_async(node, source)
 
     exported = _has_modifier(node, source, "public") or _has_modifier(
         node, source, "open"
@@ -194,7 +202,7 @@ def _process_function(
             "vararg": has_vararg,
             "kwarg": False,
             "class_name": class_name,
-            "return_type": return_type,
+            "return_type": _arrow_return_type(node, source),
             "decorators": [],
             "is_async": is_async,
             "ignored": has_ignore_comment(source, node.start_point[0]),

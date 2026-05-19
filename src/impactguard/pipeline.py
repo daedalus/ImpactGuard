@@ -65,6 +65,100 @@ def _summarize_files(files: list[str], limit: int = 5) -> str:
     return f"{shown} (+{remaining} more)"
 
 
+def _record_unsupported_file(
+    f: str, stats: dict[str, int] | None, events: list[dict[str, str]] | None
+) -> None:
+    if stats is not None:
+        stats["skipped_files"] = stats.get("skipped_files", 0) + 1
+        stats["unsupported_files"] = stats.get("unsupported_files", 0) + 1
+    if events is not None:
+        events.append(
+            {
+                "level": "warning",
+                "kind": "unsupported_file",
+                "file": str(f),
+                "message": "No registered extractor; file skipped.",
+            }
+        )
+
+
+def _group_files_by_extractor(files: list[str]) -> dict[str, tuple[Any, list[str]]]:
+    from .languages.lib.registry import get_extractor as _get_extractor
+
+    groups: dict[str, tuple[Any, list[str]]] = {}
+    for f in files:
+        extractor = _get_extractor(f)
+        if extractor is None:
+            continue
+        lang = extractor.language
+        if lang not in groups:
+            groups[lang] = (extractor, [])
+        groups[lang][1].append(f)
+    return groups
+
+
+def _extract_group(
+    extractor: Any,
+    lang_files: list[str],
+    base_path: str | None,
+    strict_extraction: bool,
+    stats: dict[str, int] | None,
+    events: list[dict[str, str]] | None,
+) -> list[dict[str, Any]]:
+    assert extractor is not None
+    supports_strict = False
+    if strict_extraction:
+        try:
+            supports_strict = (
+                "strict" in inspect.signature(extractor.extract_signatures).parameters
+            )
+        except (TypeError, ValueError):
+            supports_strict = False
+    try:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            method = extractor.extract_signatures
+            kwargs: dict[str, Any] = {"_base_path": base_path}
+            if strict_extraction and supports_strict:
+                kwargs["strict"] = True
+            extracted: list[dict[str, Any]] = method(lang_files, **kwargs)
+
+        for w in caught:
+            msg = str(w.message)
+            if "regex-based fallback" in msg:
+                if stats is not None:
+                    stats["fallback_used"] = stats.get("fallback_used", 0) + 1
+                if events is not None:
+                    events.append(
+                        {
+                            "level": "warning",
+                            "kind": "fallback_used",
+                            "file": _summarize_files(lang_files),
+                            "message": msg,
+                        }
+                    )
+        return extracted
+    except (OSError, SyntaxError, UnicodeDecodeError, ValueError, TypeError) as exc:
+        if stats is not None:
+            stats["parse_failures"] = stats.get("parse_failures", 0) + 1
+        if events is not None:
+            events.append(
+                {
+                    "level": "error",
+                    "kind": "extract_signatures_failed",
+                    "file": _summarize_files(lang_files),
+                    "message": str(exc),
+                }
+            )
+        _log.warning(
+            "Signature extraction failed for language '%s' (%d file(s)): %s",
+            extractor.language,
+            len(lang_files),
+            exc,
+        )
+        return []
+
+
 def _extract_by_language(
     files: list[str],
     base_path: str | None = None,
@@ -75,13 +169,6 @@ def _extract_by_language(
     """Extract signatures from *files* using the registry extractor for each file.
 
     Files whose extension has no registered extractor are silently skipped.
-
-    Args:
-        files: Source file paths (any mix of languages).
-        base_path: Optional base path passed through to each extractor.
-
-    Returns:
-        Combined list of signature dicts from all supported files.
     """
     from .languages.lib.registry import get_extractor as _get_extractor
 
@@ -89,18 +176,7 @@ def _extract_by_language(
     for f in files:
         extractor = _get_extractor(f)
         if extractor is None:
-            if stats is not None:
-                stats["skipped_files"] = stats.get("skipped_files", 0) + 1
-                stats["unsupported_files"] = stats.get("unsupported_files", 0) + 1
-            if events is not None:
-                events.append(
-                    {
-                        "level": "warning",
-                        "kind": "unsupported_file",
-                        "file": str(f),
-                        "message": "No registered extractor; file skipped.",
-                    }
-                )
+            _record_unsupported_file(f, stats, events)
             continue
         lang = extractor.language
         if lang not in groups:
@@ -109,58 +185,11 @@ def _extract_by_language(
 
     all_sigs: list[dict[str, Any]] = []
     for extractor, lang_files in groups.values():
-        assert extractor is not None
-        supports_strict = False
-        if strict_extraction:
-            try:
-                supports_strict = (
-                    "strict"
-                    in inspect.signature(extractor.extract_signatures).parameters
-                )
-            except (TypeError, ValueError):
-                supports_strict = False
-        try:
-            with warnings.catch_warnings(record=True) as caught:
-                warnings.simplefilter("always")
-                method = extractor.extract_signatures
-                kwargs: dict[str, Any] = {"_base_path": base_path}
-                if strict_extraction and supports_strict:
-                    kwargs["strict"] = True
-                extracted = method(lang_files, **kwargs)
-            all_sigs.extend(extracted)
-
-            for w in caught:
-                msg = str(w.message)
-                if "regex-based fallback" in msg:
-                    if stats is not None:
-                        stats["fallback_used"] = stats.get("fallback_used", 0) + 1
-                    if events is not None:
-                        events.append(
-                            {
-                                "level": "warning",
-                                "kind": "fallback_used",
-                                "file": _summarize_files(lang_files),
-                                "message": msg,
-                            }
-                        )
-        except (OSError, SyntaxError, UnicodeDecodeError, ValueError, TypeError) as exc:
-            if stats is not None:
-                stats["parse_failures"] = stats.get("parse_failures", 0) + 1
-            if events is not None:
-                events.append(
-                    {
-                        "level": "error",
-                        "kind": "extract_signatures_failed",
-                        "file": _summarize_files(lang_files),
-                        "message": str(exc),
-                    }
-                )
-            _log.warning(
-                "Signature extraction failed for language '%s' (%d file(s)): %s",
-                extractor.language,
-                len(lang_files),
-                exc,
+        all_sigs.extend(
+            _extract_group(
+                extractor, lang_files, base_path, strict_extraction, stats, events
             )
+        )
     return all_sigs
 
 
@@ -387,7 +416,9 @@ def _extract_non_python_calls(
             message=str(exc),
         )
         _log.warning("Call extraction failed for '%s': %s", file_path, exc)
-        print(f"Warning: call extraction failed for {file_path}: {exc}", file=sys.stderr)
+        print(
+            f"Warning: call extraction failed for {file_path}: {exc}", file=sys.stderr
+        )
 
 
 def _extract_calls_to_path(
@@ -440,9 +471,13 @@ def _extract_calls_to_path(
 
     if runtime_path and Path(runtime_path).exists():
         try:
-            all_calls.extend(runtime_callsite_entries(load_runtime_observations(runtime_path)))
+            all_calls.extend(
+                runtime_callsite_entries(load_runtime_observations(runtime_path))
+            )
         except (json.JSONDecodeError, OSError) as exc:
-            _log.warning("Failed to process runtime data from '%s': %s", runtime_path, exc)
+            _log.warning(
+                "Failed to process runtime data from '%s': %s", runtime_path, exc
+            )
             stats["runtime_data_issues"] += 1
             _append_analysis_event(
                 events,
@@ -536,9 +571,7 @@ def _attach_patch_source_info(
             risk_item["file"] = fqname_to_file[fqname]
 
 
-def _calibrate_feedback(
-    stats: dict[str, int], events: list[dict[str, str]]
-) -> None:
+def _calibrate_feedback(stats: dict[str, int], events: list[dict[str, str]]) -> None:
     """Apply feedback-derived weights when outcome data is available."""
     try:
         from .feedback import (
@@ -617,6 +650,29 @@ def _runtime_state(runtime_path: str | None, stats: dict[str, int]) -> str:
     return "not_provided"
 
 
+def _build_gate_reasons(
+    high_count: int,
+    unknown_count: int,
+    block_unknown: bool,
+    policy: dict[str, Any],
+    runtime_gate_blocked: bool,
+) -> list[str]:
+    reasons: list[str] = []
+    if high_count > 0:
+        reasons.append(f"HIGH risk items detected: {high_count}")
+    if block_unknown and unknown_count > 0:
+        reasons.append(
+            f"UNKNOWN risk items blocked by policy (block_unknown=true): {unknown_count}"
+        )
+    for key, detail in policy["violations"].items():
+        reasons.append(
+            f"analysis policy violation: {key}={detail['value']} exceeds {detail['max_allowed']}"
+        )
+    if runtime_gate_blocked:
+        reasons.append("runtime data is required but missing/invalid")
+    return reasons
+
+
 def _finalize_analysis_status(
     *,
     result: dict[str, Any],
@@ -648,19 +704,6 @@ def _finalize_analysis_status(
     risk_gate_blocked = high_count > 0 or (block_unknown and unknown_count > 0)
     analysis_gate_blocked = not policy["passes"]
     runtime_gate_blocked = require_runtime and runtime_state != "loaded"
-    gate_reasons: list[str] = []
-    if high_count > 0:
-        gate_reasons.append(f"HIGH risk items detected: {high_count}")
-    if block_unknown and unknown_count > 0:
-        gate_reasons.append(
-            f"UNKNOWN risk items blocked by policy (block_unknown=true): {unknown_count}"
-        )
-    for key, detail in policy["violations"].items():
-        gate_reasons.append(
-            f"analysis policy violation: {key}={detail['value']} exceeds {detail['max_allowed']}"
-        )
-    if runtime_gate_blocked:
-        gate_reasons.append("runtime data is required but missing/invalid")
 
     analysis_status = {
         "status": "partial" if partial_analysis else "complete",
@@ -677,7 +720,9 @@ def _finalize_analysis_status(
         "runtime_gate_blocked": runtime_gate_blocked,
         "block_unknown": block_unknown,
         "risk": {"high": high_count, "unknown": unknown_count},
-        "reasons": gate_reasons,
+        "reasons": _build_gate_reasons(
+            high_count, unknown_count, block_unknown, policy, runtime_gate_blocked
+        ),
     }
     result["analysis_status"] = analysis_status
     result["gate"] = gate_status
@@ -685,7 +730,9 @@ def _finalize_analysis_status(
     _write_json(Path(output_dir) / "gate_summary.json", gate_status)
 
 
-def _load_result_signatures(old_sigs_path: str, new_sigs_path: str) -> dict[str, list[Any]]:
+def _load_result_signatures(
+    old_sigs_path: str, new_sigs_path: str
+) -> dict[str, list[Any]]:
     """Load signature snapshots for the final pipeline result."""
     with open(old_sigs_path) as f:
         old_signatures = json.load(f)
@@ -1035,7 +1082,9 @@ def _extract_git_ref_signatures(ref: str, dest: Path) -> list[dict[str, Any]]:
         if file_result.returncode == 0 and file_result.stdout:
             dest_path.write_text(file_result.stdout)
 
-    return _extract_by_language([str(file_path) for file_path in dest.rglob("*") if file_path.is_file()])
+    return _extract_by_language(
+        [str(file_path) for file_path in dest.rglob("*") if file_path.is_file()]
+    )
 
 
 def _categorize_changelog_changes(
@@ -1067,8 +1116,8 @@ def _categorize_changelog_changes(
 def _build_changelog_text(comparison: dict[str, list[str]]) -> str:
     """Build markdown changelog text from comparison output."""
     lines = ["## [Unreleased]\n"]
-    added, removed, changed_breaking, changed_nonbreaking = _categorize_changelog_changes(
-        comparison
+    added, removed, changed_breaking, changed_nonbreaking = (
+        _categorize_changelog_changes(comparison)
     )
 
     if added:

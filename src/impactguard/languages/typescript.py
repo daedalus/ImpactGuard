@@ -610,35 +610,27 @@ def _parse_ts_params_regex(params_str: str) -> tuple[list[dict[str, Any]], bool]
     return positional, has_vararg
 
 
+_OPEN_BRACKETS = frozenset({"<", "(", "["})
+_CLOSE_BRACKETS = {">": "<", ")": "(", "]": "["}
+
+
 def _top_level_split(s: str) -> list[str]:
     """Split *s* on commas that are not inside ``<>``, ``()``, or ``[]``.
 
     Tracks each bracket type independently so that ``>`` in ``=>`` is never
     mistaken for a closing angle-bracket when no ``<`` is open.
     """
+    stack: list[str] = []
     parts: list[str] = []
-    angle = paren = square = 0
     current: list[str] = []
     for ch in s:
-        if ch == "<":
-            angle += 1
+        if ch in _OPEN_BRACKETS:
+            stack.append(ch)
             current.append(ch)
-        elif ch == ">" and angle > 0:
-            angle -= 1
+        elif ch in _CLOSE_BRACKETS and stack and stack[-1] == _CLOSE_BRACKETS[ch]:
+            stack.pop()
             current.append(ch)
-        elif ch == "(":
-            paren += 1
-            current.append(ch)
-        elif ch == ")" and paren > 0:
-            paren -= 1
-            current.append(ch)
-        elif ch == "[":
-            square += 1
-            current.append(ch)
-        elif ch == "]" and square > 0:
-            square -= 1
-            current.append(ch)
-        elif ch == "," and angle == 0 and paren == 0 and square == 0:
+        elif ch == "," and not stack:
             parts.append("".join(current))
             current = []
         else:

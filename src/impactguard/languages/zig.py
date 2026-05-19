@@ -85,45 +85,30 @@ def _parse_params(
     return positional, has_vararg
 
 
-def _process_function(
-    node: Any,
-    source: bytes,
-    fq_file: str,
-    funcs: list[dict[str, Any]],
-) -> None:
-    """Extract a signature from a Zig function declaration."""
-    # Check for pub keyword in parent variable_declaration or directly
-    is_pub = False
+def _node_has_text(node: Any, source: bytes, text: str) -> bool:
+    return node_text(node, source).strip() == text
+
+
+def _is_pub(node: Any, source: bytes) -> bool:
     parent = node.parent
     if parent is not None:
         for c in parent.children:
-            if c.type == "pub" or node_text(c, source).strip() == "pub":
-                is_pub = True
-                break
-
-    # Also check direct children for pub
+            if c.type == "pub" or _node_has_text(c, source, "pub"):
+                return True
     for c in node.children:
-        if node_text(c, source).strip() == "pub":
-            is_pub = True
-            break
+        if _node_has_text(c, source, "pub"):
+            return True
+    return False
 
-    name_node = child_of_type(node, "identifier")
-    if name_node is None:
-        return
 
-    name = node_text(name_node, source)
-
-    is_async = False
+def _has_async(node: Any, source: bytes) -> bool:
     for c in node.children:
-        if node_text(c, source).strip() == "async":
-            is_async = True
-            break
+        if _node_has_text(c, source, "async"):
+            return True
+    return False
 
-    params_node = child_of_type(node, "fn_params", "param_list")
-    positional, has_vararg = _parse_params(params_node, source)
 
-    # Return type: after params
-    return_type: str | None = None
+def _return_type(node: Any, source: bytes) -> str | None:
     params_done = False
     for c in node.children:
         if c.type in ("fn_params", "param_list"):
@@ -138,8 +123,24 @@ def _process_function(
                 "inline",
                 "noinline",
             ):
-                return_type = txt
-                break
+                return txt
+    return None
+
+
+def _process_function(
+    node: Any,
+    source: bytes,
+    fq_file: str,
+    funcs: list[dict[str, Any]],
+) -> None:
+    """Extract a signature from a Zig function declaration."""
+    name_node = child_of_type(node, "identifier")
+    if name_node is None:
+        return
+
+    name = node_text(name_node, source)
+    params_node = child_of_type(node, "fn_params", "param_list")
+    positional, has_vararg = _parse_params(params_node, source)
 
     funcs.append(
         {
@@ -153,11 +154,11 @@ def _process_function(
             "vararg": has_vararg,
             "kwarg": False,
             "class_name": None,
-            "return_type": return_type,
+            "return_type": _return_type(node, source),
             "decorators": [],
-            "is_async": is_async,
+            "is_async": _has_async(node, source),
             "ignored": has_ignore_comment(source, node.start_point[0]),
-            "exported": is_pub,
+            "exported": _is_pub(node, source),
         }
     )
 
