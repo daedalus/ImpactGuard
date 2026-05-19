@@ -131,7 +131,7 @@ def _logging_config_from_config() -> dict[str, str]:
             "format": str(_cfg_get("logging", "format", _DEFAULT_FORMAT)),
             "log_file": str(_cfg_get("logging", "log_file", "")),
         }
-    except Exception:
+    except (OSError, ValueError, AttributeError):
         return {
             "level": "WARNING",
             "format": _DEFAULT_FORMAT,

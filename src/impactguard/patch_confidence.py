@@ -5,7 +5,7 @@ def _cfg(key: str, default: float) -> float:
 
         value = cfg_get("patches", key, default)
         return float(value)
-    except Exception:
+    except (OSError, ImportError, ValueError, AttributeError):
         return default
 
 

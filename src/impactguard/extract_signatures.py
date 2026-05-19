@@ -67,7 +67,7 @@ def extract_reexports(files: list[str]) -> dict[str, str]:
             continue
         try:
             tree = ast.parse(path.read_text())
-        except Exception:
+        except (SyntaxError, OSError, UnicodeDecodeError):
             continue
 
         for node in ast.walk(tree):
@@ -99,7 +99,7 @@ def _unparse_annotation(node: ast.expr | None) -> str | None:
         return None
     try:
         return ast.unparse(node)
-    except Exception:
+    except (RecursionError, ValueError):
         return None
 
 
@@ -107,7 +107,7 @@ def _decorator_name(node: ast.expr) -> str:
     """Return the string representation of a decorator expression."""
     try:
         return ast.unparse(node)
-    except Exception:
+    except (RecursionError, ValueError):
         return "<decorator>"
 
 
