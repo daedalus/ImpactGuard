@@ -1,5 +1,4 @@
 import ast
-import warnings
 from pathlib import Path
 from typing import Any
 
@@ -217,11 +216,6 @@ def extract(
                     f"ImpactGuard: failed to parse {path}: {exc}"
                 ) from exc
             _log.warning("Skipping '%s' due to parse error: %s", path, exc)
-            warnings.warn(
-                f"ImpactGuard: skipping {path} due to parse error: {exc}",
-                SyntaxWarning,
-                stacklevel=2,
-            )
             continue
 
         # Compute fqname file key: relative to base_path when provided,
