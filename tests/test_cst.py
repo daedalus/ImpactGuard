@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
-import os  
+import os
 import sys
-import tempfile  
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
 
 def test_cst_patch_if_available(tmp_path):
     """Test cst_patch if libcst is available."""
@@ -23,4 +24,3 @@ def test_cst_patch_if_available(tmp_path):
 
     except ImportError:
         pass  # libcst not installed
-

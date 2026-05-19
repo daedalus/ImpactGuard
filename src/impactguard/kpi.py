@@ -50,7 +50,6 @@ patch-feedback and transitive-impact quality signals.
 
 from typing import Any
 
-
 # Exposure threshold below which a HIGH item is treated as a candidate FP.
 _DEFAULT_FP_THRESHOLD = 0.05
 
@@ -140,7 +139,9 @@ def compute_kpis(
     mean_exposure = sum(exposures) / total if total else 0.0
 
     # ── mean_confidence (C dimension of S×E×C) ───────────────────────────────
-    confidences: list[float] = [float(item.get("confidence", 0.0)) for item in report_data]
+    confidences: list[float] = [
+        float(item.get("confidence", 0.0)) for item in report_data
+    ]
     mean_confidence = sum(confidences) / total if total else 0.0
 
     # ── transitive count/rate ─────────────────────────────────────────────────
@@ -198,7 +199,7 @@ def format_kpi_text(kpis: dict[str, Any]) -> str:
         "  Risk distribution",
     ]
 
-    _LEVEL_ICONS = {
+    _level_icons = {
         "HIGH": "🔴",
         "MEDIUM": "🟡",
         "LOW": "🟢",
@@ -206,7 +207,7 @@ def format_kpi_text(kpis: dict[str, Any]) -> str:
     }
     for level in ("HIGH", "MEDIUM", "LOW", "UNKNOWN"):
         entry = dist.get(level, {"count": 0, "rate": 0.0})
-        icon = _LEVEL_ICONS.get(level, "  ")
+        icon = _level_icons.get(level, "  ")
         lines.append(
             f"    {icon}  {level:<8}  {entry['count']:4d}  ({entry['rate']:.0%})"
         )
@@ -226,7 +227,9 @@ def format_kpi_text(kpis: dict[str, Any]) -> str:
     lines.append(f"  Mean exposure (E)      : {me:.1%}  (avg call-trace coverage)")
 
     mc = kpis.get("mean_confidence", 0.0)
-    lines.append(f"  Mean confidence (C)    : {mc:.3f}  (avg runtime telemetry strength)")
+    lines.append(
+        f"  Mean confidence (C)    : {mc:.3f}  (avg runtime telemetry strength)"
+    )
 
     cc = kpis.get("confidence_coverage", 0.0)
     lines.append(f"  Confidence coverage    : {cc:.1%}  (fraction with runtime data)")
@@ -243,7 +246,9 @@ def format_kpi_text(kpis: dict[str, Any]) -> str:
 
     tc = kpis.get("transitive_count", 0)
     tr = kpis.get("transitive_rate", 0.0)
-    lines.append(f"  Transitive items       : {tc}  ({tr:.1%} of total — indirect callers)")
+    lines.append(
+        f"  Transitive items       : {tc}  ({tr:.1%} of total — indirect callers)"
+    )
 
     lines.append("────────────────────────────────────────────────────────")
 

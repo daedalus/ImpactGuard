@@ -271,9 +271,13 @@ def _extract_with_tree_sitter(
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
     return extract_calls_with_tree_sitter(
-        path, "Go", _GO_LANGUAGE,
+        path,
+        "Go",
+        _GO_LANGUAGE,
         member_map={"selector_expression": "field_identifier"},
     )
+
+
 # ── Regex fallback ────────────────────────────────────────────────────────────
 
 _FUNC_RE = re.compile(

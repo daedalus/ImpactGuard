@@ -225,10 +225,14 @@ def _extract_with_tree_sitter(
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
     return extract_calls_with_tree_sitter(
-        path, "javascript", _JS_LANGUAGE,
+        path,
+        "javascript",
+        _JS_LANGUAGE,
         args_type="arguments",
         member_map={"member_expression": "property_identifier"},
     )
+
+
 # ── Regex fallback ────────────────────────────────────────────────────────────
 
 _FUNC_RE = re.compile(

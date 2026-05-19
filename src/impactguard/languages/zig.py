@@ -197,9 +197,13 @@ def _extract_with_tree_sitter(
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
     return extract_calls_with_tree_sitter(
-        path, "zig", _ZIG_LANGUAGE,
+        path,
+        "zig",
+        _ZIG_LANGUAGE,
         member_map={"field_access": None},
     )
+
+
 # ── Regex fallback ────────────────────────────────────────────────────────────
 
 _FUNC_RE = re.compile(

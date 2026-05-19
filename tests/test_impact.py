@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
-import os  
+import os
 import sys
-import tempfile  
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
 
 def test_impact_analysis_final(tmp_path):
     """Final coverage push for impact_analysis.py."""
@@ -34,6 +35,7 @@ def test_impact_analysis_final(tmp_path):
 
     result = analyze(str(sigs), str(calls))
     assert isinstance(result, list)
+
 
 def test_impact_analysis_coverage_boost(tmp_path):
     """Boost coverage for impact_analysis.py."""
@@ -62,6 +64,7 @@ def test_impact_analysis_coverage_boost(tmp_path):
 
     result = analyze(str(sigs), str(calls))
     assert isinstance(result, list)
+
 
 def test_impact_analysis_remaining():
     """Cover lines 72-73, 87, 133-152."""
@@ -179,6 +182,7 @@ if __name__ == "__main__":
 
 # =======================================
 
+
 def test_impact_analysis_with_complex_data(tmp_path):
     """Test impact_analysis with complex data."""
     from impactguard.impact_analysis import analyze
@@ -207,6 +211,7 @@ def test_impact_analysis_with_complex_data(tmp_path):
     result = analyze(str(sigs_path), str(calls_path))
     assert isinstance(result, list)
 
+
 def test_impact_analysis_coverage_final(tmp_path):
     """Target missing lines in impact_analysis.py."""
     from impactguard.impact_analysis import analyze
@@ -233,11 +238,13 @@ def test_impact_analysis_coverage_final(tmp_path):
     result = analyze(str(sigs), str(calls))
     assert isinstance(result, list)
 
+
 def test_impact_analysis_import():
     """Test impact_analysis import."""
     from impactguard.impact_analysis import analyze
 
     assert callable(analyze)
+
 
 def test_impact_analysis_basic(tmp_path):
     """Test impact_analysis with basic input."""
@@ -251,6 +258,7 @@ def test_impact_analysis_basic(tmp_path):
 
     result = analyze(str(sigs_path), str(calls_path))
     assert isinstance(result, list)
+
 
 def test_impact_analysis_coverage_push(tmp_path):
     """Push impact_analysis.py coverage up."""
@@ -279,4 +287,3 @@ def test_impact_analysis_coverage_push(tmp_path):
 
     result = analyze(str(sigs), str(calls))
     assert isinstance(result, list)
-

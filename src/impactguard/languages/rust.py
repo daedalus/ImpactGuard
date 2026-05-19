@@ -206,13 +206,17 @@ def _extract_with_tree_sitter(
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
     return extract_calls_with_tree_sitter(
-        path, "rust", _RUST_LANGUAGE,
+        path,
+        "rust",
+        _RUST_LANGUAGE,
         args_type="arguments",
         member_map={
             "field_expression": "field_identifier",
             "scoped_identifier": None,
         },
     )
+
+
 # ── Regex fallback ────────────────────────────────────────────────────────────
 
 _FUNC_RE = re.compile(

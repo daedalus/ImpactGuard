@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
-import os  
+import os
 import sys
-import tempfile  
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
 
 def test_runtime_impact_if_available(tmp_path):
     """Test runtime_impact if available."""
@@ -22,4 +23,3 @@ def test_runtime_impact_if_available(tmp_path):
 
     except ImportError:
         pass
-
