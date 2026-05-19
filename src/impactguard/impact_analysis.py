@@ -133,6 +133,100 @@ def _fqname_to_runtime_key(fqname: str) -> str:
     return fqname
 
 
+def _load_runtime_data(runtime_path: str | None) -> dict[str, int]:
+    """Load runtime observations, falling back to an empty index on error."""
+    if not runtime_path:
+        return {}
+
+    try:
+        return build_runtime_index(load_runtime_observations(runtime_path))
+    except (json.JSONDecodeError, KeyError) as exc:
+        _log.warning("Failed to parse runtime data from '%s': %s", runtime_path, exc)
+        print(f"Warning: Failed to parse runtime data: {exc}", file=sys.stderr)
+    except OSError as exc:
+        _log.warning("Failed to read runtime data from '%s': %s", runtime_path, exc)
+        print(f"Warning: Failed to read runtime data: {exc}", file=sys.stderr)
+    return {}
+
+
+def _resolve_target(target: str, funcs: dict[str, dict[str, Any]]) -> str | None:
+    """Resolve a call target against loaded signatures."""
+    if target in funcs:
+        return target
+    matches = [f for f in funcs if f.endswith("." + target.split(".")[-1])]
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+def _risk_level_for_mismatch(argc: int, min_args: int, severity: float, exp: float) -> str:
+    """Return a risk label for an arity mismatch."""
+    if argc < min_args:
+        return "HIGH"
+    if severity > 0.8 and exp > 0.1:
+        return "HIGH"
+    if severity > 0.5:
+        return "MEDIUM"
+    return "LOW"
+
+
+def _build_issue(
+    call: dict[str, Any],
+    target: str,
+    func: dict[str, Any],
+    argc: int,
+    min_args: int,
+    runtime: dict[str, int],
+    max_count: int,
+) -> dict[str, Any]:
+    """Build an issue record for a direct arity mismatch."""
+    func_name = func.get("name", target)
+    runtime_key = _fqname_to_runtime_key(target)
+    count = lookup_runtime_count(runtime, target, func_name, runtime_key) or 1
+    exp = exposure(count, max_count)
+    severity = 0.9 if argc < min_args else 0.3
+    return {
+        "function": target,
+        "risk": _risk_level_for_mismatch(argc, min_args, severity, exp),
+        "change": "missing args" if argc < min_args else "too many args",
+        "exposure": exp,
+        "confidence": min(1.0, count / 100),
+        "file": call.get("file", ""),
+        "lineno": call.get("lineno", 0),
+        "count": count,
+        "transitive": False,
+    }
+
+
+def _append_transitive_issues(
+    issues: list[dict[str, Any]],
+    directly_affected: set[str],
+    calls: list[dict[str, Any]],
+    transitive_depth: int,
+) -> None:
+    """Append transitive callers to the issue list when enabled."""
+    if transitive_depth <= 0 or not directly_affected:
+        return
+
+    call_graph = build_call_graph(calls)
+    transitive = find_transitive_callers(directly_affected, call_graph, transitive_depth)
+    for caller, hop in transitive.items():
+        issues.append(
+            {
+                "function": caller,
+                "risk": "LOW",
+                "change": f"indirect impact (hop {hop})",
+                "exposure": 0.0,
+                "confidence": 0.0,
+                "file": caller,
+                "lineno": 0,
+                "count": 0,
+                "transitive": True,
+                "hop": hop,
+            }
+        )
+
+
 def analyze(
     sigs_path: str, calls_path: str, runtime_path: str | None = None
 ) -> list[dict[str, Any]]:
@@ -153,20 +247,7 @@ def analyze(
 
     funcs = load_funcs(sigs_path)
     calls = load_calls(calls_path)
-
-    # Load runtime data if provided
-    runtime: dict[str, int] = {}
-    if runtime_path:
-        try:
-            runtime = build_runtime_index(load_runtime_observations(runtime_path))
-        except (json.JSONDecodeError, KeyError) as e:
-            _log.warning("Failed to parse runtime data from '%s': %s", runtime_path, e)
-            print(f"Warning: Failed to parse runtime data: {e}", file=sys.stderr)
-            runtime = {}
-        except OSError as e:
-            _log.warning("Failed to read runtime data from '%s': %s", runtime_path, e)
-            print(f"Warning: Failed to read runtime data: {e}", file=sys.stderr)
-            runtime = {}
+    runtime = _load_runtime_data(runtime_path)
 
     # Get max count for exposure calculation
     max_count = max(runtime.values()) if runtime else 1
@@ -181,15 +262,10 @@ def analyze(
     )
 
     for call in calls:
-        target = call.get("fqname", call.get("name", ""))
-
-        if target not in funcs:
-            # Try fallback matching
-            matches = [f for f in funcs if f.endswith("." + target.split(".")[-1])]
-            if len(matches) == 1:
-                target = matches[0]
-            else:
-                continue
+        raw_target = call.get("fqname", call.get("name", ""))
+        target = _resolve_target(raw_target, funcs)
+        if target is None:
+            continue
 
         f = funcs[target]
 
@@ -198,71 +274,15 @@ def analyze(
 
         min_args = required_positional(f)
         max_args = total_positional(f) if not f.get("vararg") else float("inf")
-
         argc = call.get("args", 0)
 
-        if argc < min_args or argc > max_args:
-            func_name = f.get("name", target)
-            # Try multiple key formats to match runtime data:
-            # 1. target (fqname like "module.py:func")
-            # 2. func_name (bare name like "func")
-            # 3. Converted runtime key (like "module.func")
-            runtime_key = _fqname_to_runtime_key(target)
-            count = lookup_runtime_count(runtime, target, func_name, runtime_key) or 1
-            exp = exposure(count, max_count)
+        if argc >= min_args and argc <= max_args:
+            continue
 
-            severity = 0.9 if argc < min_args else 0.3
+        directly_affected.add(target)
+        issues.append(_build_issue(call, target, f, argc, min_args, runtime, max_count))
 
-            # REMOVED and REQUIRED changes are unconditionally HIGH
-            # (bypass confidence check since these are guaranteed breaking)
-            if argc < min_args:
-                risk_level = "HIGH"
-            else:
-                risk_level = (
-                    "HIGH"
-                    if severity > 0.8 and exp > 0.1
-                    else "MEDIUM"
-                    if severity > 0.5
-                    else "LOW"
-                )
-
-            directly_affected.add(target)
-            issues.append(
-                {
-                    "function": target,
-                    "risk": risk_level,
-                    "change": "missing args" if argc < min_args else "too many args",
-                    "exposure": exp,
-                    "confidence": min(1.0, count / 100),
-                    "file": call.get("file", ""),
-                    "lineno": call.get("lineno", 0),
-                    "count": count,
-                    "transitive": False,
-                }
-            )
-
-    # ── Transitive impact ─────────────────────────────────────────────────────
-    if transitive_depth > 0 and directly_affected:
-        call_graph = build_call_graph(calls)
-        transitive = find_transitive_callers(
-            directly_affected, call_graph, transitive_depth
-        )
-
-        for caller, hop in transitive.items():
-            issues.append(
-                {
-                    "function": caller,
-                    "risk": "LOW",
-                    "change": f"indirect impact (hop {hop})",
-                    "exposure": 0.0,
-                    "confidence": 0.0,
-                    "file": caller,
-                    "lineno": 0,
-                    "count": 0,
-                    "transitive": True,
-                    "hop": hop,
-                }
-            )
+    _append_transitive_issues(issues, directly_affected, calls, transitive_depth)
 
     _log.debug(
         "Impact analysis complete: %d direct issue(s), %d transitive",
