@@ -22,6 +22,7 @@ available at import time.
 from __future__ import annotations
 
 import re
+from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
 
@@ -476,7 +477,7 @@ _CPP_EXTENSIONS = [".cpp", ".hpp", ".cc", ".cxx", ".hxx"]
 # ── Public extractor classes ──────────────────────────────────────────────────
 
 
-class _BaseCStyleExtractor:
+class _BaseCStyleExtractor(ABC):
     """Shared implementation for C-family extractors."""
 
     language: str
@@ -485,6 +486,7 @@ class _BaseCStyleExtractor:
     _tree_sitter_package: str
     _use_cpp: bool
 
+    @abstractmethod
     def _is_tree_sitter_available(self) -> bool:
         """Return whether the extractor's tree-sitter backend is available."""
         raise NotImplementedError
@@ -515,7 +517,11 @@ class _BaseCStyleExtractor:
 
 
 class CExtractor(_BaseCStyleExtractor):
-    """Language extractor for C (``.c``, ``.h``) files."""
+    """Language extractor for C (``.c``, ``.h``) files.
+
+    Uses tree-sitter for accurate AST-based extraction when available,
+    otherwise falls back to regex-based extraction with a ``UserWarning``.
+    """
 
     language: str = "c"
     extensions: list[str] = _C_EXTENSIONS
@@ -529,7 +535,11 @@ class CExtractor(_BaseCStyleExtractor):
 
 
 class CppExtractor(_BaseCStyleExtractor):
-    """Language extractor for C++ (``.cpp``, ``.hpp``, ``.cc``, ``.cxx``, ``.hxx``) files."""
+    """Language extractor for C++ (``.cpp``, ``.hpp``, ``.cc``, ``.cxx``, ``.hxx``) files.
+
+    Uses tree-sitter for accurate AST-based extraction when available,
+    otherwise falls back to regex-based extraction with a ``UserWarning``.
+    """
 
     language: str = "cpp"
     extensions: list[str] = _CPP_EXTENSIONS
