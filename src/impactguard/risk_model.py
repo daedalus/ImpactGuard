@@ -86,6 +86,7 @@ def _effective_severity_scores() -> dict[str, float]:
             return merged
     except (OSError, ValueError, AttributeError, KeyError):
         pass
+    return SEVERITY_SCORES
 
 
 def get_severity(change_type: str) -> float:
