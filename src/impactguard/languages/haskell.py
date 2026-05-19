@@ -25,7 +25,6 @@ from pathlib import Path
 from typing import Any
 
 from .lib.shared import (
-    _TREE_SITTER_AVAILABLE,
     extract_calls_with_tree_sitter,
     has_ignore_comment,
     has_ignore_comment_fallback,

@@ -55,8 +55,9 @@ _COMMON_KEYWORDS: frozenset[str] = frozenset()
 # ── Tree-sitter parser factory ─────────────────────────────────────────────
 
 _TREE_SITTER_AVAILABLE = False
+_TreeSitterParser: Any | None = None
 try:
-    from tree_sitter import Language, Parser
+    from tree_sitter import Parser as _TreeSitterParser
 
     _TREE_SITTER_AVAILABLE = True
 except ImportError:
@@ -73,12 +74,10 @@ def make_parser(language_name: str, language_object: Any) -> Any:
     Returns:
         Configured Parser instance, or None if tree-sitter is not available
     """
-    if not _TREE_SITTER_AVAILABLE:
+    if not _TREE_SITTER_AVAILABLE or _TreeSitterParser is None:
         return None
     try:
-        from tree_sitter import Parser
-
-        parser = Parser(language_object)
+        parser = _TreeSitterParser(language_object)
         return parser
     except Exception as e:
         warnings.warn(f"Failed to create {language_name} parser: {e}", stacklevel=2)
