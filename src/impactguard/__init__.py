@@ -218,6 +218,7 @@ __all__ = [
     "get_config",
     "load_config",
     "reload_config",
+    "validate_config",
     "get_config_value",
     # Semver
     "suggest_semver",
