@@ -398,19 +398,18 @@ def compare_behavior(
     semantic_breaking: list[str] = []
     semantic_nonbreaking: list[str] = []
 
-    for fqname, old_traits in old.items():
-        if fqname not in new:
-            continue  # removal handled by compare_signatures
+    def _record_async_changes(
+        fqname: str, old_traits: dict[str, Any], new_traits: dict[str, Any]
+    ) -> None:
+        if old_traits.get("is_async") == new_traits.get("is_async"):
+            return
+        old_async = old_traits.get("is_async", False)
+        direction = "sync→async" if not old_async else "async→sync"
+        semantic_breaking.append(f"ASYNC_CHANGED: {fqname} ({direction})")
 
-        new_traits = new[fqname]
-
-        # ── Async / sync shift ────────────────────────────────────────────
-        if old_traits.get("is_async") != new_traits.get("is_async"):
-            old_async = old_traits.get("is_async", False)
-            direction = "sync→async" if not old_async else "async→sync"
-            semantic_breaking.append(f"ASYNC_CHANGED: {fqname} ({direction})")
-
-        # ── Generator / regular shift ─────────────────────────────────────
+    def _record_yield_changes(
+        fqname: str, old_traits: dict[str, Any], new_traits: dict[str, Any]
+    ) -> None:
         old_yield = old_traits.get("has_yield", False)
         new_yield = new_traits.get("has_yield", False)
         if old_yield and not new_yield:
@@ -418,41 +417,61 @@ def compare_behavior(
         elif not old_yield and new_yield:
             semantic_breaking.append(f"YIELD_ADDED: {fqname}")
 
-        # ── Exception contract changes ────────────────────────────────────
-        old_raises = set(old_traits.get("raises", []))
-        new_raises = set(new_traits.get("raises", []))
-
-        for exc in sorted(new_raises - old_raises):
-            semantic_breaking.append(f"EXCEPTION_ADDED: {fqname} raises {exc}")
-
-        for exc in sorted(old_raises - new_raises):
+    def _record_set_deltas(
+        fqname: str,
+        old_values: set[str],
+        new_values: set[str],
+        breaking_fmt: str,
+        nonbreaking_fmt: str,
+    ) -> None:
+        for value in sorted(new_values - old_values):
+            semantic_breaking.append(breaking_fmt.format(fqname=fqname, value=value))
+        for value in sorted(old_values - new_values):
             semantic_nonbreaking.append(
-                f"EXCEPTION_REMOVED: {fqname} no longer raises {exc}"
+                nonbreaking_fmt.format(fqname=fqname, value=value)
             )
 
-        # ── Side-effect changes ───────────────────────────────────────────
-        old_se = set(old_traits.get("side_effects", []))
-        new_se = set(new_traits.get("side_effects", []))
-
-        for se in sorted(new_se - old_se):
-            semantic_breaking.append(f"SIDE_EFFECT_ADDED: {fqname} ({se})")
-
-        for se in sorted(old_se - new_se):
-            semantic_nonbreaking.append(f"SIDE_EFFECT_REMOVED: {fqname} ({se})")
-
-        # ── Return-value semantics ────────────────────────────────────────
+    def _record_return_changes(
+        fqname: str, old_traits: dict[str, Any], new_traits: dict[str, Any]
+    ) -> None:
         old_none = old_traits.get("always_returns_none")
         new_none = new_traits.get("always_returns_none")
         if old_none is not None and new_none is not None and old_none != new_none:
             semantic_breaking.append(f"RETURNS_NONE_CHANGED: {fqname}")
 
-        # ── Docstring contract change ─────────────────────────────────────
+    def _record_docstring_changes(
+        fqname: str, old_traits: dict[str, Any], new_traits: dict[str, Any]
+    ) -> None:
         old_doc = old_traits.get("docstring_hash")
         new_doc = new_traits.get("docstring_hash")
         if old_doc is not None and new_doc is not None and old_doc != new_doc:
             semantic_nonbreaking.append(f"CONTRACT_CHANGED: {fqname}")
         elif old_doc is not None and new_doc is None:
             semantic_nonbreaking.append(f"CONTRACT_REMOVED: {fqname}")
+
+    for fqname, old_traits in old.items():
+        if fqname not in new:
+            continue  # removal handled by compare_signatures
+
+        new_traits = new[fqname]
+        _record_async_changes(fqname, old_traits, new_traits)
+        _record_yield_changes(fqname, old_traits, new_traits)
+        _record_set_deltas(
+            fqname,
+            set(old_traits.get("raises", [])),
+            set(new_traits.get("raises", [])),
+            "EXCEPTION_ADDED: {fqname} raises {value}",
+            "EXCEPTION_REMOVED: {fqname} no longer raises {value}",
+        )
+        _record_set_deltas(
+            fqname,
+            set(old_traits.get("side_effects", [])),
+            set(new_traits.get("side_effects", [])),
+            "SIDE_EFFECT_ADDED: {fqname} ({value})",
+            "SIDE_EFFECT_REMOVED: {fqname} ({value})",
+        )
+        _record_return_changes(fqname, old_traits, new_traits)
+        _record_docstring_changes(fqname, old_traits, new_traits)
 
     return {
         "semantic_breaking": sorted(set(semantic_breaking)),

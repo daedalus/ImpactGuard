@@ -198,6 +198,250 @@ def _load_signatures(arg: str | list[dict[str, Any]]) -> dict[str, dict[str, Any
     return result
 
 
+def _resolve_union_parser(language: str | None) -> Any:
+    """Resolve the union parser for the requested language, if any."""
+    if language is None:
+        return None
+
+    from .languages.lib.registry import get_extractor_by_language
+
+    extractor = get_extractor_by_language(language)
+    if extractor is None:
+        return None
+    return extractor.parse_union_members
+
+
+def _filter_effective_public(
+    signatures: dict[str, dict[str, Any]], include_private: bool
+) -> dict[str, dict[str, Any]]:
+    """Filter out private signatures unless explicitly requested."""
+    if include_private:
+        return signatures
+    return {k: v for k, v in signatures.items() if _is_effectively_public(k, v)}
+
+
+def _collect_added_removed_changes(
+    old_sigs: dict[str, dict[str, Any]],
+    new_sigs: dict[str, dict[str, Any]],
+    is_suppressed: Any,
+    breaking: list[str],
+    nonbreaking: list[str],
+) -> None:
+    """Collect added and removed symbol changes."""
+    for fqname, old_sig in old_sigs.items():
+        if fqname in new_sigs:
+            continue
+        if is_suppressed(fqname, old_sig):
+            continue
+        if _has_deprecated_decorator(old_sig):
+            nonbreaking.append(f"DEPRECATED_REMOVED: {fqname}")
+        else:
+            breaking.append(f"REMOVED: {fqname}")
+
+    for fqname, new_sig in new_sigs.items():
+        if fqname in old_sigs or is_suppressed(fqname, new_sig):
+            continue
+        nonbreaking.append(f"ADDED: {fqname}")
+
+
+def _compare_positional_args(
+    fqname: str,
+    old_sig: dict[str, Any],
+    new_sig: dict[str, Any],
+    breaking: list[str],
+    nonbreaking: list[str],
+) -> None:
+    """Compare positional argument compatibility."""
+    old_pos = old_sig["positional"]
+    new_pos = new_sig["positional"]
+    if len(new_pos) < len(old_pos):
+        breaking.append(f"POSITIONAL_REMOVED: {fqname}")
+        return
+
+    for old_arg, new_arg in zip(old_pos, new_pos):
+        if old_arg["name"] != new_arg["name"]:
+            breaking.append(f"POSITIONAL_REORDER/RENAME: {fqname}")
+            break
+
+    if len(new_pos) <= len(old_pos):
+        return
+
+    added = new_pos[len(old_pos) :]
+    if any(is_required(arg) for arg in added):
+        breaking.append(f"REQUIRED_POSITIONAL_ADDED: {fqname}")
+    else:
+        nonbreaking.append(f"OPTIONAL_POSITIONAL_ADDED: {fqname}")
+
+
+def _compare_kwonly_args(
+    fqname: str,
+    old_sig: dict[str, Any],
+    new_sig: dict[str, Any],
+    breaking: list[str],
+    nonbreaking: list[str],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Compare keyword-only arguments and return their lookup tables."""
+    old_kw = {arg["name"]: arg for arg in old_sig["kwonly"]}
+    new_kw = {arg["name"]: arg for arg in new_sig["kwonly"]}
+
+    for name in old_kw:
+        if name not in new_kw:
+            breaking.append(f"KWONLY_REMOVED: {fqname}")
+
+    for name, new_arg in new_kw.items():
+        if name in old_kw:
+            continue
+        if is_required(new_arg):
+            breaking.append(f"REQUIRED_KWONLY_ADDED: {fqname}")
+        else:
+            nonbreaking.append(f"OPTIONAL_KWONLY_ADDED: {fqname}")
+
+    return old_kw, new_kw
+
+
+def _compare_varargs(
+    fqname: str,
+    old_sig: dict[str, Any],
+    new_sig: dict[str, Any],
+    breaking: list[str],
+) -> None:
+    """Compare varargs and kwargs compatibility."""
+    if old_sig["vararg"] and not new_sig["vararg"]:
+        breaking.append(f"*args_REMOVED: {fqname}")
+    if old_sig["kwarg"] and not new_sig["kwarg"]:
+        breaking.append(f"**kwargs_REMOVED: {fqname}")
+
+
+def _append_type_change(
+    kind: str | None,
+    widened_msg: str,
+    changed_msg: str,
+    breaking: list[str],
+    nonbreaking: list[str],
+) -> None:
+    """Append the appropriate message for a detected type change."""
+    if kind == "widening":
+        nonbreaking.append(widened_msg)
+    elif kind is not None:
+        breaking.append(changed_msg)
+
+
+def _compare_argument_types(
+    fqname: str,
+    old_sig: dict[str, Any],
+    new_sig: dict[str, Any],
+    old_kw: dict[str, Any],
+    new_kw: dict[str, Any],
+    union_parser: Any,
+    breaking: list[str],
+    nonbreaking: list[str],
+) -> None:
+    """Compare positional and kw-only argument type annotations."""
+    for old_arg, new_arg in zip(old_sig["positional"], new_sig["positional"]):
+        old_type = old_arg.get("type")
+        new_type = new_arg.get("type")
+        if old_type is None or new_type is None or old_type == new_type:
+            continue
+        kind = _type_change_kind(old_type, new_type, union_parser)
+        _append_type_change(
+            kind,
+            f"TYPE_WIDENED: {fqname} arg '{old_arg['name']}' {old_type} -> {new_type}",
+            f"TYPE_CHANGED: {fqname} arg '{old_arg['name']}' {old_type} -> {new_type}",
+            breaking,
+            nonbreaking,
+        )
+
+    for arg_name, old_arg in old_kw.items():
+        if arg_name not in new_kw:
+            continue
+        old_type = old_arg.get("type")
+        new_type = new_kw[arg_name].get("type")
+        if old_type is None or new_type is None or old_type == new_type:
+            continue
+        kind = _type_change_kind(old_type, new_type, union_parser)
+        _append_type_change(
+            kind,
+            f"TYPE_WIDENED: {fqname} kwarg '{arg_name}' {old_type} -> {new_type}",
+            f"TYPE_CHANGED: {fqname} kwarg '{arg_name}' {old_type} -> {new_type}",
+            breaking,
+            nonbreaking,
+        )
+
+
+def _compare_return_type(
+    fqname: str,
+    old_sig: dict[str, Any],
+    new_sig: dict[str, Any],
+    union_parser: Any,
+    breaking: list[str],
+    nonbreaking: list[str],
+) -> None:
+    """Compare return type compatibility."""
+    old_ret = old_sig.get("return_type")
+    new_ret = new_sig.get("return_type")
+    if old_ret is None or new_ret is None or old_ret == new_ret:
+        return
+    kind = _type_change_kind(old_ret, new_ret, union_parser)
+    _append_type_change(
+        kind,
+        f"RETURN_TYPE_WIDENED: {fqname} {old_ret} -> {new_ret}",
+        f"RETURN_TYPE_CHANGED: {fqname} {old_ret} -> {new_ret}",
+        breaking,
+        nonbreaking,
+    )
+
+
+def _compare_decorators(
+    fqname: str,
+    old_sig: dict[str, Any],
+    new_sig: dict[str, Any],
+    breaking: list[str],
+    nonbreaking: list[str],
+) -> None:
+    """Compare decorator lists between two signatures."""
+    old_decorators = set(old_sig.get("decorators", []))
+    new_decorators = set(new_sig.get("decorators", []))
+    for decorator in old_decorators - new_decorators:
+        breaking.append(f"DECORATOR_REMOVED: {fqname} @{decorator}")
+    for decorator in new_decorators - old_decorators:
+        nonbreaking.append(f"DECORATOR_ADDED: {fqname} @{decorator}")
+
+
+def _compare_shared_signatures(
+    old_sigs: dict[str, dict[str, Any]],
+    new_sigs: dict[str, dict[str, Any]],
+    is_suppressed: Any,
+    union_parser: Any,
+    breaking: list[str],
+    nonbreaking: list[str],
+) -> None:
+    """Compare signatures that exist in both snapshots."""
+    for fqname, old_sig in old_sigs.items():
+        if fqname not in new_sigs or is_suppressed(fqname, old_sig):
+            continue
+
+        new_sig = new_sigs[fqname]
+        _compare_positional_args(fqname, old_sig, new_sig, breaking, nonbreaking)
+        old_kw, new_kw = _compare_kwonly_args(
+            fqname, old_sig, new_sig, breaking, nonbreaking
+        )
+        _compare_varargs(fqname, old_sig, new_sig, breaking)
+        _compare_argument_types(
+            fqname,
+            old_sig,
+            new_sig,
+            old_kw,
+            new_kw,
+            union_parser,
+            breaking,
+            nonbreaking,
+        )
+        _compare_return_type(
+            fqname, old_sig, new_sig, union_parser, breaking, nonbreaking
+        )
+        _compare_decorators(fqname, old_sig, new_sig, breaking, nonbreaking)
+
+
 def compare(  # noqa: MC0001
     old: str | list[dict[str, Any]],
     new: str | list[dict[str, Any]],
@@ -238,14 +482,7 @@ def compare(  # noqa: MC0001
     if suppress:
         suppress_list.extend(suppress)
 
-    # Resolve language-specific union parser (falls back to None → Python default)
-    _union_parser: Any = None
-    if language is not None:
-        from .languages.lib.registry import get_extractor_by_language
-
-        _lang_ext = get_extractor_by_language(language)
-        if _lang_ext is not None:
-            _union_parser = _lang_ext.parse_union_members
+    union_parser = _resolve_union_parser(language)
 
     old_sigs: dict[str, dict[str, Any]] = _load_signatures(old)
     new_sigs: dict[str, dict[str, Any]] = _load_signatures(new)
@@ -256,10 +493,8 @@ def compare(  # noqa: MC0001
         len(new_sigs),
     )
 
-    # Filter private symbols unless explicitly included
-    if not include_private:
-        old_sigs = {k: v for k, v in old_sigs.items() if _is_effectively_public(k, v)}
-        new_sigs = {k: v for k, v in new_sigs.items() if _is_effectively_public(k, v)}
+    old_sigs = _filter_effective_public(old_sigs, include_private)
+    new_sigs = _filter_effective_public(new_sigs, include_private)
 
     breaking: list[str] = []
     nonbreaking: list[str] = []
@@ -271,128 +506,17 @@ def compare(  # noqa: MC0001
             return True
         return False
 
-    # Removed functions
-    for k in old_sigs:
-        if k not in new_sigs:
-            if _suppressed(k, old_sigs[k]):
-                continue
-            # Deprecation lifecycle: removing a @deprecated function is non-breaking
-            if _has_deprecated_decorator(old_sigs[k]):
-                nonbreaking.append(f"DEPRECATED_REMOVED: {k}")
-            else:
-                breaking.append(f"REMOVED: {k}")
-
-    # Added functions
-    for k in new_sigs:
-        if k not in old_sigs:
-            if _suppressed(k, new_sigs[k]):
-                continue
-            nonbreaking.append(f"ADDED: {k}")
-
-    # Compare shared
-    for k in old_sigs:
-        if k not in new_sigs:
-            continue
-        if _suppressed(k, old_sigs[k]):
-            continue
-
-        o = old_sigs[k]
-        n = new_sigs[k]
-
-        o_pos = o["positional"]
-        n_pos = n["positional"]
-
-        # positional argument removal
-        if len(n_pos) < len(o_pos):
-            breaking.append(f"POSITIONAL_REMOVED: {k}")
-        else:
-            # positional arg changes
-            for i in range(len(o_pos)):
-                if o_pos[i]["name"] != n_pos[i]["name"]:
-                    breaking.append(f"POSITIONAL_REORDER/RENAME: {k}")
-                    break
-
-            # new positional args
-            if len(n_pos) > len(o_pos):
-                added = n_pos[len(o_pos) :]
-                if any(is_required(a) for a in added):
-                    breaking.append(f"REQUIRED_POSITIONAL_ADDED: {k}")
-                else:
-                    nonbreaking.append(f"OPTIONAL_POSITIONAL_ADDED: {k}")
-
-        # kwonly args
-        o_kw = {a["name"]: a for a in o["kwonly"]}
-        n_kw = {a["name"]: a for a in n["kwonly"]}
-
-        for name in o_kw:
-            if name not in n_kw:
-                breaking.append(f"KWONLY_REMOVED: {k}")
-
-        for name in n_kw:
-            if name not in o_kw:
-                if is_required(n_kw[name]):
-                    breaking.append(f"REQUIRED_KWONLY_ADDED: {k}")
-                else:
-                    nonbreaking.append(f"OPTIONAL_KWONLY_ADDED: {k}")
-
-        # varargs changes
-        if o["vararg"] and not n["vararg"]:
-            breaking.append(f"*args_REMOVED: {k}")
-
-        if o["kwarg"] and not n["kwarg"]:
-            breaking.append(f"**kwargs_REMOVED: {k}")
-
-        # ── Type annotation changes ────────────────────────────────────────
-
-        # Per-argument type changes
-        for o_arg, n_arg in zip(o_pos, n_pos):
-            o_type = o_arg.get("type")
-            n_type = n_arg.get("type")
-            if o_type is not None and n_type is not None and o_type != n_type:
-                kind = _type_change_kind(o_type, n_type, _union_parser)
-                if kind == "widening":
-                    nonbreaking.append(
-                        f"TYPE_WIDENED: {k} arg '{o_arg['name']}' {o_type} -> {n_type}"
-                    )
-                else:
-                    breaking.append(
-                        f"TYPE_CHANGED: {k} arg '{o_arg['name']}' {o_type} -> {n_type}"
-                    )
-
-        for o_arg_name, o_arg in o_kw.items():
-            if o_arg_name in n_kw:
-                o_type = o_arg.get("type")
-                n_type = n_kw[o_arg_name].get("type")
-                if o_type is not None and n_type is not None and o_type != n_type:
-                    kind = _type_change_kind(o_type, n_type, _union_parser)
-                    if kind == "widening":
-                        nonbreaking.append(
-                            f"TYPE_WIDENED: {k} kwarg '{o_arg_name}' {o_type} -> {n_type}"
-                        )
-                    else:
-                        breaking.append(
-                            f"TYPE_CHANGED: {k} kwarg '{o_arg_name}' {o_type} -> {n_type}"
-                        )
-
-        # Return type changes
-        o_ret = o.get("return_type")
-        n_ret = n.get("return_type")
-        if o_ret is not None and n_ret is not None and o_ret != n_ret:
-            kind = _type_change_kind(o_ret, n_ret, _union_parser)
-            if kind == "widening":
-                nonbreaking.append(f"RETURN_TYPE_WIDENED: {k} {o_ret} -> {n_ret}")
-            else:
-                breaking.append(f"RETURN_TYPE_CHANGED: {k} {o_ret} -> {n_ret}")
-
-        # ── Decorator changes ──────────────────────────────────────────────
-        o_decs = set(o.get("decorators", []))
-        n_decs = set(n.get("decorators", []))
-        for removed_dec in o_decs - n_decs:
-            breaking.append(f"DECORATOR_REMOVED: {k} @{removed_dec}")
-        for added_dec in n_decs - o_decs:
-            # Adding a decorator is typically non-breaking (e.g. @lru_cache, @staticmethod)
-            # Only decorators like @classmethod that change calling convention are breaking
-            nonbreaking.append(f"DECORATOR_ADDED: {k} @{added_dec}")
+    _collect_added_removed_changes(
+        old_sigs, new_sigs, _suppressed, breaking, nonbreaking
+    )
+    _compare_shared_signatures(
+        old_sigs,
+        new_sigs,
+        _suppressed,
+        union_parser,
+        breaking,
+        nonbreaking,
+    )
 
     # ── Cascade impact from class hierarchy ──────────────────────────────
     if hierarchy:

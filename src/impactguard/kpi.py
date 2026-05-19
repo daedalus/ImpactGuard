@@ -54,6 +54,60 @@ from typing import Any
 _DEFAULT_FP_THRESHOLD = 0.05
 
 
+def _normalize_report_data(report_data: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop malformed report entries before KPI aggregation."""
+    return [item for item in report_data if isinstance(item, dict)]
+
+
+def _build_distribution(
+    report_data: list[dict[str, Any]], total: int
+) -> tuple[dict[str, int], dict[str, dict[str, Any]]]:
+    """Build raw risk counts and normalized distribution data."""
+    counts: dict[str, int] = {"HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0}
+    for item in report_data:
+        level = str(item.get("risk", "UNKNOWN"))
+        if level not in counts:
+            level = "UNKNOWN"
+        counts[level] += 1
+
+    distribution = {
+        level: {"count": cnt, "rate": cnt / total if total else 0.0}
+        for level, cnt in counts.items()
+    }
+    return counts, distribution
+
+
+def _mean_risk_score(report_data: list[dict[str, Any]], total: int) -> float:
+    """Compute the average exposure × confidence proxy score."""
+    risk_scores = [
+        float(item.get("exposure", 0.0)) * float(item.get("confidence", 0.0))
+        for item in report_data
+    ]
+    return sum(risk_scores) / total if total else 0.0
+
+
+def _patch_acceptance_rate(
+    feedback_outcomes: list[dict[str, Any]] | None,
+) -> float | None:
+    """Compute overall patch acceptance, if feedback data exists."""
+    if feedback_outcomes is None:
+        return None
+    total = len(feedback_outcomes)
+    if total == 0:
+        return 0.0
+    accepted = sum(1 for outcome in feedback_outcomes if outcome.get("accepted"))
+    return accepted / total
+
+
+def _false_positive_proxy(report_data: list[dict[str, Any]], fp_threshold: float) -> float:
+    """Estimate the rate of likely false-positive HIGH findings."""
+    high_items = [item for item in report_data if item.get("risk") == "HIGH"]
+    low_exp_high = sum(
+        1 for item in high_items if float(item.get("exposure", 0.0)) < fp_threshold
+    )
+    return low_exp_high / len(high_items) if high_items else 0.0
+
+
 def compute_kpis(
     report_data: list[dict[str, Any]],
     feedback_outcomes: list[dict[str, Any]] | None = None,
@@ -93,7 +147,7 @@ def compute_kpis(
           *fp_threshold*
     """
     # Filter out any non-dict entries to be robust against malformed input
-    report_data = [item for item in report_data if isinstance(item, dict)]
+    report_data = _normalize_report_data(report_data)
     total = len(report_data)
 
     # ── mean_severity (S dimension of S×E×C) ─────────────────────────────────
@@ -105,27 +159,10 @@ def compute_kpis(
     mean_severity = sum(severities) / total if total else 0.0
 
     # ── risk_distribution ────────────────────────────────────────────────────
-    counts: dict[str, int] = {"HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0}
-    for item in report_data:
-        level = str(item.get("risk", "UNKNOWN"))
-        if level not in counts:
-            level = "UNKNOWN"
-        counts[level] += 1
-
-    distribution: dict[str, dict[str, Any]] = {}
-    for level, cnt in counts.items():
-        distribution[level] = {
-            "count": cnt,
-            "rate": cnt / total if total else 0.0,
-        }
+    counts, distribution = _build_distribution(report_data, total)
 
     # ── mean_risk_score (exposure × confidence) ──────────────────────────────
-    risk_scores: list[float] = []
-    for item in report_data:
-        exp = float(item.get("exposure", 0.0))
-        conf = float(item.get("confidence", 0.0))
-        risk_scores.append(exp * conf)
-    mean_risk_score = sum(risk_scores) / total if total else 0.0
+    mean_risk_score = _mean_risk_score(report_data, total)
 
     # ── high_rate ────────────────────────────────────────────────────────────
     high_rate = counts["HIGH"] / total if total else 0.0
@@ -149,21 +186,10 @@ def compute_kpis(
     transitive_rate = transitive_count / total if total else 0.0
 
     # ── patch_acceptance_rate ────────────────────────────────────────────────
-    patch_acceptance_rate: float | None = None
-    if feedback_outcomes is not None:
-        n = len(feedback_outcomes)
-        if n > 0:
-            accepted = sum(1 for o in feedback_outcomes if o.get("accepted"))
-            patch_acceptance_rate = accepted / n
-        else:
-            patch_acceptance_rate = 0.0
+    patch_acceptance_rate = _patch_acceptance_rate(feedback_outcomes)
 
     # ── false_positive_proxy ─────────────────────────────────────────────────
-    high_items = [item for item in report_data if item.get("risk") == "HIGH"]
-    low_exp_high = sum(
-        1 for item in high_items if float(item.get("exposure", 0.0)) < fp_threshold
-    )
-    false_positive_proxy = low_exp_high / len(high_items) if high_items else 0.0
+    false_positive_proxy = _false_positive_proxy(report_data, fp_threshold)
 
     return {
         "total": total,
