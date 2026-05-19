@@ -753,9 +753,161 @@ def cmd_check_commit(args: argparse.Namespace) -> int:
     return 1 if comparison.get("breaking") else 0
 
 
+def _hook_install_flags(args: argparse.Namespace) -> tuple[bool, bool, bool]:
+    """Return booleans for pre/post/workflow installation."""
+    install_pre = (
+        args.pre or args.both or (not args.pre and not args.post and not args.both)
+    )
+    install_post = (
+        args.post or args.both or (not args.pre and not args.post and not args.both)
+    )
+    install_workflow = getattr(args, "install_github_workflow", False)
+    return install_pre, install_post, install_workflow
+
+
+def _load_precommit_config(config_path: Path, yaml: Any) -> dict[str, Any]:
+    """Load existing pre-commit YAML, or initialize an empty config."""
+    if not config_path.exists():
+        return {}
+    with open(config_path) as f:
+        return yaml.safe_load(f) or {}
+
+
+def _ensure_local_repo_entry(config: dict[str, Any]) -> dict[str, Any]:
+    """Ensure the pre-commit config has a local repo entry."""
+    repos = config.setdefault("repos", [])
+    for repo in repos:
+        if repo.get("repo") == "local":
+            return repo
+    local_repo: dict[str, Any] = {"repo": "local", "hooks": []}
+    repos.append(local_repo)
+    return local_repo
+
+
+def _write_precommit_yaml(
+    config_path: Path, impactguard_hooks: list[dict[str, Any]], yaml: Any
+) -> None:
+    """Update the YAML pre-commit config with ImpactGuard hooks."""
+    config = _load_precommit_config(config_path, yaml)
+    local_repo = _ensure_local_repo_entry(config)
+    existing_hooks = local_repo.get("hooks", [])
+    local_repo["hooks"] = [
+        hook
+        for hook in existing_hooks
+        if hook.get("id") not in ["impactguard-check", "impactguard-post-commit"]
+    ]
+    local_repo["hooks"].extend(impactguard_hooks)
+    with open(config_path, "w") as f:
+        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+    print(f"Updated .pre-commit-config.yaml: {config_path}")
+
+
+def _write_precommit_text(
+    config_path: Path, impactguard_hooks: list[dict[str, Any]]
+) -> None:
+    """Write a minimal text fallback pre-commit config."""
+    lines = ["repos:", "  - repo: local", "    hooks:"]
+    for hook in impactguard_hooks:
+        lines.append(f"      - id: {hook['id']}")
+        lines.append(f'        name: "{hook["name"]}"')
+        lines.append(f"        entry: {hook['entry']}")
+        lines.append(f"        language: {hook['language']}")
+        if "files" in hook:
+            lines.append(f"        files: '{hook['files']}'")
+        if "always_run" in hook:
+            lines.append(f"        always_run: {hook['always_run']}")
+        lines.append(f"        stages: {hook['stages']}")
+    config_path.write_text("\n".join(lines) + "\n")
+    print(f"Created .pre-commit-config.yaml: {config_path}")
+
+
+def _install_precommit_hooks(repo_path: Path, install_pre: bool, install_post: bool) -> int:
+    """Install pre-commit hooks into the target repository."""
+    import subprocess
+
+    try:
+        commands = []
+        if install_pre:
+            commands.append(
+                (
+                    ["pre-commit", "install"],
+                    "Installed pre-commit hook via pre-commit package",
+                    "Warning: pre-commit install failed",
+                )
+            )
+        if install_post:
+            commands.append(
+                (
+                    ["pre-commit", "install", "--hook-type", "post-commit"],
+                    "Installed post-commit hook via pre-commit package",
+                    "Warning: pre-commit install --hook-type post-commit failed",
+                )
+            )
+
+        for command, success_msg, failure_prefix in commands:
+            result = subprocess.run(
+                command,
+                cwd=str(repo_path),
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0:
+                print(success_msg)
+            else:
+                print(f"{failure_prefix}: {result.stderr}")
+    except FileNotFoundError:
+        print(
+            "Error: pre-commit package not found. Install it with: pip install pre-commit"
+        )
+        return 1
+    except Exception as e:
+        print(f"Error installing hooks: {e}")
+        return 1
+    return 0
+
+
+def _maybe_install_workflow(repo_path: Path, install_workflow: bool) -> None:
+    """Create the optional GitHub Actions workflow file."""
+    if not install_workflow:
+        return
+
+    workflow_dir = repo_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True, exist_ok=True)
+    workflow_path = workflow_dir / "impactguard.yml"
+    workflow_content = """name: ImpactGuard
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  impactguard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install ImpactGuard
+        run: pip install impactguard[all]
+      - name: Run ImpactGuard
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            impactguard check-commits "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
+          else
+            impactguard check-commit HEAD
+          fi
+"""
+    workflow_path.write_text(workflow_content)
+    print(f"Created GitHub workflow: {workflow_path}")
+
+
 def cmd_install_hooks(args: argparse.Namespace) -> int:
     """Install git hooks for ImpactGuard using pre-commit package."""
-    import subprocess
     from pathlib import Path
 
     repo_path = Path(args.repo_path).resolve()
@@ -765,14 +917,7 @@ def cmd_install_hooks(args: argparse.Namespace) -> int:
         print(f"Error: Not a git repository: {repo_path}")
         return 1
 
-    # Determine which hooks to install
-    install_pre = (
-        args.pre or args.both or (not args.pre and not args.post and not args.both)
-    )
-    install_post = (
-        args.post or args.both or (not args.pre and not args.post and not args.both)
-    )
-    install_workflow = getattr(args, "install_github_workflow", False)
+    install_pre, install_post, install_workflow = _hook_install_flags(args)
 
     # Ensure .pre-commit-config.yaml exists with full pipeline (use YAML formatter)
     config_path = repo_path / ".pre-commit-config.yaml"
@@ -809,132 +954,16 @@ def cmd_install_hooks(args: argparse.Namespace) -> int:
         )
 
     if yaml_available:
-        # Read existing config
-        if config_path.exists():
-            with open(config_path) as f:
-                config = yaml.safe_load(f) or {}
-        else:
-            config = {}
-
-        # Ensure repos key exists
-        if "repos" not in config:
-            config["repos"] = []
-
-        # Find or create local repo entry
-        local_repo = None
-        for repo in config.get("repos", []):
-            if repo.get("repo") == "local":
-                local_repo = repo
-                break
-
-        if local_repo is None:
-            local_repo = {"repo": "local", "hooks": []}
-            config["repos"].append(local_repo)
-
-        # Remove existing impactguard hooks
-        existing_hooks = local_repo.get("hooks", [])
-        local_repo["hooks"] = [
-            h
-            for h in existing_hooks
-            if h.get("id") not in ["impactguard-check", "impactguard-post-commit"]
-        ]
-
-        # Add new impactguard hooks
-        local_repo["hooks"].extend(impactguard_hooks)
-
-        # Write back with proper YAML formatting
-        with open(config_path, "w") as f:
-            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-        print(f"Updated .pre-commit-config.yaml: {config_path}")
+        _write_precommit_yaml(config_path, impactguard_hooks, yaml)
     else:
-        # Fallback to text mode (original behavior)
-        config_content = "repos:\n  - repo: local\n    hooks:\n"
-        for hook in impactguard_hooks:
-            config_content += f"      - id: {hook['id']}\n"
-            config_content += f'        name: "{hook["name"]}"\n'
-            config_content += f"        entry: {hook['entry']}\n"
-            config_content += f"        language: {hook['language']}\n"
-            if "files" in hook:
-                config_content += f"        files: '{hook['files']}'\n"
-            if "always_run" in hook:
-                config_content += f"        always_run: {hook['always_run']}\n"
-            config_content += f"        stages: {hook['stages']}\n"
-        config_path.write_text(config_content)
-        print(f"Created .pre-commit-config.yaml: {config_path}")
+        _write_precommit_text(config_path, impactguard_hooks)
 
     # Install hooks using pre-commit package
-    try:
-        if install_pre:
-            result = subprocess.run(
-                ["pre-commit", "install"],
-                cwd=str(repo_path),
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode == 0:
-                print("Installed pre-commit hook via pre-commit package")
-            else:
-                print(f"Warning: pre-commit install failed: {result.stderr}")
+    install_result = _install_precommit_hooks(repo_path, install_pre, install_post)
+    if install_result != 0:
+        return install_result
 
-        if install_post:
-            result = subprocess.run(
-                ["pre-commit", "install", "--hook-type", "post-commit"],
-                cwd=str(repo_path),
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode == 0:
-                print("Installed post-commit hook via pre-commit package")
-            else:
-                print(
-                    f"Warning: pre-commit install --hook-type post-commit failed: {result.stderr}"
-                )
-
-    except FileNotFoundError:
-        print(
-            "Error: pre-commit package not found. Install it with: pip install pre-commit"
-        )
-        return 1
-    except Exception as e:
-        print(f"Error installing hooks: {e}")
-        return 1
-
-    # Install GitHub workflow if requested
-    if install_workflow:
-        workflow_dir = repo_path / ".github" / "workflows"
-        workflow_dir.mkdir(parents=True, exist_ok=True)
-        workflow_path = workflow_dir / "impactguard.yml"
-
-        workflow_content = """name: ImpactGuard
-
-on:
-  push:
-    branches: [main, master]
-  pull_request:
-    branches: [main, master]
-
-jobs:
-  impactguard:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install ImpactGuard
-        run: pip install impactguard[all]
-      - name: Run ImpactGuard
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            impactguard check-commits "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
-          else
-            impactguard check-commit HEAD
-          fi
-"""
-        workflow_path.write_text(workflow_content)
-        print(f"Created GitHub workflow: {workflow_path}")
+    _maybe_install_workflow(repo_path, install_workflow)
 
     print("\nHooks installed successfully using pre-commit package")
     return 0
@@ -1268,6 +1297,105 @@ def cmd_feedback(args: argparse.Namespace) -> int:
     return 1
 
 
+def _collect_python_files() -> list[str]:
+    """Collect Python source files from the current working tree."""
+    import glob as _glob
+
+    return list(_glob.glob("**/*.py", recursive=True))
+
+
+def _require_python_files(files: list[str] | None) -> list[str]:
+    """Return provided files or discover Python files, exiting on empty input."""
+    discovered = files or _collect_python_files()
+    if discovered:
+        return discovered
+    print("Error: No Python files found", file=sys.stderr)
+    return []
+
+
+def _baseline_metadata(files: list[str]) -> dict[str, Any]:
+    """Build baseline metadata for save operations."""
+    import datetime
+
+    return {
+        "saved_at": datetime.datetime.now(datetime.UTC).isoformat(),
+        "files_count": len(files),
+    }
+
+
+def _write_json_output(path: str | None, payload: Any) -> None:
+    """Write optional JSON output for CLI commands."""
+    if not path:
+        return
+    with open(path, "w") as f:
+        json.dump(payload, f, indent=2)
+    print(f"\nResult written to {path}")
+
+
+def _list_tagged_baselines(history_path: str | None, list_baselines: Any) -> int:
+    """Handle the tagged baseline list subcommand."""
+    entries = list_baselines(history_path)
+    if not entries:
+        print("No tagged baselines stored yet.")
+    for entry in entries:
+        meta = entry.get("metadata") or {}
+        saved_at = meta.get("saved_at", "")
+        print(
+            f"  {entry['tag']:20s}  {entry['signature_count']:4d} signatures  {saved_at}"
+        )
+    return 0
+
+
+def _save_tagged_baseline_cmd(
+    args: argparse.Namespace,
+    history_path: str | None,
+    save_tagged_baseline: Any,
+) -> int:
+    """Handle the tagged baseline save subcommand."""
+    files = _require_python_files(getattr(args, "files", None) or [])
+    if not files:
+        return 1
+
+    try:
+        saved = save_tagged_baseline(
+            args.tag, files, history_path, _baseline_metadata(files)
+        )
+        print(f"Tagged baseline '{args.tag}' saved to {saved} ({len(files)} file(s))")
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def _compare_tagged_baseline_cmd(
+    args: argparse.Namespace,
+    history_path: str | None,
+    compare_with_tagged_baseline: Any,
+) -> int:
+    """Handle the tagged baseline compare subcommand."""
+    files = _require_python_files(getattr(args, "files", None) or [])
+    if not files:
+        return 1
+
+    try:
+        result = compare_with_tagged_baseline(args.tag_from, files, history_path)
+    except (FileNotFoundError, KeyError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    comparison = result["comparison"]
+    semver = result["semver"]
+    print(f"Comparing against baseline tag '{args.tag_from}':")
+    print(f"  Breaking changes:     {len(comparison.get('breaking', []))}")
+    print(f"  Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
+    print(f"  Semver recommendation: {semver.get('bump', 'patch').upper()}")
+    for item in comparison.get("breaking", []):
+        print(f"  ⚠ {item}")
+
+    _write_json_output(getattr(args, "output", None), result)
+    return 1 if comparison.get("breaking") else 0
+
+
 def cmd_baseline_tagged(args: argparse.Namespace) -> int:
     """Handle tagged baseline sub-subcommands: save --tag, list, compare --from."""
     from .baseline import (
@@ -1281,71 +1409,15 @@ def cmd_baseline_tagged(args: argparse.Namespace) -> int:
     history_path: str | None = getattr(args, "history_path", None)
 
     if subcmd == "list":
-        entries = list_baselines(history_path)
-        if not entries:
-            print("No tagged baselines stored yet.")
-        for e in entries:
-            meta = e.get("metadata") or {}
-            saved_at = meta.get("saved_at", "")
-            print(f"  {e['tag']:20s}  {e['signature_count']:4d} signatures  {saved_at}")
-        return 0
+        return _list_tagged_baselines(history_path, list_baselines)
 
     if subcmd == "save":
-        import datetime
-        import glob as _glob
-
-        tag: str = args.tag
-        files = getattr(args, "files", None) or []
-        if not files:
-            files = list(_glob.glob("**/*.py", recursive=True))
-            if not files:
-                print("Error: No Python files found", file=sys.stderr)
-                return 1
-
-        metadata = {
-            "saved_at": datetime.datetime.now(datetime.UTC).isoformat(),
-            "files_count": len(files),
-        }
-        try:
-            saved = save_tagged_baseline(tag, files, history_path, metadata)
-            print(f"Tagged baseline '{tag}' saved to {saved} ({len(files)} file(s))")
-        except ValueError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            return 1
-        return 0
+        return _save_tagged_baseline_cmd(args, history_path, save_tagged_baseline)
 
     if subcmd == "compare":
-        import glob as _glob
-
-        tag_from: str = args.tag_from
-        files = getattr(args, "files", None) or []
-        if not files:
-            files = list(_glob.glob("**/*.py", recursive=True))
-            if not files:
-                print("Error: No Python files found", file=sys.stderr)
-                return 1
-        try:
-            result = compare_with_tagged_baseline(tag_from, files, history_path)
-        except (FileNotFoundError, KeyError) as e:
-            print(f"Error: {e}", file=sys.stderr)
-            return 1
-
-        comparison = result["comparison"]
-        semver = result["semver"]
-        print(f"Comparing against baseline tag '{tag_from}':")
-        print(f"  Breaking changes:     {len(comparison.get('breaking', []))}")
-        print(f"  Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
-        print(f"  Semver recommendation: {semver.get('bump', 'patch').upper()}")
-        for item in comparison.get("breaking", []):
-            print(f"  ⚠ {item}")
-
-        output = getattr(args, "output", None)
-        if output:
-            with open(output, "w") as f:
-                json.dump(result, f, indent=2)
-            print(f"\nResult written to {output}")
-
-        return 1 if comparison.get("breaking") else 0
+        return _compare_tagged_baseline_cmd(
+            args, history_path, compare_with_tagged_baseline
+        )
 
     if subcmd == "delete":
         tag_del: str = args.tag

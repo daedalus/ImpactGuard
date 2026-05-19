@@ -6,6 +6,7 @@ language extractor files in the languages/ directory.
 
 import re
 import warnings
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -248,6 +249,70 @@ def _extract_call_name(
     return None
 
 
+def _resolve_call_name_from_node(
+    node: Any,
+    source: bytes,
+    *,
+    name_on_call: bool,
+    fallback_ident: bool,
+    member_map: dict[str, str | None] | None,
+    ident_type: str | None,
+    first_ident: Callable[[Any], str | None],
+) -> str | None:
+    """Resolve a call target name from a tree-sitter call node."""
+    if name_on_call:
+        for field in ("name", "method"):
+            child = node.child_by_field_name(field)
+            if child is not None:
+                return node_text(child, source)
+        if fallback_ident:
+            return first_ident(node)
+        return None
+
+    func_node = node.child_by_field_name("function")
+    if func_node is None and node.named_children:
+        func_node = node.named_children[0]
+    if func_node is None:
+        return None
+    return _extract_call_name(func_node, source, member_map, ident_type)
+
+
+def _resolve_args_node(node: Any, args_type: str) -> Any:
+    """Resolve the argument-list node for a call expression."""
+    args_node = node.child_by_field_name("arguments")
+    if args_node is not None:
+        return args_node
+    for child in node.named_children:
+        if child.type == args_type:
+            return child
+    if node.named_children:
+        return node.named_children[-1]
+    return None
+
+
+def _count_call_args(
+    node: Any,
+    *,
+    count_args: str,
+    count_types: set[str] | None,
+    args_type: str,
+) -> int:
+    """Count arguments for a call expression according to the configured mode."""
+    if count_args == "arithmetic":
+        return max(0, len(node.named_children) - 1)
+
+    args_node = _resolve_args_node(node, args_type)
+    if args_node is None:
+        return 0
+
+    if count_args == "include":
+        types = count_types or set()
+        if types:
+            return sum(1 for child in args_node.children if child.type in types)
+
+    return sum(1 for child in args_node.named_children if child.type != ",")
+
+
 def extract_calls_with_tree_sitter(
     path: Path,
     language_name: str,
@@ -317,52 +382,22 @@ def extract_calls_with_tree_sitter(
 
     def visit(node: Any) -> None:
         if node.type == call_type:
-            name: str | None = None
-            if name_on_call:
-                for field in ("name", "method"):
-                    n = node.child_by_field_name(field)
-                    if n is not None:
-                        name = node_text(n, source)
-                        break
-                if name is None and fallback_ident:
-                    name = _first_ident(node)
-            else:
-                func_node = node.child_by_field_name("function")
-                if func_node is None and node.named_children:
-                    func_node = node.named_children[0]
-                if func_node is not None:
-                    name = _extract_call_name(func_node, source, member_map, ident_type)
-
+            name = _resolve_call_name_from_node(
+                node,
+                source,
+                name_on_call=name_on_call,
+                fallback_ident=fallback_ident,
+                member_map=member_map,
+                ident_type=ident_type,
+                first_ident=_first_ident,
+            )
             if name is not None:
-                if count_args == "arithmetic":
-                    arg_count = max(0, len(node.named_children) - 1)
-                else:
-                    args_node = node.child_by_field_name("arguments")
-                    if args_node is None:
-                        for child in node.named_children:
-                            if child.type == args_type:
-                                args_node = child
-                                break
-                    if args_node is None and node.named_children:
-                        args_node = node.named_children[-1]
-
-                    arg_count = 0
-                    if args_node is not None:
-                        if count_args == "include":
-                            types = count_types or set()
-                            if types:
-                                for child in args_node.children:
-                                    if child.type in types:
-                                        arg_count += 1
-                            else:
-                                for child in args_node.named_children:
-                                    if child.type != ",":
-                                        arg_count += 1
-                        else:
-                            for child in args_node.named_children:
-                                if child.type != ",":
-                                    arg_count += 1
-
+                arg_count = _count_call_args(
+                    node,
+                    count_args=count_args,
+                    count_types=count_types,
+                    args_type=args_type,
+                )
                 lineno = node.start_point[0] + 1
                 calls.append(make_call_dict(name, lineno, arg_count, str(path)))
 

@@ -220,6 +220,480 @@ def _compute_base_path(path: str) -> str:
     return str(p if p.is_dir() else p.parent)
 
 
+def _append_analysis_event(
+    events: list[dict[str, str]],
+    *,
+    level: str,
+    kind: str,
+    file: str,
+    message: str,
+) -> None:
+    """Append a structured analysis event."""
+    events.append(
+        {
+            "level": level,
+            "kind": kind,
+            "file": file,
+            "message": message,
+        }
+    )
+
+
+def _write_json(path: str | Path, payload: Any) -> None:
+    """Write JSON payloads with stable formatting."""
+    with open(path, "w") as f:
+        json.dump(payload, f, indent=2)
+
+
+def _prepare_signature_snapshot(
+    files: list[str] | None,
+    provided_path: str | None,
+    *,
+    base_path: str | None,
+    output_dir: str,
+    output_name: str,
+    stats: dict[str, int],
+    events: list[dict[str, str]],
+    strict_extraction: bool,
+) -> tuple[str | None, list[dict[str, Any]] | None]:
+    """Extract signatures to an output file or reuse an existing snapshot path."""
+    if files:
+        if base_path is None and _has_basename_collisions(files):
+            stats["fqname_collision_risk"] += 1
+            _append_analysis_event(
+                events,
+                level="warning",
+                kind="fqname_collision_risk",
+                file=_summarize_files(files),
+                message=(
+                    "Duplicate basenames detected without base path; fqname collisions are possible."
+                ),
+            )
+        signatures = _extract_by_language(
+            files,
+            base_path=base_path,
+            stats=stats,
+            events=events,
+            strict_extraction=strict_extraction,
+        )
+        snapshot_path = str(Path(output_dir) / output_name)
+        _write_json(snapshot_path, signatures)
+        return snapshot_path, signatures
+    if provided_path and Path(provided_path).exists():
+        return provided_path, None
+    return None, None
+
+
+def _extract_hierarchy_map(files: list[str]) -> dict[str, Any]:
+    """Extract class hierarchy information from Python files only."""
+    from .class_hierarchy import extract_class_hierarchy
+
+    py_files = [file_path for file_path in files if file_path.endswith(".py")]
+    if not py_files:
+        return {}
+    return extract_class_hierarchy(py_files)
+
+
+def _build_hierarchy_data(
+    old_files: list[str] | None,
+    new_files: list[str] | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Build hierarchy and implementation maps for cascade analysis."""
+    from .class_hierarchy import find_implementations
+
+    hierarchy: dict[str, Any] = {}
+    if old_files:
+        hierarchy.update(_extract_hierarchy_map(old_files))
+    if new_files:
+        hierarchy.update(_extract_hierarchy_map(new_files))
+
+    implementations = find_implementations(hierarchy) if hierarchy else {}
+    return hierarchy, implementations
+
+
+def _extract_python_calls(
+    file_path: str,
+    *,
+    analyze_module: Any,
+    all_calls: list[dict[str, Any]],
+    stats: dict[str, int],
+    events: list[dict[str, str]],
+) -> None:
+    """Extract Python call sites with analyze_module and a fallback path."""
+    try:
+        mod_result = analyze_module(file_path)
+        if mod_result and "calls" in mod_result:
+            all_calls.extend(mod_result["calls"])
+        return
+    except (OSError, SyntaxError, UnicodeDecodeError, ValueError, TypeError) as exc:
+        stats["parse_failures"] += 1
+        stats["fallback_used"] += 1
+        _append_analysis_event(
+            events,
+            level="warning",
+            kind="analyze_module_failed",
+            file=file_path,
+            message=str(exc),
+        )
+
+    from .extract_calls import extract as _extract_calls
+
+    try:
+        all_calls.extend(_extract_calls(Path(file_path)))
+    except (OSError, SyntaxError, UnicodeDecodeError, ValueError, TypeError) as exc:
+        stats["call_extraction_failures"] += 1
+        _append_analysis_event(
+            events,
+            level="error",
+            kind="extract_calls_failed",
+            file=file_path,
+            message=str(exc),
+        )
+        _log.warning("Fallback call extraction failed for '%s': %s", file_path, exc)
+
+
+def _extract_non_python_calls(
+    file_path: str,
+    *,
+    extractor: Any,
+    all_calls: list[dict[str, Any]],
+    stats: dict[str, int],
+    events: list[dict[str, str]],
+) -> None:
+    """Extract non-Python call sites and track fallback warnings."""
+    try:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            all_calls.extend(extractor.extract_calls(Path(file_path)))
+        for warning in caught:
+            message = str(warning.message)
+            if "regex-based fallback" not in message:
+                continue
+            stats["fallback_used"] += 1
+            _append_analysis_event(
+                events,
+                level="warning",
+                kind="fallback_used",
+                file=file_path,
+                message=message,
+            )
+    except (OSError, SyntaxError, UnicodeDecodeError, ValueError, TypeError) as exc:
+        stats["call_extraction_failures"] += 1
+        _append_analysis_event(
+            events,
+            level="error",
+            kind="extract_calls_failed",
+            file=file_path,
+            message=str(exc),
+        )
+        _log.warning("Call extraction failed for '%s': %s", file_path, exc)
+        print(f"Warning: call extraction failed for {file_path}: {exc}", file=sys.stderr)
+
+
+def _extract_calls_to_path(
+    calls_path: str | None,
+    *,
+    new_files: list[str] | None,
+    output_dir: str,
+    runtime_path: str | None,
+    stats: dict[str, int],
+    events: list[dict[str, str]],
+    analyze_module: Any,
+) -> str:
+    """Extract call sites when needed and return the calls JSON path."""
+    if calls_path:
+        return calls_path
+
+    from .languages.lib.registry import get_extractor as _get_extractor
+
+    output_path = str(Path(output_dir) / "calls.json")
+    all_calls: list[dict[str, Any]] = []
+    for file_path in new_files or []:
+        extractor = _get_extractor(file_path)
+        if extractor is None:
+            stats["skipped_files"] += 1
+            stats["unsupported_files"] += 1
+            _append_analysis_event(
+                events,
+                level="warning",
+                kind="unsupported_file",
+                file=file_path,
+                message="No registered extractor for call extraction.",
+            )
+            continue
+        if extractor.language == "python":
+            _extract_python_calls(
+                file_path,
+                analyze_module=analyze_module,
+                all_calls=all_calls,
+                stats=stats,
+                events=events,
+            )
+        else:
+            _extract_non_python_calls(
+                file_path,
+                extractor=extractor,
+                all_calls=all_calls,
+                stats=stats,
+                events=events,
+            )
+
+    if runtime_path and Path(runtime_path).exists():
+        try:
+            all_calls.extend(runtime_callsite_entries(load_runtime_observations(runtime_path)))
+        except (json.JSONDecodeError, OSError) as exc:
+            _log.warning("Failed to process runtime data from '%s': %s", runtime_path, exc)
+            stats["runtime_data_issues"] += 1
+            _append_analysis_event(
+                events,
+                level="error",
+                kind="runtime_data_invalid",
+                file=runtime_path,
+                message=str(exc),
+            )
+            print(f"Warning: Failed to process runtime data: {exc}", file=sys.stderr)
+    elif runtime_path:
+        stats["runtime_data_issues"] += 1
+        _append_analysis_event(
+            events,
+            level="error",
+            kind="runtime_data_missing",
+            file=runtime_path,
+            message="Runtime data path does not exist.",
+        )
+    else:
+        _append_analysis_event(
+            events,
+            level="warning",
+            kind="runtime_data_not_provided",
+            file="",
+            message="No runtime data provided; confidence may be reduced.",
+        )
+
+    _write_json(output_path, all_calls)
+    return output_path
+
+
+def _write_risk_inputs(
+    comparison: dict[str, Any], output_dir: str
+) -> tuple[list[dict[str, str]], str]:
+    """Write structured and plain-text breaking-change inputs for the risk gate."""
+    from .risk_gate import parse_change_line as _parse_change_line
+
+    structured_changes: list[dict[str, str]] = []
+    for change in comparison.get("breaking", []):
+        parsed = _parse_change_line(str(change))
+        if parsed is not None:
+            structured_changes.append(parsed)
+
+    diff_path = str(Path(output_dir) / "diff.txt")
+    with open(diff_path, "w") as f:
+        for change in comparison["breaking"]:
+            f.write(f"{change}\n")
+
+    structured_path = Path(output_dir) / "changes_structured.json"
+    _write_json(structured_path, structured_changes)
+    return structured_changes, diff_path
+
+
+def _attach_patch_source_info(
+    risk: list[dict[str, Any]],
+    *,
+    old_sigs_path: str,
+    old_files: list[str] | None,
+    stats: dict[str, int],
+    events: list[dict[str, str]],
+) -> None:
+    """Add source file information to risk items for patch generation."""
+    try:
+        with open(old_sigs_path) as f:
+            old_sigs_list = json.load(f)
+    except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        _log.warning("Could not load old signatures for patch generation: %s", exc)
+        print(f"Warning: Could not load old signatures: {exc}", file=sys.stderr)
+        stats["parse_failures"] += 1
+        _append_analysis_event(
+            events,
+            level="warning",
+            kind="old_signatures_load_failed",
+            file=old_sigs_path,
+            message=str(exc),
+        )
+        return
+
+    fqname_to_file: dict[str, str] = {}
+    for sig in old_sigs_list:
+        fqname = sig.get("fqname", "")
+        sig_file = sig.get("file", "")
+        for old_file in old_files or []:
+            if old_file.endswith(sig_file):
+                fqname_to_file[fqname] = old_file
+                break
+
+    for risk_item in risk:
+        fqname = risk_item.get("function", "")
+        if fqname in fqname_to_file:
+            risk_item["file"] = fqname_to_file[fqname]
+
+
+def _calibrate_feedback(
+    stats: dict[str, int], events: list[dict[str, str]]
+) -> None:
+    """Apply feedback-derived weights when outcome data is available."""
+    try:
+        from .feedback import (
+            apply_weights_to_config,
+            compute_calibrated_weights,
+            load_outcomes,
+        )
+
+        outcomes = load_outcomes()
+        if not outcomes:
+            return
+        calibrated = compute_calibrated_weights(outcomes)
+        if calibrated:
+            apply_weights_to_config(calibrated)
+    except ImportError:
+        return
+    except (OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
+        _log.warning("Feedback calibration skipped: %s", exc)
+        stats["parse_failures"] += 1
+        _append_analysis_event(
+            events,
+            level="warning",
+            kind="feedback_calibration_failed",
+            file="",
+            message=str(exc),
+        )
+
+
+def _generate_patches(
+    fixes: list[dict[str, Any]],
+    *,
+    output_dir: str,
+    suggest_patch: bool,
+    show_patch: bool,
+) -> dict[str, Any]:
+    """Generate patch output artifacts."""
+    patches: dict[str, Any] = {}
+    patch_dir = Path(output_dir) / "patches"
+    if suggest_patch:
+        patch_dir.mkdir(parents=True, exist_ok=True)
+
+    for item in fixes:
+        if "patch" not in item or not item["patch"]:
+            continue
+        patch_content = item["patch"]
+        patch_type = item.get("type", "")
+
+        if show_patch:
+            func_name = item.get("function", "unknown")
+            if ":" in func_name:
+                func_name = func_name.split(":")[-1]
+            print(f"\n=== Patched: {func_name} ===")
+            print(patch_content)
+
+        if not suggest_patch:
+            continue
+
+        counter = len(patches) + 1
+        patch_file = patch_dir / f"patch_{counter}.py"
+        patch_file.write_text(patch_content)
+        patches[f"patch_{counter}"] = {
+            "type": patch_type,
+            "file": str(patch_file),
+            "content": patch_content,
+        }
+
+    return patches
+
+
+def _runtime_state(runtime_path: str | None, stats: dict[str, int]) -> str:
+    """Summarize runtime data availability for analysis status."""
+    if runtime_path and stats.get("runtime_data_issues", 0) == 0:
+        return "loaded"
+    if runtime_path:
+        return "invalid_or_missing"
+    return "not_provided"
+
+
+def _finalize_analysis_status(
+    *,
+    result: dict[str, Any],
+    output_dir: str,
+    reliability_stats: dict[str, int],
+    analysis_events: list[dict[str, str]],
+    risk: list[dict[str, Any]],
+    max_parse_failures: int,
+    max_skipped_files: int,
+    max_call_extraction_failures: int,
+    max_runtime_data_issues: int,
+    block_unknown: bool,
+    require_runtime: bool,
+) -> None:
+    """Populate analysis and gate summaries in the pipeline result."""
+    partial_analysis = any(
+        reliability_stats.get(key, 0) > 0 for key in _PARTIAL_ANALYSIS_COUNTERS
+    )
+    runtime_state = _runtime_state(result.get("runtime_path"), reliability_stats)
+    policy = _evaluate_analysis_policy(
+        reliability_stats,
+        max_parse_failures=max_parse_failures,
+        max_skipped_files=max_skipped_files,
+        max_call_extraction_failures=max_call_extraction_failures,
+        max_runtime_data_issues=max_runtime_data_issues,
+    )
+    high_count = sum(1 for item in risk if item.get("risk") == "HIGH")
+    unknown_count = sum(1 for item in risk if item.get("risk") == "UNKNOWN")
+    risk_gate_blocked = high_count > 0 or (block_unknown and unknown_count > 0)
+    analysis_gate_blocked = not policy["passes"]
+    runtime_gate_blocked = require_runtime and runtime_state != "loaded"
+    gate_reasons: list[str] = []
+    if high_count > 0:
+        gate_reasons.append(f"HIGH risk items detected: {high_count}")
+    if block_unknown and unknown_count > 0:
+        gate_reasons.append(
+            f"UNKNOWN risk items blocked by policy (block_unknown=true): {unknown_count}"
+        )
+    for key, detail in policy["violations"].items():
+        gate_reasons.append(
+            f"analysis policy violation: {key}={detail['value']} exceeds {detail['max_allowed']}"
+        )
+    if runtime_gate_blocked:
+        gate_reasons.append("runtime data is required but missing/invalid")
+
+    analysis_status = {
+        "status": "partial" if partial_analysis else "complete",
+        "partial_analysis": partial_analysis,
+        "counters": reliability_stats,
+        "events": analysis_events,
+        "runtime": {"state": runtime_state, "required": require_runtime},
+        "policy": policy,
+    }
+    gate_status = {
+        "blocked": risk_gate_blocked or analysis_gate_blocked or runtime_gate_blocked,
+        "risk_gate_blocked": risk_gate_blocked,
+        "analysis_gate_blocked": analysis_gate_blocked,
+        "runtime_gate_blocked": runtime_gate_blocked,
+        "block_unknown": block_unknown,
+        "risk": {"high": high_count, "unknown": unknown_count},
+        "reasons": gate_reasons,
+    }
+    result["analysis_status"] = analysis_status
+    result["gate"] = gate_status
+    _write_json(Path(output_dir) / "analysis_summary.json", analysis_status)
+    _write_json(Path(output_dir) / "gate_summary.json", gate_status)
+
+
+def _load_result_signatures(old_sigs_path: str, new_sigs_path: str) -> dict[str, list[Any]]:
+    """Load signature snapshots for the final pipeline result."""
+    with open(old_sigs_path) as f:
+        old_signatures = json.load(f)
+    with open(new_sigs_path) as f:
+        new_signatures = json.load(f)
+    return {"old": old_signatures, "new": new_signatures}
+
+
 def run_pipeline(
     old_files: list[str] | None = None,
     new_files: list[str] | None = None,
@@ -275,11 +749,9 @@ def run_pipeline(
         - patches: dict  # generated patches (if suggest_patch=True)
     """
     from .analyze_module import analyze as analyze_module
-    from .class_hierarchy import extract_class_hierarchy, find_implementations
     from .compare_signatures import compare
     from .generate_report import generate_html
     from .impact_analysis import analyze
-    from .languages.lib.registry import get_extractor as _get_extractor
     from .risk_gate import run as run_risk
     from .suggest_fixes import enrich_with_fixes
 
@@ -309,88 +781,39 @@ def run_pipeline(
 
     # Step 1: Extract or load signatures
     _log.debug("Step 1: Extracting/loading signatures")
-    if old_files:
-        if old_base_path is None and _has_basename_collisions(old_files):
-            reliability_stats["fqname_collision_risk"] += 1
-            analysis_events.append(
-                {
-                    "level": "warning",
-                    "kind": "fqname_collision_risk",
-                    "file": _summarize_files(old_files),
-                    "message": (
-                        "Duplicate basenames detected without base path; fqname collisions are possible."
-                    ),
-                }
-            )
-        old_sigs = _extract_by_language(
-            old_files,
-            base_path=old_base_path,
-            stats=reliability_stats,
-            events=analysis_events,
-            strict_extraction=strict_extraction,
-        )
-        old_sigs_path = str(Path(output_dir) / "old_signatures.json")
-        with open(old_sigs_path, "w") as f:
-            json.dump(old_sigs, f, indent=2)
-    elif old_sigs_path and Path(old_sigs_path).exists():
-        pass  # Use provided path
-    else:
-        old_sigs_path = None
-
-    if new_files:
-        if new_base_path is None and _has_basename_collisions(new_files):
-            reliability_stats["fqname_collision_risk"] += 1
-            analysis_events.append(
-                {
-                    "level": "warning",
-                    "kind": "fqname_collision_risk",
-                    "file": _summarize_files(new_files),
-                    "message": (
-                        "Duplicate basenames detected without base path; fqname collisions are possible."
-                    ),
-                }
-            )
-        new_sigs = _extract_by_language(
-            new_files,
-            base_path=new_base_path,
-            stats=reliability_stats,
-            events=analysis_events,
-            strict_extraction=strict_extraction,
-        )
-        new_sigs_path = str(Path(output_dir) / "new_signatures.json")
-        with open(new_sigs_path, "w") as f:
-            json.dump(new_sigs, f, indent=2)
-    elif new_sigs_path and Path(new_sigs_path).exists():
-        pass  # Use provided path
-    else:
+    old_sigs_path, _ = _prepare_signature_snapshot(
+        old_files,
+        old_sigs_path,
+        base_path=old_base_path,
+        output_dir=output_dir,
+        output_name="old_signatures.json",
+        stats=reliability_stats,
+        events=analysis_events,
+        strict_extraction=strict_extraction,
+    )
+    new_sigs_path, new_sigs = _prepare_signature_snapshot(
+        new_files,
+        new_sigs_path,
+        base_path=new_base_path,
+        output_dir=output_dir,
+        output_name="new_signatures.json",
+        stats=reliability_stats,
+        events=analysis_events,
+        strict_extraction=strict_extraction,
+    )
+    if new_sigs_path is None:
         raise ValueError("Must provide new_files or new_sigs_path")
 
     # If no old signatures, just return new signatures
     if not old_sigs_path:
-        with open(new_sigs_path) as f:
-            result["signatures"] = {"new": json.load(f)}
+        if new_sigs is None:
+            with open(new_sigs_path) as f:
+                new_sigs = json.load(f)
+        result["signatures"] = {"new": new_sigs}
         return result
 
     # Step 1.5: Extract class hierarchy (for cascade impact)
-    hierarchy: dict[str, Any] = {}
-    implementations: dict[str, Any] = {}
-
-    def _extract_hierarchy(files: list[str]) -> dict[str, Any]:
-        """Extract class hierarchy from Python files only."""
-        py_files = [f for f in files if f.endswith(".py")]
-        if py_files:
-            return extract_class_hierarchy(py_files)
-        return {}
-
-    if old_files:
-        old_hierarchy = _extract_hierarchy(old_files)
-        hierarchy.update(old_hierarchy)
-    if new_files:
-        new_hierarchy = _extract_hierarchy(new_files)
-        hierarchy.update(new_hierarchy)
-
-    if hierarchy:
-        implementations = find_implementations(hierarchy)
+    hierarchy, implementations = _build_hierarchy_data(old_files, new_files)
 
     # Step 2: Compare signatures
     _log.debug("Step 2: Comparing signatures")
@@ -409,157 +832,16 @@ def run_pipeline(
 
     # Step 3: Extract call sites (if not provided)
     _log.debug("Step 3: Extracting call sites")
-    if not calls_path:
-        calls_path = str(Path(output_dir) / "calls.json")
-        all_calls: list[dict[str, Any]] = []
-
-        # Use analyze_module for Python files; language extractor for others
-        if new_files:
-            for file_path in new_files:
-                extractor = _get_extractor(file_path)
-                if extractor is None:
-                    reliability_stats["skipped_files"] += 1
-                    reliability_stats["unsupported_files"] += 1
-                    analysis_events.append(
-                        {
-                            "level": "warning",
-                            "kind": "unsupported_file",
-                            "file": file_path,
-                            "message": "No registered extractor for call extraction.",
-                        }
-                    )
-                    continue
-                if extractor.language == "python":
-                    try:
-                        mod_result = analyze_module(file_path)
-                        if mod_result and "calls" in mod_result:
-                            all_calls.extend(mod_result["calls"])
-                    except (
-                        OSError,
-                        SyntaxError,
-                        UnicodeDecodeError,
-                        ValueError,
-                        TypeError,
-                    ) as exc:
-                        reliability_stats["parse_failures"] += 1
-                        reliability_stats["fallback_used"] += 1
-                        analysis_events.append(
-                            {
-                                "level": "warning",
-                                "kind": "analyze_module_failed",
-                                "file": file_path,
-                                "message": str(exc),
-                            }
-                        )
-                        # Fall back to basic extraction
-                        from .extract_calls import extract as _extract_calls
-
-                        try:
-                            all_calls.extend(_extract_calls(Path(file_path)))
-                        except (
-                            OSError,
-                            SyntaxError,
-                            UnicodeDecodeError,
-                            ValueError,
-                            TypeError,
-                        ) as fallback_exc:
-                            reliability_stats["call_extraction_failures"] += 1
-                            analysis_events.append(
-                                {
-                                    "level": "error",
-                                    "kind": "extract_calls_failed",
-                                    "file": file_path,
-                                    "message": str(fallback_exc),
-                                }
-                            )
-                            _log.warning(
-                                "Fallback call extraction failed for '%s': %s",
-                                file_path,
-                                fallback_exc,
-                            )
-                else:
-                    try:
-                        with warnings.catch_warnings(record=True) as caught:
-                            warnings.simplefilter("always")
-                            all_calls.extend(extractor.extract_calls(Path(file_path)))
-                        for w in caught:
-                            msg = str(w.message)
-                            if "regex-based fallback" in msg:
-                                reliability_stats["fallback_used"] += 1
-                                analysis_events.append(
-                                    {
-                                        "level": "warning",
-                                        "kind": "fallback_used",
-                                        "file": file_path,
-                                        "message": msg,
-                                    }
-                                )
-                    except (
-                        OSError,
-                        SyntaxError,
-                        UnicodeDecodeError,
-                        ValueError,
-                        TypeError,
-                    ) as exc:
-                        reliability_stats["call_extraction_failures"] += 1
-                        analysis_events.append(
-                            {
-                                "level": "error",
-                                "kind": "extract_calls_failed",
-                                "file": file_path,
-                                "message": str(exc),
-                            }
-                        )
-                        _log.warning(
-                            "Call extraction failed for '%s': %s", file_path, exc
-                        )
-                        print(
-                            f"Warning: call extraction failed for {file_path}: {exc}",
-                            file=sys.stderr,
-                        )
-
-        # Also include runtime data if available
-        if runtime_path and Path(runtime_path).exists():
-            try:
-                all_calls.extend(
-                    runtime_callsite_entries(load_runtime_observations(runtime_path))
-                )
-            except (json.JSONDecodeError, OSError) as e:
-                _log.warning(
-                    "Failed to process runtime data from '%s': %s", runtime_path, e
-                )
-                reliability_stats["runtime_data_issues"] += 1
-                analysis_events.append(
-                    {
-                        "level": "error",
-                        "kind": "runtime_data_invalid",
-                        "file": runtime_path,
-                        "message": str(e),
-                    }
-                )
-                print(f"Warning: Failed to process runtime data: {e}", file=sys.stderr)
-        elif runtime_path:
-            reliability_stats["runtime_data_issues"] += 1
-            analysis_events.append(
-                {
-                    "level": "error",
-                    "kind": "runtime_data_missing",
-                    "file": runtime_path,
-                    "message": "Runtime data path does not exist.",
-                }
-            )
-        else:
-            analysis_events.append(
-                {
-                    "level": "warning",
-                    "kind": "runtime_data_not_provided",
-                    "file": "",
-                    "message": "No runtime data provided; confidence may be reduced.",
-                }
-            )
-
-        with open(calls_path, "w") as f:
-            json.dump(all_calls, f, indent=2)
+    calls_path = _extract_calls_to_path(
+        calls_path,
+        new_files=new_files,
+        output_dir=output_dir,
+        runtime_path=runtime_path,
+        stats=reliability_stats,
+        events=analysis_events,
+        analyze_module=analyze_module,
+    )
+    result["runtime_path"] = runtime_path
 
     # Step 4: Analyze impact
     _log.debug("Step 4: Analyzing impact")
@@ -569,20 +851,7 @@ def run_pipeline(
 
     # Step 5: Assess risk
     _log.debug("Step 5: Assessing risk")
-    from .risk_gate import parse_change_line as _parse_change_line
-
-    structured_breaking_changes: list[dict[str, str]] = []
-    for change in comparison.get("breaking", []):
-        parsed = _parse_change_line(str(change))
-        if parsed is not None:
-            structured_breaking_changes.append(parsed)
-    diff_path = str(Path(output_dir) / "diff.txt")
-    with open(diff_path, "w") as f:
-        for change in comparison["breaking"]:
-            f.write(f"{change}\n")
-    structured_path = Path(output_dir) / "changes_structured.json"
-    with open(structured_path, "w") as f:
-        json.dump(structured_breaking_changes, f, indent=2)
+    structured_breaking_changes, diff_path = _write_risk_inputs(comparison, output_dir)
     risk_report_path = str(Path(output_dir) / "risk_report.json")
     risk = run_risk(
         diff_path,
@@ -595,43 +864,13 @@ def run_pipeline(
 
     # Add file/lineno from signatures to risk items for patch generation
     if suggest_patch or show_patch:
-        try:
-            with open(old_sigs_path) as f:
-                old_sigs_list = json.load(f)
-        except (OSError, json.JSONDecodeError, TypeError, ValueError) as e:
-            _log.warning("Could not load old signatures for patch generation: %s", e)
-            print(f"Warning: Could not load old signatures: {e}", file=sys.stderr)
-            reliability_stats["parse_failures"] += 1
-            analysis_events.append(
-                {
-                    "level": "warning",
-                    "kind": "old_signatures_load_failed",
-                    "file": old_sigs_path,
-                    "message": str(e),
-                }
-            )
-            old_sigs_list = []
-
-        if old_sigs_list:
-            # Create mapping from fqname to actual file path
-            fqname_to_file: dict[str, str] = {}
-            for sig in old_sigs_list:
-                fq = sig.get("fqname", "")
-                file_path = sig.get("file", "")
-                if old_files:
-                    for of in old_files:
-                        if of.endswith(file_path):
-                            fqname_to_file[fq] = of
-                            break
-
-            # Add file/lineno to risk items
-            for risk_item in risk:
-                fqname = risk_item.get("function", "")
-                if fqname in fqname_to_file:
-                    risk_item["file"] = fqname_to_file[fqname]
-                elif file_path in risk_item.get("function", ""):
-                    # Try to extract file path from fqname
-                    pass
+        _attach_patch_source_info(
+            risk,
+            old_sigs_path=old_sigs_path,
+            old_files=old_files,
+            stats=reliability_stats,
+            events=analysis_events,
+        )
 
     # Step 6: Generate HTML report
     _log.debug("Step 6: Generating HTML report")
@@ -655,65 +894,18 @@ def run_pipeline(
             fixes.extend(enriched)
 
     # Apply calibrated weights from feedback loop if available
-    try:
-        from .feedback import compute_calibrated_weights, load_outcomes
-
-        outcomes = load_outcomes()
-        if outcomes:
-            calibrated = compute_calibrated_weights(outcomes)
-            if calibrated:
-                # Write calibrated weights to config for patch_confidence to use
-                from .feedback import apply_weights_to_config
-
-                apply_weights_to_config(calibrated)
-    except ImportError:
-        pass  # Feedback loop optional dependency/use-case
-    except (OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
-        _log.warning("Feedback calibration skipped: %s", exc)
-        reliability_stats["parse_failures"] += 1
-        analysis_events.append(
-            {
-                "level": "warning",
-                "kind": "feedback_calibration_failed",
-                "file": "",
-                "message": str(exc),
-            }
-        )
+    _calibrate_feedback(reliability_stats, analysis_events)
 
     result["fixes"] = fixes
 
     # Step 8: Generate/show patches if requested
     if suggest_patch or show_patch:
-        patches: dict[str, Any] = {}
-        patch_dir = Path(output_dir) / "patches"
-        if suggest_patch:
-            patch_dir.mkdir(parents=True, exist_ok=True)
-
-        for item in fixes:
-            patch_type = item.get("type", "")
-            if "patch" in item and item["patch"]:
-                patch_content = item["patch"]
-
-                # Display patched content if requested
-                if show_patch:
-                    # Extract function name from fqname (e.g., "main.py:add" -> "add")
-                    func_name = item.get("function", "unknown")
-                    if ":" in func_name:
-                        func_name = func_name.split(":")[-1]
-                    print(f"\n=== Patched: {func_name} ===")
-                    print(patch_content)
-
-                # Save to file if suggest_patch is set
-                if suggest_patch:
-                    counter = len(patches) + 1
-                    patch_file = patch_dir / f"patch_{counter}.py"
-                    patch_file.write_text(patch_content)
-                    patches[f"patch_{counter}"] = {
-                        "type": patch_type,
-                        "file": str(patch_file),
-                        "content": patch_content,
-                    }
-
+        patches = _generate_patches(
+            fixes,
+            output_dir=output_dir,
+            suggest_patch=suggest_patch,
+            show_patch=show_patch,
+        )
         if suggest_patch:
             result["patches"] = patches
 
@@ -723,72 +915,21 @@ def run_pipeline(
 
     result["semver"] = format_semver_recommendation(comparison)
 
-    partial_analysis = any(
-        reliability_stats.get(k, 0) > 0 for k in _PARTIAL_ANALYSIS_COUNTERS
-    )
-    runtime_state = (
-        "loaded"
-        if runtime_path and reliability_stats.get("runtime_data_issues", 0) == 0
-        else ("invalid_or_missing" if runtime_path else "not_provided")
-    )
-    policy = _evaluate_analysis_policy(
-        reliability_stats,
+    _finalize_analysis_status(
+        result=result,
+        output_dir=output_dir,
+        reliability_stats=reliability_stats,
+        analysis_events=analysis_events,
+        risk=risk,
         max_parse_failures=max_parse_failures,
         max_skipped_files=max_skipped_files,
         max_call_extraction_failures=max_call_extraction_failures,
         max_runtime_data_issues=max_runtime_data_issues,
+        block_unknown=block_unknown,
+        require_runtime=require_runtime,
     )
-    high_count = sum(1 for item in risk if item.get("risk") == "HIGH")
-    unknown_count = sum(1 for item in risk if item.get("risk") == "UNKNOWN")
-    risk_gate_blocked = high_count > 0 or (block_unknown and unknown_count > 0)
-    analysis_gate_blocked = not policy["passes"]
-    runtime_gate_blocked = require_runtime and runtime_state != "loaded"
-    gate_blocked = risk_gate_blocked or analysis_gate_blocked or runtime_gate_blocked
-    gate_reasons: list[str] = []
-    if high_count > 0:
-        gate_reasons.append(f"HIGH risk items detected: {high_count}")
-    if block_unknown and unknown_count > 0:
-        gate_reasons.append(
-            f"UNKNOWN risk items blocked by policy (block_unknown=true): {unknown_count}"
-        )
-    for key, detail in policy["violations"].items():
-        gate_reasons.append(
-            f"analysis policy violation: {key}={detail['value']} exceeds {detail['max_allowed']}"
-        )
-    if runtime_gate_blocked:
-        gate_reasons.append("runtime data is required but missing/invalid")
-
-    analysis_status = {
-        "status": "partial" if partial_analysis else "complete",
-        "partial_analysis": partial_analysis,
-        "counters": reliability_stats,
-        "events": analysis_events,
-        "runtime": {"state": runtime_state, "required": require_runtime},
-        "policy": policy,
-    }
-    result["analysis_status"] = analysis_status
-    analysis_path = Path(output_dir) / "analysis_summary.json"
-    with open(analysis_path, "w") as f:
-        json.dump(analysis_status, f, indent=2)
-    gate_status = {
-        "blocked": gate_blocked,
-        "risk_gate_blocked": risk_gate_blocked,
-        "analysis_gate_blocked": analysis_gate_blocked,
-        "runtime_gate_blocked": runtime_gate_blocked,
-        "block_unknown": block_unknown,
-        "risk": {"high": high_count, "unknown": unknown_count},
-        "reasons": gate_reasons,
-    }
-    result["gate"] = gate_status
-    gate_path = Path(output_dir) / "gate_summary.json"
-    with open(gate_path, "w") as f:
-        json.dump(gate_status, f, indent=2)
-
-    # Add signatures to result
-    with open(old_sigs_path) as f:
-        result["signatures"] = {"old": json.load(f), "new": []}
-    with open(new_sigs_path) as f:
-        result["signatures"]["new"] = json.load(f)
+    result.pop("runtime_path", None)
+    result["signatures"] = _load_result_signatures(old_sigs_path, new_sigs_path)
 
     _log.info("Pipeline complete: semver=%s", result["semver"].get("bump", "patch"))
     return result
@@ -859,110 +1000,52 @@ def quick_check(
     )
 
 
-def generate_changelog(
-    old_ref: str | None = None,
-    new_ref: str | None = None,
-    old_files: list[str] | None = None,
-    new_files: list[str] | None = None,
-    output_path: str | None = None,
-) -> str:
-    """Generate a changelog from signature diffs.
+def _extract_git_ref_signatures(ref: str, dest: Path) -> list[dict[str, Any]]:
+    """Extract signatures for all supported files at a git ref into *dest*."""
+    from .languages.lib.registry import get_extractor as _get_extractor
 
-    Args:
-        old_ref: Git reference for old version (optional).
-        new_ref: Git reference for new version (optional).
-        old_files: List of old Python files (alternative to old_ref).
-        new_files: List of new Python files (alternative to new_ref).
-        output_path: Path to write changelog (optional).
+    try:
+        result = subprocess.run(
+            ["git", "ls-tree", "-r", "--name-only", ref],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"Timeout listing files from {ref}") from exc
 
-    Returns:
-        Changelog markdown string.
-    """
-    from .compare_signatures import compare
-
-    # Get signatures
-    if old_ref and new_ref:
-        import subprocess
-        import tempfile
-
-        from .languages.lib.registry import get_extractor as _get_extractor
-
-        # Validate git refs
-        for ref in [old_ref, new_ref]:
-            if not _validate_git_ref(ref):
-                raise ValueError(f"Invalid git reference: '{ref}'")
-
-        with tempfile.TemporaryDirectory() as tmpdir:  # noqa: F823
-            old_dir = Path(tmpdir) / "old"
-            new_dir = Path(tmpdir) / "new"
-            old_dir.mkdir()
-            new_dir.mkdir()
-
-            # Extract files from git
-            for ref, dest in [(old_ref, old_dir), (new_ref, new_dir)]:
-                try:
-                    result = subprocess.run(
-                        ["git", "ls-tree", "-r", "--name-only", ref],
-                        capture_output=True,
-                        text=True,
-                        timeout=30,
-                    )
-                except subprocess.TimeoutExpired:
-                    raise RuntimeError(f"Timeout listing files from {ref}")
-
-                src_files = [
-                    f
-                    for f in result.stdout.splitlines()
-                    if _get_extractor(f) is not None and _validate_git_path(f)
-                ]
-                for src_file in src_files:
-                    dest_path = dest / src_file
-                    dest_path.parent.mkdir(parents=True, exist_ok=True)
-                    try:
-                        r = subprocess.run(
-                            ["git", "show", f"{ref}:{src_file}"],
-                            capture_output=True,
-                            text=True,
-                            timeout=30,
-                        )
-                    except subprocess.TimeoutExpired:
-                        print(f"  Warning: Timeout extracting {src_file} from {ref}")
-                        continue
-                    if r.returncode == 0 and r.stdout:
-                        dest_path.write_text(r.stdout)
-
-            old_sigs = _extract_by_language(
-                [str(f) for f in old_dir.rglob("*") if f.is_file()]
+    src_files = [
+        file_path
+        for file_path in result.stdout.splitlines()
+        if _get_extractor(file_path) is not None and _validate_git_path(file_path)
+    ]
+    for src_file in src_files:
+        dest_path = dest / src_file
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            file_result = subprocess.run(
+                ["git", "show", f"{ref}:{src_file}"],
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
-            new_sigs = _extract_by_language(
-                [str(f) for f in new_dir.rglob("*") if f.is_file()]
-            )
-    elif old_files and new_files:
-        old_sigs = _extract_by_language(old_files)
-        new_sigs = _extract_by_language(new_files)
-    else:
-        raise ValueError("Must provide either git refs or file lists")
+        except subprocess.TimeoutExpired:
+            print(f"  Warning: Timeout extracting {src_file} from {ref}")
+            continue
+        if file_result.returncode == 0 and file_result.stdout:
+            dest_path.write_text(file_result.stdout)
 
-    # Save to temp files and compare
-    import tempfile
-    from pathlib import Path
+    return _extract_by_language([str(file_path) for file_path in dest.rglob("*") if file_path.is_file()])
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        old_path = Path(tmpdir) / "old.json"
-        new_path = Path(tmpdir) / "new.json"
-        old_path.write_text(json.dumps(old_sigs))
-        new_path.write_text(json.dumps(new_sigs))
 
-        comparison = compare(str(old_path), str(new_path))
-
-    # Generate changelog
-    lines = ["## [Unreleased]\n"]
-
-    # Group changes by type
-    added = []
-    removed = []
-    changed_breaking = []
-    changed_nonbreaking = []
+def _categorize_changelog_changes(
+    comparison: dict[str, list[str]],
+) -> tuple[list[str], list[str], list[str], list[str]]:
+    """Group signature diff entries into changelog sections."""
+    added: list[str] = []
+    removed: list[str] = []
+    changed_breaking: list[str] = []
+    changed_nonbreaking: list[str] = []
 
     for item in comparison.get("nonbreaking", []):
         if item.startswith("ADDED: "):
@@ -978,10 +1061,19 @@ def generate_changelog(
         elif "POSITIONAL" in item or "KWONLY" in item or "REQUIRED" in item:
             changed_breaking.append(item)
 
+    return added, removed, changed_breaking, changed_nonbreaking
+
+
+def _build_changelog_text(comparison: dict[str, list[str]]) -> str:
+    """Build markdown changelog text from comparison output."""
+    lines = ["## [Unreleased]\n"]
+    added, removed, changed_breaking, changed_nonbreaking = _categorize_changelog_changes(
+        comparison
+    )
+
     if added:
         lines.append("### Added")
         for item in added:
-            # Extract function name from fqname
             func_name = item.split(":")[-1] if ":" in item else item
             lines.append(f"- `{func_name}` - New function/method added")
         lines.append("")
@@ -1006,7 +1098,66 @@ def generate_changelog(
             lines.append(f"- {item}")
         lines.append("")
 
-    changelog = "\n".join(lines)
+    return "\n".join(lines)
+
+
+def generate_changelog(
+    old_ref: str | None = None,
+    new_ref: str | None = None,
+    old_files: list[str] | None = None,
+    new_files: list[str] | None = None,
+    output_path: str | None = None,
+) -> str:
+    """Generate a changelog from signature diffs.
+
+    Args:
+        old_ref: Git reference for old version (optional).
+        new_ref: Git reference for new version (optional).
+        old_files: List of old Python files (alternative to old_ref).
+        new_files: List of new Python files (alternative to new_ref).
+        output_path: Path to write changelog (optional).
+
+    Returns:
+        Changelog markdown string.
+    """
+    from .compare_signatures import compare
+
+    # Get signatures
+    if old_ref and new_ref:
+        import tempfile
+
+        # Validate git refs
+        for ref in [old_ref, new_ref]:
+            if not _validate_git_ref(ref):
+                raise ValueError(f"Invalid git reference: '{ref}'")
+
+        with tempfile.TemporaryDirectory() as tmpdir:  # noqa: F823
+            old_dir = Path(tmpdir) / "old"
+            new_dir = Path(tmpdir) / "new"
+            old_dir.mkdir()
+            new_dir.mkdir()
+
+            old_sigs = _extract_git_ref_signatures(old_ref, old_dir)
+            new_sigs = _extract_git_ref_signatures(new_ref, new_dir)
+    elif old_files and new_files:
+        old_sigs = _extract_by_language(old_files)
+        new_sigs = _extract_by_language(new_files)
+    else:
+        raise ValueError("Must provide either git refs or file lists")
+
+    # Save to temp files and compare
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        old_path = Path(tmpdir) / "old.json"
+        new_path = Path(tmpdir) / "new.json"
+        old_path.write_text(json.dumps(old_sigs))
+        new_path.write_text(json.dumps(new_sigs))
+
+        comparison = compare(str(old_path), str(new_path))
+
+    changelog = _build_changelog_text(comparison)
 
     if output_path:
         Path(output_path).write_text(changelog)
