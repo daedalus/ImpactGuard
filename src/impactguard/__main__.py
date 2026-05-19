@@ -2218,6 +2218,7 @@ def post_commit_hook() -> int:
     import os
     import subprocess
     import sys
+    import tempfile
 
     if os.environ.get("SKIP_SIGNATURE_HOOK"):
         return 0
@@ -2243,7 +2244,8 @@ def post_commit_hook() -> int:
             text=True,
         )
         if result.returncode == 0 and result.stdout.strip():
-            with open("/tmp/impactguard_sigs.json", "w") as f:
+            sigs_path = os.path.join(tempfile.gettempdir(), "impactguard_sigs.json")
+            with open(sigs_path, "w") as f:
                 f.write(result.stdout)
     except Exception:
         return 0
