@@ -157,7 +157,7 @@ class Analyzer(ast.NodeVisitor):
 def analyze(path: str) -> dict[str, Any] | None:
     try:
         tree = ast.parse(Path(path).read_text())
-    except Exception:
+    except (SyntaxError, OSError, UnicodeDecodeError):
         return None
 
     a = Analyzer(path)

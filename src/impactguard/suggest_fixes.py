@@ -42,7 +42,7 @@ def get_line(file: str, lineno: int) -> str:
             lines = f.read().splitlines()
         if 0 <= lineno - 1 < len(lines):
             return lines[lineno - 1]
-    except Exception:
+    except OSError:
         pass
     return ""
 
@@ -137,7 +137,7 @@ def enrich_with_fixes(
                                     "confidence_level": "LOW",
                                 }
                             )
-        except Exception:
+        except (OSError, ImportError, AttributeError, TypeError):
             pass
 
     return fixes

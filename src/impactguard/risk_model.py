@@ -84,7 +84,7 @@ def _effective_severity_scores() -> dict[str, float]:
             merged = dict(SEVERITY_SCORES)
             merged.update(overrides)
             return merged
-    except Exception:
+    except (OSError, ValueError, AttributeError, KeyError):
         pass
     return SEVERITY_SCORES
 
@@ -147,7 +147,7 @@ def classify(
         conf_threshold: float = cfg_get("risk", "confidence_threshold", 0.3)
         high_exp_min: float = cfg_get("risk", "high_exposure_min", 0.1)
         med_exp_min: float = cfg_get("risk", "medium_exposure_min", 0.01)
-    except Exception:
+    except (OSError, ValueError, AttributeError, KeyError):
         conf_threshold = 0.3
         high_exp_min = 0.1
         med_exp_min = 0.01

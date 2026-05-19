@@ -146,7 +146,7 @@ class _BehaviorVisitor(ast.NodeVisitor):
                     exc_type = exc_str
                 if exc_type:
                     self.raises.add(exc_type)
-            except Exception:
+            except (RecursionError, ValueError):
                 pass
         self.generic_visit(node)
 
@@ -165,7 +165,7 @@ class _BehaviorVisitor(ast.NodeVisitor):
                 self.side_effects.add("network_call")
             elif any(call_str.startswith(p) for p in _LOG_PREFIXES):
                 self.side_effects.add("logging")
-        except Exception:
+        except (RecursionError, ValueError):
             pass
         self.generic_visit(node)
 
