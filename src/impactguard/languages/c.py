@@ -476,72 +476,70 @@ _CPP_EXTENSIONS = [".cpp", ".hpp", ".cc", ".cxx", ".hxx"]
 # ── Public extractor classes ──────────────────────────────────────────────────
 
 
-class CExtractor:
-    """Language extractor for C (``.c``, ``.h``) files.
+class _BaseCStyleExtractor:
+    """Shared implementation for C-family extractors."""
 
-    Uses tree-sitter for accurate AST-based extraction when available,
-    otherwise falls back to regex-based extraction with a ``UserWarning``.
-    """
+    language: str
+    extensions: list[str]
+    _tree_sitter_name: str
+    _tree_sitter_package: str
+    _use_cpp: bool
+
+    def _is_tree_sitter_available(self) -> bool:
+        """Return whether the extractor's tree-sitter backend is available."""
+        raise NotImplementedError
+
+    def extract_signatures(
+        self,
+        files: list[str],
+        _base_path: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Extract signatures from source files."""
+        if self._is_tree_sitter_available():
+            return _extract_with_tree_sitter(
+                files, use_cpp=self._use_cpp, _base_path=_base_path
+            )
+        warn_if_no_tree_sitter(self, self._tree_sitter_name, self._tree_sitter_package)
+        return _extract_with_regex(files, _base_path)
+
+    def extract_calls(self, path: Path) -> list[dict[str, Any]]:
+        """Extract call sites from a source file."""
+        if self._is_tree_sitter_available():
+            return _extract_calls_with_tree_sitter(path, use_cpp=self._use_cpp)
+        warn_if_no_tree_sitter(self, self._tree_sitter_name, self._tree_sitter_package)
+        return _extract_calls_with_regex(path)
+
+    def parse_union_members(self, type_str: str) -> frozenset[str]:
+        """Parse a type string into member types (scalar — returns singleton)."""
+        return frozenset({type_str.strip()})
+
+
+class CExtractor(_BaseCStyleExtractor):
+    """Language extractor for C (``.c``, ``.h``) files."""
 
     language: str = "c"
     extensions: list[str] = _C_EXTENSIONS
+    _tree_sitter_name: str = "C"
+    _tree_sitter_package: str = "tree-sitter-c"
+    _use_cpp: bool = False
 
-    def extract_signatures(
-        self,
-        files: list[str],
-        _base_path: str | None = None,
-    ) -> list[dict[str, Any]]:
-        """Extract signatures from C files."""
-        if _C_TREE_SITTER_AVAILABLE:
-            return _extract_with_tree_sitter(
-                files, use_cpp=False, _base_path=_base_path
-            )
-        warn_if_no_tree_sitter(self, "C", "tree-sitter-c")
-        return _extract_with_regex(files, _base_path)
-
-    def extract_calls(self, path: Path) -> list[dict[str, Any]]:
-        """Extract call sites from a C file."""
-        if _C_TREE_SITTER_AVAILABLE:
-            return _extract_calls_with_tree_sitter(path, use_cpp=False)
-        warn_if_no_tree_sitter(self, "C", "tree-sitter-c")
-        return _extract_calls_with_regex(path)
-
-    def parse_union_members(self, type_str: str) -> frozenset[str]:
-        """Parse a C type string into member types (scalar — returns singleton)."""
-        return frozenset({type_str.strip()})
+    def _is_tree_sitter_available(self) -> bool:
+        """Return whether C tree-sitter support is available."""
+        return _C_TREE_SITTER_AVAILABLE
 
 
-class CppExtractor:
-    """Language extractor for C++ (``.cpp``, ``.hpp``, ``.cc``, ``.cxx``, ``.hxx``) files.
-
-    Uses tree-sitter for accurate AST-based extraction when available,
-    otherwise falls back to regex-based extraction with a ``UserWarning``.
-    """
+class CppExtractor(_BaseCStyleExtractor):
+    """Language extractor for C++ (``.cpp``, ``.hpp``, ``.cc``, ``.cxx``, ``.hxx``) files."""
 
     language: str = "cpp"
     extensions: list[str] = _CPP_EXTENSIONS
+    _tree_sitter_name: str = "C++"
+    _tree_sitter_package: str = "tree-sitter-cpp"
+    _use_cpp: bool = True
 
-    def extract_signatures(
-        self,
-        files: list[str],
-        _base_path: str | None = None,
-    ) -> list[dict[str, Any]]:
-        """Extract signatures from C++ files."""
-        if _CPP_TREE_SITTER_AVAILABLE:
-            return _extract_with_tree_sitter(files, use_cpp=True, _base_path=_base_path)
-        warn_if_no_tree_sitter(self, "C++", "tree-sitter-cpp")
-        return _extract_with_regex(files, _base_path)
-
-    def extract_calls(self, path: Path) -> list[dict[str, Any]]:
-        """Extract call sites from a C++ file."""
-        if _CPP_TREE_SITTER_AVAILABLE:
-            return _extract_calls_with_tree_sitter(path, use_cpp=True)
-        warn_if_no_tree_sitter(self, "C++", "tree-sitter-cpp")
-        return _extract_calls_with_regex(path)
-
-    def parse_union_members(self, type_str: str) -> frozenset[str]:
-        """Parse a C++ type string into member types (scalar — returns singleton)."""
-        return frozenset({type_str.strip()})
+    def _is_tree_sitter_available(self) -> bool:
+        """Return whether C++ tree-sitter support is available."""
+        return _CPP_TREE_SITTER_AVAILABLE
 
 
 # ── Self-registration ─────────────────────────────────────────
