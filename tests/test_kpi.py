@@ -12,11 +12,46 @@ from impactguard.kpi import compute_kpis, format_kpi_text
 # ── fixtures / helpers ────────────────────────────────────────────────────────
 
 _SAMPLE_REPORT: list[dict] = [
-    {"function": "foo", "risk": "HIGH",    "change": "REMOVED",   "exposure": 0.8,  "confidence": 1.0, "transitive": False},
-    {"function": "bar", "risk": "MEDIUM",  "change": "OPTIONAL",  "exposure": 0.4,  "confidence": 0.9, "transitive": True},
-    {"function": "baz", "risk": "LOW",     "change": "ADDED",     "exposure": 0.1,  "confidence": 0.8, "transitive": False},
-    {"function": "qux", "risk": "UNKNOWN", "change": "REQUIRED",  "exposure": 0.2,  "confidence": 0.2, "transitive": True},
-    {"function": "fp",  "risk": "HIGH",    "change": "REMOVED",   "exposure": 0.01, "confidence": 1.0, "transitive": False},
+    {
+        "function": "foo",
+        "risk": "HIGH",
+        "change": "REMOVED",
+        "exposure": 0.8,
+        "confidence": 1.0,
+        "transitive": False,
+    },
+    {
+        "function": "bar",
+        "risk": "MEDIUM",
+        "change": "OPTIONAL",
+        "exposure": 0.4,
+        "confidence": 0.9,
+        "transitive": True,
+    },
+    {
+        "function": "baz",
+        "risk": "LOW",
+        "change": "ADDED",
+        "exposure": 0.1,
+        "confidence": 0.8,
+        "transitive": False,
+    },
+    {
+        "function": "qux",
+        "risk": "UNKNOWN",
+        "change": "REQUIRED",
+        "exposure": 0.2,
+        "confidence": 0.2,
+        "transitive": True,
+    },
+    {
+        "function": "fp",
+        "risk": "HIGH",
+        "change": "REMOVED",
+        "exposure": 0.01,
+        "confidence": 1.0,
+        "transitive": False,
+    },
 ]
 
 _SAMPLE_FEEDBACK: list[dict] = [
@@ -89,9 +124,13 @@ def test_mean_severity():
     from impactguard.risk_model import get_severity
 
     # changes: REMOVED, OPTIONAL, ADDED, REQUIRED, REMOVED
-    expected = sum(
-        get_severity(c) for c in ("REMOVED", "OPTIONAL", "ADDED", "REQUIRED", "REMOVED")
-    ) / 5
+    expected = (
+        sum(
+            get_severity(c)
+            for c in ("REMOVED", "OPTIONAL", "ADDED", "REQUIRED", "REMOVED")
+        )
+        / 5
+    )
     kpis = compute_kpis(_SAMPLE_REPORT)
     assert abs(kpis["mean_severity"] - expected) < 1e-9
 
@@ -137,7 +176,13 @@ def test_transitive_count_none_transitive_field():
     # Items without a transitive key default to 0 (falsy)
     report = [
         {"function": "a", "risk": "HIGH", "exposure": 0.5, "confidence": 0.8},
-        {"function": "b", "risk": "HIGH", "exposure": 0.3, "confidence": 0.9, "transitive": False},
+        {
+            "function": "b",
+            "risk": "HIGH",
+            "exposure": 0.3,
+            "confidence": 0.9,
+            "transitive": False,
+        },
     ]
     kpis = compute_kpis(report)
     assert kpis["transitive_count"] == 0
@@ -146,8 +191,20 @@ def test_transitive_count_none_transitive_field():
 
 def test_transitive_all_transitive():
     report = [
-        {"function": "a", "risk": "LOW", "exposure": 0.1, "confidence": 0.8, "transitive": True},
-        {"function": "b", "risk": "LOW", "exposure": 0.2, "confidence": 0.9, "transitive": True},
+        {
+            "function": "a",
+            "risk": "LOW",
+            "exposure": 0.1,
+            "confidence": 0.8,
+            "transitive": True,
+        },
+        {
+            "function": "b",
+            "risk": "LOW",
+            "exposure": 0.2,
+            "confidence": 0.9,
+            "transitive": True,
+        },
     ]
     kpis = compute_kpis(report)
     assert kpis["transitive_count"] == 2
@@ -302,8 +359,13 @@ def test_cli_kpi_json_output(tmp_path):
 
     result = subprocess.run(
         [
-            sys.executable, "-m", "impactguard", "kpi",
-            str(report_file), "-o", str(out_file),
+            sys.executable,
+            "-m",
+            "impactguard",
+            "kpi",
+            str(report_file),
+            "-o",
+            str(out_file),
         ],
         capture_output=True,
         text=True,
@@ -337,8 +399,13 @@ def test_cli_kpi_with_feedback(tmp_path):
 
     result = subprocess.run(
         [
-            sys.executable, "-m", "impactguard", "kpi",
-            str(report_file), "--feedback-path", str(fb_file),
+            sys.executable,
+            "-m",
+            "impactguard",
+            "kpi",
+            str(report_file),
+            "--feedback-path",
+            str(fb_file),
         ],
         capture_output=True,
         text=True,

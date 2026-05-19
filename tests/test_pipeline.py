@@ -346,7 +346,9 @@ def test_pipeline_passes_structured_changes_to_risk_gate(tmp_path):
 
     captured: dict[str, object] = {}
 
-    def _fake_risk_run(diff_path, runtime_path, output_path=None, lambda_=1.0, changes=None):
+    def _fake_risk_run(
+        diff_path, runtime_path, output_path=None, lambda_=1.0, changes=None
+    ):
         captured["changes"] = changes
         return []
 

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
-import os  
+import os
 import sys
-import tempfile  
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
 
 def test_suggest_fixes_final(tmp_path):
     """Final coverage push for suggest_fixes.py."""
@@ -27,6 +28,7 @@ def test_suggest_fixes_final(tmp_path):
 
     enriched = enrich_with_fixes(items[0], items)
     assert isinstance(enriched, list)
+
 
 def test_suggest_fixes_coverage_boost(tmp_path):
     """Boost coverage for suggest_fixes.py."""
@@ -55,6 +57,7 @@ def test_suggest_fixes_coverage_boost(tmp_path):
         enriched = enrich_with_fixes(item, test_items)
         assert isinstance(enriched, list)
 
+
 def test_suggest_fixes_deep_coverage(tmp_path):
     """Cover more lines in suggest_fixes.py."""
     from impactguard.suggest_fixes import enrich_with_fixes, suggest
@@ -76,6 +79,7 @@ def test_suggest_fixes_deep_coverage(tmp_path):
     enriched = enrich_with_fixes(items[0], items)
     assert isinstance(enriched, list)
 
+
 def test_suggest_fixes_complete(tmp_path):
     """Test suggest_fixes with complete data."""
     from impactguard.suggest_fixes import enrich_with_fixes, suggest
@@ -96,6 +100,7 @@ def test_suggest_fixes_complete(tmp_path):
     enriched = enrich_with_fixes(risk_item, [risk_item])
     assert isinstance(enriched, list)
 
+
 def test_suggest_fixes_import_error(tmp_path, monkeypatch):
     """Test suggest_fixes when imports fail."""
     from impactguard.suggest_fixes import suggest
@@ -104,6 +109,7 @@ def test_suggest_fixes_import_error(tmp_path, monkeypatch):
     risk_item = {"fqname": "test:foo"}
     result = suggest(risk_item, [risk_item])
     assert isinstance(result, list)
+
 
 def test_suggest_fixes_coverage_final(tmp_path):
     """Target missing lines in suggest_fixes.py."""
@@ -125,6 +131,7 @@ def test_suggest_fixes_coverage_final(tmp_path):
     enriched = enrich_with_fixes(items[0], items)
     assert isinstance(enriched, list)
 
+
 def test_suggest_fixes_with_cst_patch(tmp_path):
     """Test suggest_fixes with CST patch available."""
     from impactguard.suggest_fixes import suggest
@@ -138,6 +145,7 @@ def test_suggest_fixes_with_cst_patch(tmp_path):
     result = suggest(risk_item, [risk_item])
     assert isinstance(result, list)
 
+
 def test_suggest_fixes_with_call_sites(tmp_path):
     """Test suggest_fixes with call sites."""
     from impactguard.suggest_fixes import suggest
@@ -150,6 +158,7 @@ def test_suggest_fixes_with_call_sites(tmp_path):
 
     result = suggest(risk_item, [risk_item])
     assert isinstance(result, list)
+
 
 def test_suggest_fixes_full_coverage(tmp_path):
     """Test suggest_fixes module fully."""
@@ -178,6 +187,7 @@ def test_suggest_fixes_full_coverage(tmp_path):
         enriched = enrich_with_fixes(item, risk_items)
         assert isinstance(enriched, list)
 
+
 def test_suggest_fixes_comprehensive():
     """Comprehensive test to cover suggest_fixes.py missing lines."""
     from impactguard.suggest_fixes import enrich_with_fixes, suggest
@@ -204,6 +214,7 @@ def test_suggest_fixes_comprehensive():
 
 # Test with callsites
 
+
 def test_suggest_with_callsites():
     """Test suggest with callsites to cover more lines."""
     from impactguard.suggest_fixes import enrich_with_fixes, suggest
@@ -226,6 +237,7 @@ def test_suggest_with_callsites():
 
 # Test with no patches
 
+
 def test_suggest_no_patches():
     """Test suggest with no patches."""
     from impactguard.suggest_fixes import suggest
@@ -240,6 +252,7 @@ def test_suggest_no_patches():
 
 
 # Test enrich_with_fixes with various inputs
+
 
 def test_suggest_fixes_all_branches():
     """Test suggest() with many inputs to cover lines 79-156."""
@@ -272,6 +285,7 @@ def test_suggest_fixes_all_branches():
     result = suggest(item3, [item3])
     assert isinstance(result, list)
 
+
 def test_suggest_with_various_patch_types():
     """Test suggest() with various patch types."""
     from impactguard.suggest_fixes import suggest
@@ -290,6 +304,7 @@ def test_suggest_with_various_patch_types():
         }
         result = suggest(item, [item])
         assert isinstance(result, list)
+
 
 def test_suggest_with_various_change_types():
     """Test suggest() with various change types."""
@@ -310,7 +325,9 @@ def test_suggest_with_various_change_types():
         result = suggest(item, [item])
         assert isinstance(result, list)
 
+
 # =======================================
+
 
 def test_suggest_fixes_missing_lines(tmp_path):
     """Target missing lines 20, 24-31, 39-41, 79-156 in suggest_fixes.py."""
@@ -339,6 +356,7 @@ def test_suggest_fixes_missing_lines(tmp_path):
         enriched = enrich_with_fixes(item, items)
         assert isinstance(enriched, list)
 
+
 def test_suggest_fixes_coverage_push(tmp_path):
     """Push suggest_fixes.py coverage up."""
     from impactguard.suggest_fixes import enrich_with_fixes, suggest
@@ -358,6 +376,7 @@ def test_suggest_fixes_coverage_push(tmp_path):
 
     enriched = enrich_with_fixes(items[0], items)
     assert isinstance(enriched, list)
+
 
 def test_suggest_fixes_lines_79_156(tmp_path):
     """Target missing lines 79-156 in suggest_fixes.py."""
@@ -386,6 +405,7 @@ def test_suggest_fixes_lines_79_156(tmp_path):
         enriched = enrich_with_fixes(item, test_items)
         assert isinstance(enriched, list)
 
+
 def test_suggest_fixes_with_patch_types(tmp_path):
     """Test various patch types to cover more lines."""
     from impactguard.suggest_fixes import suggest
@@ -405,4 +425,3 @@ def test_suggest_fixes_with_patch_types(tmp_path):
         }
         result = suggest(item, [item])
         assert isinstance(result, list)
-

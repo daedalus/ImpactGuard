@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
-import os  
+import os
 import sys
-import tempfile  
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
 
 def test_quick_check_single_file(tmp_path):
     """Test quick_check with single files."""
@@ -26,6 +27,7 @@ def test_quick_check_single_file(tmp_path):
     assert "comparison" in result
     assert "signatures" in result
 
+
 def test_quick_check_directory(tmp_path):
     """Test quick_check with directories."""
     from impactguard.pipeline import quick_check
@@ -42,6 +44,7 @@ def test_quick_check_directory(tmp_path):
 
     assert "comparison" in result
 
+
 def test_quick_check_missing_file():
     """Test quick_check with missing files."""
     from impactguard.pipeline import quick_check
@@ -50,4 +53,3 @@ def test_quick_check_missing_file():
         quick_check("/nonexistent/path", "/another/nonexistent")
     except ValueError:
         pass  # Expected
-

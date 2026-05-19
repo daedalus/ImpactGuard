@@ -304,17 +304,22 @@ def _extract_with_tree_sitter(
 
 
 def _extract_calls_with_tree_sitter(
-    path: Path, use_cpp: bool,
+    path: Path,
+    use_cpp: bool,
 ) -> list[dict[str, Any]]:
     lang_name = "C++" if use_cpp else "C"
     lang_obj = _CPP_LANGUAGE if use_cpp else _C_LANGUAGE
     return extract_calls_with_tree_sitter(
-        path, lang_name, lang_obj,
+        path,
+        lang_name,
+        lang_obj,
         member_map={
             "field_expression": "field_identifier",
             "qualified_identifier": None,
         },
     )
+
+
 # ── Regex fallback ────────────────────────────────────────────────────────────
 
 _FUNC_RE = re.compile(
@@ -466,7 +471,6 @@ def _extract_calls_with_regex(path: Path) -> list[dict[str, Any]]:
 
 _C_EXTENSIONS = [".c", ".h"]
 _CPP_EXTENSIONS = [".cpp", ".hpp", ".cc", ".cxx", ".hxx"]
-
 
 
 # ── Public extractor classes ──────────────────────────────────────────────────

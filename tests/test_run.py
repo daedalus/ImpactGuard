@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
-import os  
+import os
 import sys
-import tempfile  
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
 
 def test_run_pipeline_with_calls_path(tmp_path):
     """Test run_pipeline with provided calls_path."""
@@ -32,6 +33,7 @@ def test_run_pipeline_with_calls_path(tmp_path):
 
     assert "impact" in result
 
+
 def test_run_pipeline_with_runtime_path(tmp_path):
     """Test run_pipeline with runtime data."""
     from impactguard.pipeline import run_pipeline
@@ -55,6 +57,7 @@ def test_run_pipeline_with_runtime_path(tmp_path):
 
     assert "risk" in result
 
+
 def test_run_pipeline_with_old_files(tmp_path):
     """Test run_pipeline with old_files parameter."""
     from impactguard.pipeline import run_pipeline
@@ -73,6 +76,7 @@ def test_run_pipeline_with_old_files(tmp_path):
 
     assert "comparison" in result
     assert "signatures" in result
+
 
 def test_run_pipeline_with_sigs_path(tmp_path):
     """Test run_pipeline with signature paths."""
@@ -101,6 +105,7 @@ def test_run_pipeline_with_sigs_path(tmp_path):
 
     assert "comparison" in result
 
+
 def test_run_pipeline_no_old_sigs(tmp_path):
     """Test run_pipeline with no old signatures."""
     from impactguard.pipeline import run_pipeline
@@ -115,6 +120,7 @@ def test_run_pipeline_no_old_sigs(tmp_path):
 
     assert "signatures" in result
     assert "new" in result["signatures"]
+
 
 def test_run_pipeline_with_runtime(tmp_path):
     """Test run_pipeline with runtime data."""
@@ -138,6 +144,7 @@ def test_run_pipeline_with_runtime(tmp_path):
     )
 
     assert "risk" in result
+
 
 def test_run_pipeline_git_with_files(tmp_path):
     """Test run_pipeline_git with specific files."""
@@ -163,4 +170,3 @@ def test_run_pipeline_git_with_files(tmp_path):
                 )
 
                 assert "comparison" in result
-
