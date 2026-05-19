@@ -51,7 +51,7 @@ def trace(func: Callable[..., Any]) -> Callable[..., Any]:
             if now - LAST_FLUSH > FLUSH_INTERVAL:
                 try:
                     flush()
-                except Exception:
+                except OSError:
                     pass
                 LAST_FLUSH = now
 
@@ -96,5 +96,5 @@ def install_tracer(module: object, prefix: str | None = None) -> None:
                 continue
             try:
                 setattr(module, name, trace(obj))
-            except Exception:
+            except (AttributeError, TypeError):
                 pass

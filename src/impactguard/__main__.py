@@ -2247,7 +2247,7 @@ def post_commit_hook() -> int:
             sigs_path = os.path.join(tempfile.gettempdir(), "impactguard_sigs.json")
             with open(sigs_path, "w") as f:
                 f.write(result.stdout)
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return 0
     finally:
         os.environ.pop("SKIP_SIGNATURE_HOOK", None)

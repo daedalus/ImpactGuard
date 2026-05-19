@@ -28,7 +28,7 @@ def _base_names(bases: list[ast.expr]) -> list[str]:
     for base in bases:
         try:
             names.append(ast.unparse(base))
-        except Exception:
+        except (RecursionError, ValueError):
             pass
     return names
 
@@ -66,7 +66,7 @@ def extract_class_hierarchy(files: list[str]) -> Hierarchy:
         path = Path(file_path)
         try:
             tree = ast.parse(path.read_text())
-        except Exception:
+        except (SyntaxError, OSError, UnicodeDecodeError):
             continue
 
         for node in ast.walk(tree):
