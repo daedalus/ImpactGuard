@@ -25,7 +25,6 @@ from pathlib import Path
 from typing import Any
 
 from .lib.shared import (
-    _TREE_SITTER_AVAILABLE,
     extract_calls_with_tree_sitter,
     has_ignore_comment,
     has_ignore_comment_fallback,
@@ -121,14 +120,18 @@ def _extract_with_tree_sitter(
         # First pass: collect type signatures
         type_sigs: dict[str, str] = {}
 
-        def collect_sigs(node: Any) -> None:
+        def collect_sigs(
+            node: Any,
+            _source: bytes = source,
+            _type_sigs: dict[str, str] = type_sigs,
+        ) -> None:
             if node.type == "type_signature":
                 # name :: Type
-                parts = node_text(node, source).split("::", 1)
+                parts = node_text(node, _source).split("::", 1)
                 if len(parts) == 2:
                     sig_name = parts[0].strip()
                     sig_type = parts[1].strip()
-                    type_sigs[sig_name] = sig_type
+                    _type_sigs[sig_name] = sig_type
             for child in node.children:
                 collect_sigs(child)
 
@@ -136,9 +139,15 @@ def _extract_with_tree_sitter(
 
         seen: set[str] = set()
 
-        def find_funcs(node: Any) -> None:
+        def find_funcs(
+            node: Any,
+            _source: bytes = source,
+            _fq_file: str = fq_file,
+            _funcs: list[dict[str, Any]] = funcs,
+            _type_sigs: dict[str, str] = type_sigs,
+        ) -> None:
             if node.type in ("function", "bind", "top_splice"):
-                _process_function(node, source, fq_file, funcs, type_sigs)
+                _process_function(node, _source, _fq_file, _funcs, _type_sigs)
             for child in node.children:
                 find_funcs(child)
 

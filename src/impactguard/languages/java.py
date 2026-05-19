@@ -24,7 +24,6 @@ from pathlib import Path
 from typing import Any
 
 from .lib.shared import (
-    _TREE_SITTER_AVAILABLE,
     call_re,
     child_of_type,
     dedupe_signatures_by_fqname,
