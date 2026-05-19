@@ -2249,6 +2249,9 @@ def post_commit_hook() -> int:
                 f.write(result.stdout)
     except (OSError, subprocess.SubprocessError):
         return 0
+    finally:
+        os.environ.pop("SKIP_SIGNATURE_HOOK", None)
+    return 0
 
 
 if __name__ == "__main__":
