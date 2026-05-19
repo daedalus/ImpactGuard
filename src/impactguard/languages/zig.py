@@ -181,9 +181,14 @@ def _extract_with_tree_sitter(
         fq_file = path.name
         funcs: list[dict[str, Any]] = []
 
-        def visit(node: Any) -> None:
+        def visit(
+            node: Any,
+            _source: bytes = source,
+            _fq_file: str = fq_file,
+            _funcs: list[dict[str, Any]] = funcs,
+        ) -> None:
             if node.type in ("fn_decl", "function_declaration", "function_definition"):
-                _process_function(node, source, fq_file, funcs)
+                _process_function(node, _source, _fq_file, _funcs)
             for child in node.children:
                 visit(child)
 

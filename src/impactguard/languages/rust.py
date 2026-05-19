@@ -176,18 +176,24 @@ def _extract_with_tree_sitter(
         fq_file = path.name
         funcs: list[dict[str, Any]] = []
 
-        def visit(node: Any, class_name: str | None = None) -> None:
+        def visit(
+            node: Any,
+            class_name: str | None = None,
+            _source: bytes = source,
+            _fq_file: str = fq_file,
+            _funcs: list[dict[str, Any]] = funcs,
+        ) -> None:
             t = node.type
             if t == "function_item":
-                _process_function(node, source, fq_file, class_name, funcs)
+                _process_function(node, _source, _fq_file, class_name, _funcs)
             elif t == "function_signature_item":
-                _process_function(node, source, fq_file, class_name, funcs)
+                _process_function(node, _source, _fq_file, class_name, _funcs)
             elif t in ("impl_item", "trait_item"):
                 # Determine the type name for impl/trait
                 type_name: str | None = None
                 for child in node.children:
                     if child.type in ("type_identifier",) and type_name is None:
-                        type_name = node_text(child, source)
+                        type_name = node_text(child, _source)
                 decl_list = child_of_type(node, "declaration_list")
                 if decl_list is not None:
                     for child in decl_list.children:
