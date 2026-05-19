@@ -20,7 +20,7 @@ def trace(func: Callable[..., Any]) -> Callable[..., Any]:
                 sig = inspect.signature(func)
                 _ = sig.bind_partial(*args, **kwargs)  # noqa: F841 - called for side effects
                 DETAILS[name] = {"args_count": len(args), "kwargs": list(kwargs.keys())}
-        except Exception:
+        except (TypeError, ValueError):
             pass
 
         return func(*args, **kwargs)
@@ -51,5 +51,5 @@ def install_tracer(module: object, prefix: str | None = None) -> None:
                 continue
             try:
                 setattr(module, name, trace(obj))
-            except Exception:
+            except (AttributeError, TypeError):
                 pass

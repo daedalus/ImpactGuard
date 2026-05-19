@@ -37,7 +37,7 @@ class CallVisitor(ast.NodeVisitor):
 def extract(path: Path) -> list[dict[str, Any]]:
     try:
         tree = ast.parse(path.read_text())
-    except Exception:
+    except (SyntaxError, OSError, UnicodeDecodeError):
         return []
 
     visitor = CallVisitor(str(path))
