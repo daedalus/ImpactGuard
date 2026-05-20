@@ -58,8 +58,9 @@ _COMMON_KEYWORDS: frozenset[str] = frozenset()
 _TREE_SITTER_AVAILABLE = False
 _TreeSitterParser: Any | None = None
 try:
-    from tree_sitter import Parser as _TreeSitterParser
+    from tree_sitter import Parser as _TreeSitterParser_impl
 
+    _TreeSitterParser = _TreeSitterParser_impl
     _TREE_SITTER_AVAILABLE = True
 except ImportError:
     pass
