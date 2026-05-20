@@ -137,6 +137,7 @@ def generate_fix_candidates(report_item: dict[str, Any]) -> list[dict[str, Any]]
         return []
 
     source = source_path.read_text()
+    cst_error: str | None = None
     patched, cst_error = patch_function(
         source, _callable_leaf_name(func_name), param_name
     )

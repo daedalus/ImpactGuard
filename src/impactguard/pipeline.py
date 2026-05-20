@@ -938,8 +938,9 @@ def run_pipeline(
 
     # Step 5: Assess risk
     _log.debug("Step 5: Assessing risk")
-    old_signatures = _load_result_signatures(old_sigs_path, new_sigs_path)["old"]
-    new_signatures = _load_result_signatures(old_sigs_path, new_sigs_path)["new"]
+    signature_pair = _load_result_signatures(old_sigs_path, new_sigs_path)
+    old_signatures = signature_pair["old"]
+    new_signatures = signature_pair["new"]
     change_events = build_change_events(comparison, old_signatures, new_signatures)
     structured_breaking_changes, diff_path = _write_risk_inputs(
         comparison, output_dir, change_events
@@ -1678,8 +1679,8 @@ def run_pipeline_commit(
         "block_unknown": block_unknown,
         "require_runtime": require_runtime,
     }
-    # Keep backward-compatible delegation signatures in tests/callers by only
-    # forwarding newly added kwargs when their value deviates from defaults.
+    # Keep delegation kwargs minimal by forwarding new options only when they
+    # deviate from defaults.
     if not generate_fixes:
         kwargs["generate_fixes"] = generate_fixes
     if apply_safe_fixes:
