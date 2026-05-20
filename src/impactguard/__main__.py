@@ -380,6 +380,8 @@ def cmd_check(args: argparse.Namespace) -> int:
     watch: bool = getattr(args, "watch", False)
     suggest_patch: bool = getattr(args, "suggest_patch", False)
     show_patch: bool = getattr(args, "show_patch", False)
+    generate_fixes: bool = not bool(getattr(args, "no_generate_fixes", False))
+    apply_safe_fixes: bool = bool(getattr(args, "apply_safe_fixes", False))
 
     def _run_once() -> int:
         print(f"Checking impact: {args.old} → {args.new}")
@@ -390,6 +392,8 @@ def cmd_check(args: argparse.Namespace) -> int:
                 args.runtime,
                 suggest_patch=suggest_patch,
                 show_patch=show_patch,
+                generate_fixes=generate_fixes,
+                apply_safe_fixes=apply_safe_fixes,
             )
             print("\n=== Comparison ===")
             print(
@@ -545,6 +549,8 @@ def cmd_check_commits(args: argparse.Namespace) -> int:
     enforce_gate: bool = getattr(args, "enforce_gate", False)
     block_unknown: bool = getattr(args, "block_unknown", False)
     require_runtime: bool = getattr(args, "require_runtime", False)
+    generate_fixes: bool = not bool(getattr(args, "no_generate_fixes", False))
+    apply_safe_fixes: bool = bool(getattr(args, "apply_safe_fixes", False))
 
     max_parse_failures: int = getattr(args, "max_parse_failures", 0)
     max_skipped_files: int = getattr(args, "max_skipped_files", 0)
@@ -569,6 +575,8 @@ def cmd_check_commits(args: argparse.Namespace) -> int:
             runtime_path=args.runtime,
             output_path=args.output,
             suggest_patch=suggest_patch,
+            generate_fixes=generate_fixes,
+            apply_safe_fixes=apply_safe_fixes,
             strict_extraction=strict_extraction,
             max_parse_failures=max_parse_failures,
             max_skipped_files=max_skipped_files,
@@ -615,6 +623,8 @@ def _run_diff_pipe(
             output_dir=getattr(args, "output", None),
             suggest_patch=suggest_patch,
             show_patch=show_patch,
+            generate_fixes=not bool(getattr(args, "no_generate_fixes", False)),
+            apply_safe_fixes=bool(getattr(args, "apply_safe_fixes", False)),
             strict_extraction=strict_extraction,
         )
     except ValueError as e:
@@ -638,6 +648,8 @@ def _run_diff_file(
             runtime_path=getattr(args, "runtime", None),
             output_dir=getattr(args, "output", None),
             suggest_patch=getattr(args, "suggest_patch", False),
+            generate_fixes=not bool(getattr(args, "no_generate_fixes", False)),
+            apply_safe_fixes=bool(getattr(args, "apply_safe_fixes", False)),
             strict_extraction=strict_extraction,
         )
     except (FileNotFoundError, ValueError) as e:
@@ -721,6 +733,8 @@ def cmd_check_commit(args: argparse.Namespace) -> int:
     from .pipeline import run_pipeline_commit
 
     suggest_patch: bool = getattr(args, "suggest_patch", False)
+    generate_fixes: bool = not bool(getattr(args, "no_generate_fixes", False))
+    apply_safe_fixes: bool = bool(getattr(args, "apply_safe_fixes", False))
     strict_extraction: bool = getattr(args, "strict_extraction", False)
     print(f"Analyzing commit: {args.commit_ref}")
 
@@ -731,6 +745,8 @@ def cmd_check_commit(args: argparse.Namespace) -> int:
             runtime_path=getattr(args, "runtime", None),
             output_path=getattr(args, "output", None),
             suggest_patch=suggest_patch,
+            generate_fixes=generate_fixes,
+            apply_safe_fixes=apply_safe_fixes,
             strict_extraction=strict_extraction,
         )
     except (ValueError, RuntimeError) as e:
@@ -1811,6 +1827,18 @@ def main() -> int:
         dest="show_patch",
         help="Show how old file would look if patched",
     )
+    check_parser.add_argument(
+        "--no-generate-fixes",
+        action="store_true",
+        default=False,
+        help="Disable internal fix-candidate generation in pipeline output.",
+    )
+    check_parser.add_argument(
+        "--apply-safe-fixes",
+        action="store_true",
+        default=False,
+        help="Apply high-confidence CST fixes automatically (conservative mode).",
+    )
     check_parser.set_defaults(func=cmd_check)
 
     # check-diff subcommand (unified diff / patch file)
@@ -1840,6 +1868,18 @@ def main() -> int:
         action="store_true",
         dest="show_patch",
         help="Show how old file would look if patched",
+    )
+    check_diff_parser.add_argument(
+        "--no-generate-fixes",
+        action="store_true",
+        default=False,
+        help="Disable internal fix-candidate generation in pipeline output.",
+    )
+    check_diff_parser.add_argument(
+        "--apply-safe-fixes",
+        action="store_true",
+        default=False,
+        help="Apply high-confidence CST fixes automatically (conservative mode).",
     )
     check_diff_parser.add_argument(
         "--strict-extraction",
@@ -1874,6 +1914,18 @@ def main() -> int:
         action="store_true",
         dest="show_patch",
         help="Show how old file would look if patched",
+    )
+    check_commit_parser.add_argument(
+        "--no-generate-fixes",
+        action="store_true",
+        default=False,
+        help="Disable internal fix-candidate generation in pipeline output.",
+    )
+    check_commit_parser.add_argument(
+        "--apply-safe-fixes",
+        action="store_true",
+        default=False,
+        help="Apply high-confidence CST fixes automatically (conservative mode).",
     )
     check_commit_parser.add_argument(
         "--strict-extraction",
@@ -1911,6 +1963,18 @@ def main() -> int:
         action="store_true",
         dest="show_patch",
         help="Show how old file would look if patched",
+    )
+    check_commits_parser.add_argument(
+        "--no-generate-fixes",
+        action="store_true",
+        default=False,
+        help="Disable internal fix-candidate generation in pipeline output.",
+    )
+    check_commits_parser.add_argument(
+        "--apply-safe-fixes",
+        action="store_true",
+        default=False,
+        help="Apply high-confidence CST fixes automatically (conservative mode).",
     )
     check_commits_parser.add_argument(
         "--strict-extraction",
