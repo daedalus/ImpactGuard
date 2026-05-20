@@ -76,7 +76,7 @@ def test_pipeline_enriches_risk_with_fix_candidates_by_default(tmp_path):
     first = result["risk"][0]
     assert "fix_candidates" in first
     assert first["fix_candidates"]
-    assert first["fix_candidates"][0]["type"] in {"cst_patch", "text_patch"}
+    assert first["fix_candidates"][0]["type"] == "cst_patch"
 
     risk_report = json.loads((tmp_path / "out" / "risk_report.json").read_text())
     assert risk_report[0]["fix_candidates"]
