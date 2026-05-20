@@ -137,7 +137,9 @@ def generate_fix_candidates(report_item: dict[str, Any]) -> list[dict[str, Any]]
         return []
 
     source = source_path.read_text()
-    patched, err = patch_function(source, _callable_leaf_name(func_name), param_name)
+    patched, cst_error = patch_function(
+        source, _callable_leaf_name(func_name), param_name
+    )
     if patched and patched != source:
         level, factors = classify_with_factors(0.95, 0.95, 0.85, 1.0)
         return [
@@ -150,7 +152,7 @@ def generate_fix_candidates(report_item: dict[str, Any]) -> list[dict[str, Any]]
                 "confidence": factors,
                 "confidence_level": level,
                 "auto_applicable": level == "HIGH",
-                "error": err,
+                "error": cst_error,
             }
         ]
 
@@ -175,7 +177,7 @@ def generate_fix_candidates(report_item: dict[str, Any]) -> list[dict[str, Any]]
             "confidence": factors,
             "confidence_level": level,
             "auto_applicable": False,
-            "error": err,
+            "error": cst_error,
         }
     ]
 
