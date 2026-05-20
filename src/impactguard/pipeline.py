@@ -510,16 +510,19 @@ def _extract_calls_to_path(
 
 
 def _write_risk_inputs(
-    comparison: dict[str, Any], output_dir: str
+    comparison: dict[str, Any],
+    output_dir: str,
+    structured_changes: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, str]], str]:
     """Write structured and plain-text breaking-change inputs for the risk gate."""
     from .risk_gate import parse_change_line as _parse_change_line
 
-    structured_changes: list[dict[str, str]] = []
-    for change in comparison.get("breaking", []):
-        parsed = _parse_change_line(str(change))
-        if parsed is not None:
-            structured_changes.append(parsed)
+    effective_structured: list[dict[str, Any]] = structured_changes or []
+    if not effective_structured:
+        for change in comparison.get("breaking", []):
+            parsed = _parse_change_line(str(change))
+            if parsed is not None:
+                effective_structured.append(parsed)
 
     diff_path = str(Path(output_dir) / "diff.txt")
     with open(diff_path, "w") as f:
@@ -527,8 +530,8 @@ def _write_risk_inputs(
             f.write(f"{change}\n")
 
     structured_path = Path(output_dir) / "changes_structured.json"
-    _write_json(structured_path, structured_changes)
-    return structured_changes, diff_path
+    _write_json(structured_path, effective_structured)
+    return effective_structured, diff_path
 
 
 def _attach_patch_source_info(
@@ -636,6 +639,11 @@ def _generate_patches(
             "type": patch_type,
             "file": str(patch_file),
             "content": patch_content,
+            "confidence_level": item.get("confidence_level"),
+            "confidence": item.get("confidence"),
+            "auto_applicable": item.get("auto_applicable", False),
+            "function": item.get("function"),
+            "param_name": item.get("param_name"),
         }
 
     return patches
@@ -701,6 +709,25 @@ def _finalize_analysis_status(
     )
     high_count = sum(1 for item in risk if item.get("risk") == "HIGH")
     unknown_count = sum(1 for item in risk if item.get("risk") == "UNKNOWN")
+    high_auto_fixable = 0
+    high_manual_required = 0
+    for item in risk:
+        if item.get("risk") != "HIGH":
+            continue
+        fix_candidates = item.get("fix_candidates", [])
+        if not isinstance(fix_candidates, list):
+            high_manual_required += 1
+            continue
+        has_auto = any(
+            isinstance(fc, dict)
+            and fc.get("type") == "cst_patch"
+            and bool(fc.get("auto_applicable", False))
+            for fc in fix_candidates
+        )
+        if has_auto:
+            high_auto_fixable += 1
+        else:
+            high_manual_required += 1
     risk_gate_blocked = high_count > 0 or (block_unknown and unknown_count > 0)
     analysis_gate_blocked = not policy["passes"]
     runtime_gate_blocked = require_runtime and runtime_state != "loaded"
@@ -720,6 +747,10 @@ def _finalize_analysis_status(
         "runtime_gate_blocked": runtime_gate_blocked,
         "block_unknown": block_unknown,
         "risk": {"high": high_count, "unknown": unknown_count},
+        "fixability": {
+            "high_confidence_auto_fixable": high_auto_fixable,
+            "manual_required": high_manual_required,
+        },
         "reasons": _build_gate_reasons(
             high_count, unknown_count, block_unknown, policy, runtime_gate_blocked
         ),
@@ -752,6 +783,8 @@ def run_pipeline(
     config: dict[str, Any] | None = None,
     suggest_patch: bool = False,
     show_patch: bool = False,
+    generate_fixes: bool = True,
+    apply_safe_fixes: bool = False,
     strict_extraction: bool = False,
     old_base_path: str | None = None,
     new_base_path: str | None = None,
@@ -797,6 +830,13 @@ def run_pipeline(
     """
     from .analyze_module import analyze as analyze_module
     from .compare_signatures import compare
+    from .fix_generation import (
+        apply_safe_fixes as _apply_safe_fixes,
+    )
+    from .fix_generation import (
+        build_change_events,
+        enrich_risk_with_fix_candidates,
+    )
     from .generate_report import generate_html
     from .impact_analysis import analyze
     from .risk_gate import run as run_risk
@@ -898,7 +938,13 @@ def run_pipeline(
 
     # Step 5: Assess risk
     _log.debug("Step 5: Assessing risk")
-    structured_breaking_changes, diff_path = _write_risk_inputs(comparison, output_dir)
+    signature_pair = _load_result_signatures(old_sigs_path, new_sigs_path)
+    old_signatures = signature_pair["old"]
+    new_signatures = signature_pair["new"]
+    change_events = build_change_events(comparison, old_signatures, new_signatures)
+    structured_breaking_changes, diff_path = _write_risk_inputs(
+        comparison, output_dir, change_events
+    )
     risk_report_path = str(Path(output_dir) / "risk_report.json")
     risk = run_risk(
         diff_path,
@@ -906,18 +952,12 @@ def run_pipeline(
         risk_report_path,
         changes=structured_breaking_changes,
     )
+    risk, default_fixes = enrich_risk_with_fix_candidates(
+        risk, change_events, generate_fixes=generate_fixes or apply_safe_fixes
+    )
+    _write_json(Path(risk_report_path), risk)
     result["risk"] = risk
     _log.debug("Risk assessment: %d item(s)", len(risk))
-
-    # Add file/lineno from signatures to risk items for patch generation
-    if suggest_patch or show_patch:
-        _attach_patch_source_info(
-            risk,
-            old_sigs_path=old_sigs_path,
-            old_files=old_files,
-            stats=reliability_stats,
-            events=analysis_events,
-        )
 
     # Step 6: Generate HTML report
     _log.debug("Step 6: Generating HTML report")
@@ -934,16 +974,18 @@ def run_pipeline(
     result["report_html"] = html
 
     # Step 7: Suggest fixes with confidence
-    fixes = []
-    for item in risk:
-        if "function" in item:
-            enriched = enrich_with_fixes(item, [item])
-            fixes.extend(enriched)
+    fixes = list(default_fixes)
+    if generate_fixes and not fixes:
+        for item in risk:
+            if "function" in item:
+                fixes.extend(enrich_with_fixes(item, [item]))
 
     # Apply calibrated weights from feedback loop if available
     _calibrate_feedback(reliability_stats, analysis_events)
 
     result["fixes"] = fixes
+    if apply_safe_fixes:
+        result["applied_fixes"] = _apply_safe_fixes(risk)
 
     # Step 8: Generate/show patches if requested
     if suggest_patch or show_patch:
@@ -988,6 +1030,8 @@ def quick_check(
     runtime_path: str | None = None,
     suggest_patch: bool = False,
     show_patch: bool = False,
+    generate_fixes: bool = True,
+    apply_safe_fixes: bool = False,
     strict_extraction: bool = False,
     max_parse_failures: int = 0,
     max_skipped_files: int = 0,
@@ -1035,6 +1079,8 @@ def quick_check(
         runtime_path=runtime_path,
         suggest_patch=suggest_patch,
         show_patch=show_patch,
+        generate_fixes=generate_fixes,
+        apply_safe_fixes=apply_safe_fixes,
         strict_extraction=strict_extraction,
         old_base_path=old_base,
         new_base_path=new_base,
@@ -1223,6 +1269,8 @@ def run_pipeline_git(
     config: dict[str, Any] | None = None,
     suggest_patch: bool = False,
     show_patch: bool = False,
+    generate_fixes: bool = True,
+    apply_safe_fixes: bool = False,
     strict_extraction: bool = False,
     max_parse_failures: int = 0,
     max_skipped_files: int = 0,
@@ -1330,6 +1378,8 @@ def run_pipeline_git(
             config=config,
             suggest_patch=suggest_patch,
             show_patch=show_patch,
+            generate_fixes=generate_fixes,
+            apply_safe_fixes=apply_safe_fixes,
             strict_extraction=strict_extraction,
             old_base_path=str(Path(old_dir).resolve()),
             new_base_path=str(Path(new_dir).resolve()),
@@ -1406,6 +1456,8 @@ def run_pipeline_diff_content(
     config: dict[str, Any] | None = None,
     suggest_patch: bool = False,
     show_patch: bool = False,
+    generate_fixes: bool = True,
+    apply_safe_fixes: bool = False,
     strict_extraction: bool = False,
     max_parse_failures: int = 0,
     max_skipped_files: int = 0,
@@ -1473,6 +1525,8 @@ def run_pipeline_diff_content(
             config=config,
             suggest_patch=suggest_patch,
             show_patch=show_patch,
+            generate_fixes=generate_fixes,
+            apply_safe_fixes=apply_safe_fixes,
             strict_extraction=strict_extraction,
             old_base_path=str(old_dir.resolve()),
             new_base_path=str(new_dir.resolve()),
@@ -1492,6 +1546,8 @@ def run_pipeline_diff(
     config: dict[str, Any] | None = None,
     suggest_patch: bool = False,
     show_patch: bool = False,
+    generate_fixes: bool = True,
+    apply_safe_fixes: bool = False,
     strict_extraction: bool = False,
     max_parse_failures: int = 0,
     max_skipped_files: int = 0,
@@ -1531,6 +1587,8 @@ def run_pipeline_diff(
             config=config,
             suggest_patch=suggest_patch,
             show_patch=show_patch,
+            generate_fixes=generate_fixes,
+            apply_safe_fixes=apply_safe_fixes,
             strict_extraction=strict_extraction,
             max_parse_failures=max_parse_failures,
             max_skipped_files=max_skipped_files,
@@ -1552,6 +1610,8 @@ def run_pipeline_commit(
     config: dict[str, Any] | None = None,
     suggest_patch: bool = False,
     show_patch: bool = False,
+    generate_fixes: bool = True,
+    apply_safe_fixes: bool = False,
     strict_extraction: bool = False,
     max_parse_failures: int = 0,
     max_skipped_files: int = 0,
@@ -1602,23 +1662,30 @@ def run_pipeline_commit(
             "Initial commits have no parent."
         ) from exc
 
-    return run_pipeline_git(
-        old_ref=parent_ref,
-        new_ref=commit_ref,
-        files=files,
-        runtime_path=runtime_path,
-        output_path=output_path,
-        config=config,
-        suggest_patch=suggest_patch,
-        show_patch=show_patch,
-        strict_extraction=strict_extraction,
-        max_parse_failures=max_parse_failures,
-        max_skipped_files=max_skipped_files,
-        max_call_extraction_failures=max_call_extraction_failures,
-        max_runtime_data_issues=max_runtime_data_issues,
-        block_unknown=block_unknown,
-        require_runtime=require_runtime,
-    )
+    kwargs: dict[str, Any] = {
+        "old_ref": parent_ref,
+        "new_ref": commit_ref,
+        "files": files,
+        "runtime_path": runtime_path,
+        "output_path": output_path,
+        "config": config,
+        "suggest_patch": suggest_patch,
+        "show_patch": show_patch,
+        "strict_extraction": strict_extraction,
+        "max_parse_failures": max_parse_failures,
+        "max_skipped_files": max_skipped_files,
+        "max_call_extraction_failures": max_call_extraction_failures,
+        "max_runtime_data_issues": max_runtime_data_issues,
+        "block_unknown": block_unknown,
+        "require_runtime": require_runtime,
+    }
+    # Keep delegation kwargs minimal by forwarding new options only when they
+    # deviate from defaults.
+    if not generate_fixes:
+        kwargs["generate_fixes"] = generate_fixes
+    if apply_safe_fixes:
+        kwargs["apply_safe_fixes"] = apply_safe_fixes
+    return run_pipeline_git(**kwargs)
 
 
 class ImpactGuard:
@@ -1639,6 +1706,8 @@ class ImpactGuard:
         runtime_path: str | None = None,
         suggest_patch: bool = False,
         show_patch: bool = False,
+        generate_fixes: bool = True,
+        apply_safe_fixes: bool = False,
     ) -> dict[str, Any]:
         """Analyze impact between two versions.
 
@@ -1658,6 +1727,8 @@ class ImpactGuard:
             runtime_path,
             suggest_patch=suggest_patch,
             show_patch=show_patch,
+            generate_fixes=generate_fixes,
+            apply_safe_fixes=apply_safe_fixes,
         )
 
     def extract(self, files: list[str]) -> list[dict[str, Any]]:

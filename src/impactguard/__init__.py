@@ -40,6 +40,12 @@ from .feedback import (
 from .feedback import (
     get_stats as get_feedback_stats,
 )
+from .fix_generation import (
+    apply_safe_fixes,
+    build_change_events,
+    enrich_risk_with_fix_candidates,
+    generate_fix_candidates,
+)
 from .generate_report import (
     generate_html,
     generate_html_from_file,
@@ -250,6 +256,11 @@ __all__ = [
     "get_feedback_stats",
     "compute_calibrated_weights",
     "apply_weights_to_config",
+    # Fix generation
+    "build_change_events",
+    "generate_fix_candidates",
+    "enrich_risk_with_fix_candidates",
+    "apply_safe_fixes",
     # KPI dashboard
     "compute_kpis",
     "format_kpi_text",

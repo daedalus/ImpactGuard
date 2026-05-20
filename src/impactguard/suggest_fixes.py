@@ -1,8 +1,8 @@
 import sys
-from pathlib import Path
 from typing import Any
 
 from ._pathutils import is_safe_path
+from .fix_generation import generate_fix_candidates
 from .patch_confidence import classify_with_factors
 
 
@@ -48,55 +48,11 @@ def get_line(file: str, lineno: int) -> str:
 
 
 def _cst_patch_fix(report_item: dict[str, Any]) -> list[dict[str, Any]]:
-    """Attempt to generate a CST-based (or text-patch) fix for the report item."""
+    """Generate fix candidates using normalized CST/text patch service."""
     try:
-        func_name = report_item.get("function", "")
-        change = report_item.get("change", "")
-        file_path = report_item.get("file", "")
-        if not file_path or not Path(file_path).exists():
-            return []
-
-        from .cst_patch import patch_function
-
-        source = Path(file_path).read_text()
-        param_name = None
-        if "REMOVED" in change or "REQUIRED" in change:
-            parts = change.split()
-            if parts:
-                param_name = parts[-1].strip("()")
-
-        if not param_name:
-            return []
-
-        patched, _ = patch_function(source, func_name.split(".")[-1], param_name)
-        if patched:
-            return [
-                {
-                    "type": "cst_patch",
-                    "patch": patched,
-                    "confidence_level": "MEDIUM",
-                }
-            ]
-
-        from .patch_generator import patch_add_default
-
-        func_dict = {
-            "file": file_path,
-            "lineno": report_item.get("lineno", 0),
-            "name": func_name,
-        }
-        gen_patch = patch_add_default(func_dict, param_name)
-        if gen_patch:
-            return [
-                {
-                    "type": "text_patch",
-                    "patch": gen_patch,
-                    "confidence_level": "LOW",
-                }
-            ]
+        return generate_fix_candidates(report_item)
     except (OSError, ImportError, AttributeError, TypeError):
-        pass
-    return []
+        return []
 
 
 def enrich_with_fixes(
