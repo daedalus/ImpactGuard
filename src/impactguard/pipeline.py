@@ -1678,6 +1678,8 @@ def run_pipeline_commit(
         "block_unknown": block_unknown,
         "require_runtime": require_runtime,
     }
+    # Keep backward-compatible delegation signatures in tests/callers by only
+    # forwarding newly added kwargs when their value deviates from defaults.
     if not generate_fixes:
         kwargs["generate_fixes"] = generate_fixes
     if apply_safe_fixes:
