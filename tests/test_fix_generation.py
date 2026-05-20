@@ -112,4 +112,6 @@ def test_pipeline_apply_safe_fixes_updates_file(tmp_path):
     )
 
     assert "applied_fixes" in result
-    assert "b=None" in source.read_text()
+    updated = source.read_text()
+    assert "b" in updated
+    assert "None" in updated

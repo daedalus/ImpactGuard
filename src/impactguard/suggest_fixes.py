@@ -1,8 +1,8 @@
 import sys
 from typing import Any
 
-from .fix_generation import generate_fix_candidates
 from ._pathutils import is_safe_path
+from .fix_generation import generate_fix_candidates
 from .patch_confidence import classify_with_factors
 
 
