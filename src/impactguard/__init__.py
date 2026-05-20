@@ -37,14 +37,14 @@ from .feedback import (
     load_outcomes,
     record_outcome,
 )
+from .feedback import (
+    get_stats as get_feedback_stats,
+)
 from .fix_generation import (
     apply_safe_fixes,
     build_change_events,
     enrich_risk_with_fix_candidates,
     generate_fix_candidates,
-)
-from .feedback import (
-    get_stats as get_feedback_stats,
 )
 from .generate_report import (
     generate_html,

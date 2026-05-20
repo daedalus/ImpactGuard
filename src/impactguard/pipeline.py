@@ -832,6 +832,8 @@ def run_pipeline(
     from .compare_signatures import compare
     from .fix_generation import (
         apply_safe_fixes as _apply_safe_fixes,
+    )
+    from .fix_generation import (
         build_change_events,
         enrich_risk_with_fix_candidates,
     )
@@ -1659,25 +1661,28 @@ def run_pipeline_commit(
             "Initial commits have no parent."
         ) from exc
 
-    return run_pipeline_git(
-        old_ref=parent_ref,
-        new_ref=commit_ref,
-        files=files,
-        runtime_path=runtime_path,
-        output_path=output_path,
-        config=config,
-        suggest_patch=suggest_patch,
-        show_patch=show_patch,
-        generate_fixes=generate_fixes,
-        apply_safe_fixes=apply_safe_fixes,
-        strict_extraction=strict_extraction,
-        max_parse_failures=max_parse_failures,
-        max_skipped_files=max_skipped_files,
-        max_call_extraction_failures=max_call_extraction_failures,
-        max_runtime_data_issues=max_runtime_data_issues,
-        block_unknown=block_unknown,
-        require_runtime=require_runtime,
-    )
+    kwargs: dict[str, Any] = {
+        "old_ref": parent_ref,
+        "new_ref": commit_ref,
+        "files": files,
+        "runtime_path": runtime_path,
+        "output_path": output_path,
+        "config": config,
+        "suggest_patch": suggest_patch,
+        "show_patch": show_patch,
+        "strict_extraction": strict_extraction,
+        "max_parse_failures": max_parse_failures,
+        "max_skipped_files": max_skipped_files,
+        "max_call_extraction_failures": max_call_extraction_failures,
+        "max_runtime_data_issues": max_runtime_data_issues,
+        "block_unknown": block_unknown,
+        "require_runtime": require_runtime,
+    }
+    if not generate_fixes:
+        kwargs["generate_fixes"] = generate_fixes
+    if apply_safe_fixes:
+        kwargs["apply_safe_fixes"] = apply_safe_fixes
+    return run_pipeline_git(**kwargs)
 
 
 class ImpactGuard:
