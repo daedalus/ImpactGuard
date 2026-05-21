@@ -99,7 +99,9 @@ def _patch_acceptance_rate(
     return accepted / total
 
 
-def _false_positive_proxy(report_data: list[dict[str, Any]], fp_threshold: float) -> float:
+def _false_positive_proxy(
+    report_data: list[dict[str, Any]], fp_threshold: float
+) -> float:
     """Estimate the rate of likely false-positive HIGH findings."""
     high_items = [item for item in report_data if item.get("risk") == "HIGH"]
     low_exp_high = sum(

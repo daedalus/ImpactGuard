@@ -93,14 +93,18 @@ def test_extract_calls_with_regex_no_calls(tmp_path):
 def test_extract_calls_with_regex_multiline(tmp_path):
     from impactguard.languages.c import _extract_calls_with_regex
 
-    src = _write(tmp_path, "multi.c", '''
+    src = _write(
+        tmp_path,
+        "multi.c",
+        """
 void test() {
     foo(1,
         2,
         3);
     bar();
 }
-''')
+""",
+    )
     calls = _extract_calls_with_regex(src)
     names = [c["name"] for c in calls]
     assert len(calls) >= 2
@@ -112,6 +116,7 @@ void test() {
 def test_visit_node_templates(tmp_path):
     """Test _visit_node handles template_declaration nodes."""
     from impactguard.languages.c import _CPP_TREE_SITTER_AVAILABLE
+
     if not _CPP_TREE_SITTER_AVAILABLE:
         pytest.skip("tree-sitter-cpp not installed")
 

@@ -269,7 +269,9 @@ def _validate_config_value(
                 f"ERROR: {key_prefix} should be an integer, got {type(value).__name__!r}."
             )
         elif value <= 0:
-            issues.append(f"ERROR: {key_prefix} = {value!r} must be a positive integer.")
+            issues.append(
+                f"ERROR: {key_prefix} = {value!r} must be a positive integer."
+            )
         return
 
     if isinstance(default_val, list) and not isinstance(value, list):
@@ -297,7 +299,9 @@ def _validate_config_section(
         issues.append(f"ERROR: '[impactguard.{section_name}]' must be a TOML table.")
         return
 
-    known_keys = set(default_section.keys()) if isinstance(default_section, dict) else set()
+    known_keys = (
+        set(default_section.keys()) if isinstance(default_section, dict) else set()
+    )
     for key_name, value in user_section.items():
         if known_keys and key_name not in known_keys:
             issues.append(
@@ -306,7 +310,9 @@ def _validate_config_section(
             )
             continue
 
-        default_val = default_section.get(key_name) if isinstance(default_section, dict) else None
+        default_val = (
+            default_section.get(key_name) if isinstance(default_section, dict) else None
+        )
         _validate_config_value(section_name, key_name, default_val, value, issues)
 
 

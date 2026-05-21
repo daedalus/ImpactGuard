@@ -25,6 +25,28 @@ def _sig_index(signatures: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     }
 
 
+def _find_first_required_pos(arguments: list[Any], offset: int) -> str | None:
+    added = arguments[offset:]
+    required = [
+        str(a.get("name", ""))
+        for a in added
+        if isinstance(a, dict) and not bool(a.get("has_default", False))
+    ]
+    return required[0] if required else None
+
+
+def _find_first_required_kwonly(old_kw: list[Any], new_kw: list[Any]) -> str | None:
+    old_names = {str(a.get("name", "")) for a in old_kw if isinstance(a, dict)}
+    required = [
+        str(a.get("name", ""))
+        for a in new_kw
+        if isinstance(a, dict)
+        and str(a.get("name", "")) not in old_names
+        and not bool(a.get("has_default", False))
+    ]
+    return required[0] if required else None
+
+
 def _resolve_required_added_param(
     change_type: str, old_sig: dict[str, Any] | None, new_sig: dict[str, Any] | None
 ) -> str | None:
@@ -41,26 +63,10 @@ def _resolve_required_added_param(
         return None
 
     if change_type == "REQUIRED_POSITIONAL_ADDED":
-        added = new_pos[len(old_pos) :]
-        required = [
-            str(arg.get("name", ""))
-            for arg in added
-            if isinstance(arg, dict) and not bool(arg.get("has_default", False))
-        ]
-        return required[0] if required else None
+        return _find_first_required_pos(new_pos, len(old_pos))
 
     if change_type == "REQUIRED_KWONLY_ADDED":
-        old_kw_names = {
-            str(arg.get("name", "")) for arg in old_kw if isinstance(arg, dict)
-        }
-        required = [
-            str(arg.get("name", ""))
-            for arg in new_kw
-            if isinstance(arg, dict)
-            and str(arg.get("name", "")) not in old_kw_names
-            and not bool(arg.get("has_default", False))
-        ]
-        return required[0] if required else None
+        return _find_first_required_kwonly(old_kw, new_kw)
 
     return None
 
@@ -200,7 +206,13 @@ def enrich_risk_with_fix_candidates(
         updated = dict(item)
         key = (str(item.get("function", "")), str(item.get("change", "")))
         event = event_map.get(key, {})
-        for field in ("change_type", "raw_change", "param_name", "file", "cst_supported"):
+        for field in (
+            "change_type",
+            "raw_change",
+            "param_name",
+            "file",
+            "cst_supported",
+        ):
             if field in event:
                 updated[field] = event[field]
 

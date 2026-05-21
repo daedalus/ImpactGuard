@@ -480,7 +480,6 @@ class TestSuggestFixesCST:
 
 class TestTraceCallsProdFlushTrigger:
     def test_trace_triggers_flush_when_interval_exceeded(self, tmp_path, monkeypatch):
-
         import impactguard.trace_calls_prod as tcp
 
         # Force flush by setting LAST_FLUSH to a very old time

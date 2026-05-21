@@ -159,7 +159,9 @@ def _resolve_target(target: str, funcs: dict[str, dict[str, Any]]) -> str | None
     return None
 
 
-def _risk_level_for_mismatch(argc: int, min_args: int, severity: float, exp: float) -> str:
+def _risk_level_for_mismatch(
+    argc: int, min_args: int, severity: float, exp: float
+) -> str:
     """Return a risk label for an arity mismatch."""
     if argc < min_args:
         return "HIGH"
@@ -209,7 +211,9 @@ def _append_transitive_issues(
         return
 
     call_graph = build_call_graph(calls)
-    transitive = find_transitive_callers(directly_affected, call_graph, transitive_depth)
+    transitive = find_transitive_callers(
+        directly_affected, call_graph, transitive_depth
+    )
     for caller, hop in transitive.items():
         issues.append(
             {

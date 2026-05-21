@@ -128,7 +128,6 @@ def _ensure_loaded() -> None:
     _load_plugins()
 
 
-
 def _load_plugins() -> None:
     """Discover and register third-party language extractors via entry points.
 

@@ -681,6 +681,40 @@ def _build_gate_reasons(
     return reasons
 
 
+def _inject_coverage_disclaimer(html: str, reliability_stats: dict[str, int]) -> str:
+    if not any(reliability_stats.get(k, 0) > 0 for k in _PARTIAL_ANALYSIS_COUNTERS):
+        return html
+    disclaimer = (
+        "<p><strong>Analysis coverage warning:</strong> "
+        "this report was generated from partial analysis. Review analysis_summary.json "
+        "for skipped/failed extraction details before treating LOW/MEDIUM findings as complete.</p>"
+    )
+    return html.replace("<body>", f"<body>{disclaimer}", 1)
+
+
+def _count_fixability(risk: list[dict[str, Any]]) -> tuple[int, int]:
+    high_auto = 0
+    high_manual = 0
+    for item in risk:
+        if item.get("risk") != "HIGH":
+            continue
+        candidates = item.get("fix_candidates", [])
+        if not isinstance(candidates, list):
+            high_manual += 1
+            continue
+        has_auto = any(
+            isinstance(fc, dict)
+            and fc.get("type") == "cst_patch"
+            and bool(fc.get("auto_applicable", False))
+            for fc in candidates
+        )
+        if has_auto:
+            high_auto += 1
+        else:
+            high_manual += 1
+    return high_auto, high_manual
+
+
 def _finalize_analysis_status(
     *,
     result: dict[str, Any],
@@ -709,25 +743,7 @@ def _finalize_analysis_status(
     )
     high_count = sum(1 for item in risk if item.get("risk") == "HIGH")
     unknown_count = sum(1 for item in risk if item.get("risk") == "UNKNOWN")
-    high_auto_fixable = 0
-    high_manual_required = 0
-    for item in risk:
-        if item.get("risk") != "HIGH":
-            continue
-        fix_candidates = item.get("fix_candidates", [])
-        if not isinstance(fix_candidates, list):
-            high_manual_required += 1
-            continue
-        has_auto = any(
-            isinstance(fc, dict)
-            and fc.get("type") == "cst_patch"
-            and bool(fc.get("auto_applicable", False))
-            for fc in fix_candidates
-        )
-        if has_auto:
-            high_auto_fixable += 1
-        else:
-            high_manual_required += 1
+    high_auto_fixable, high_manual_required = _count_fixability(risk)
     risk_gate_blocked = high_count > 0 or (block_unknown and unknown_count > 0)
     analysis_gate_blocked = not policy["passes"]
     runtime_gate_blocked = require_runtime and runtime_state != "loaded"
@@ -961,17 +977,9 @@ def run_pipeline(
 
     # Step 6: Generate HTML report
     _log.debug("Step 6: Generating HTML report")
-
-    # Step 6: Generate HTML report
-    html = generate_html(risk)
-    if any(reliability_stats.get(k, 0) > 0 for k in _PARTIAL_ANALYSIS_COUNTERS):
-        disclaimer = (
-            "<p><strong>Analysis coverage warning:</strong> "
-            "this report was generated from partial analysis. Review analysis_summary.json "
-            "for skipped/failed extraction details before treating LOW/MEDIUM findings as complete.</p>"
-        )
-        html = html.replace("<body>", f"<body>{disclaimer}", 1)
-    result["report_html"] = html
+    result["report_html"] = _inject_coverage_disclaimer(
+        generate_html(risk), reliability_stats
+    )
 
     # Step 7: Suggest fixes with confidence
     fixes = list(default_fixes)
@@ -980,7 +988,6 @@ def run_pipeline(
             if "function" in item:
                 fixes.extend(enrich_with_fixes(item, [item]))
 
-    # Apply calibrated weights from feedback loop if available
     _calibrate_feedback(reliability_stats, analysis_events)
 
     result["fixes"] = fixes
