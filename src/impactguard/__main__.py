@@ -2361,30 +2361,132 @@ def main() -> int:
         return 1
 
 
+def _extract_staged_files(
+    py_files: list[str],
+) -> tuple[list[str], list[str], str, str] | None:
+    """Extract old (HEAD) and new (staged/index) file content to temp dirs.
+
+    Returns (old_paths, new_paths, old_base, new_base) or None on failure.
+    """
+    import subprocess
+    import tempfile
+    from pathlib import Path
+
+    tmpdir = tempfile.mkdtemp(prefix="impactguard_staged_")
+    old_dir = Path(tmpdir) / "old"
+    new_dir = Path(tmpdir) / "new"
+    old_dir.mkdir()
+    new_dir.mkdir()
+
+    old_paths: list[str] = []
+    new_paths: list[str] = []
+
+    for src_file in py_files:
+        old_dest = old_dir / src_file
+        old_dest.parent.mkdir(parents=True, exist_ok=True)
+        old_result = subprocess.run(
+            ["git", "show", f"HEAD:{src_file}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if old_result.returncode == 0 and old_result.stdout:
+            old_dest.write_text(old_result.stdout)
+            old_paths.append(str(old_dest))
+
+        new_dest = new_dir / src_file
+        new_dest.parent.mkdir(parents=True, exist_ok=True)
+        new_result = subprocess.run(
+            ["git", "show", f":{src_file}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if new_result.returncode == 0 and new_result.stdout:
+            new_dest.write_text(new_result.stdout)
+            new_paths.append(str(new_dest))
+
+    if not new_paths:
+        return None
+    return old_paths, new_paths, str(old_dir.resolve()), str(new_dir.resolve())
+
+
+def _print_pipeline_summary(result: dict) -> None:
+    """Print pipeline result summary to stdout."""
+    comparison = result.get("comparison", {})
+    print("\n=== Comparison ===")
+    print(f"Breaking changes: {len(comparison.get('breaking', []))}")
+    print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
+
+    if "risk" in result:
+        risk_items = result["risk"]
+        high = sum(1 for r in risk_items if r.get("risk") == "HIGH")
+        print("\n=== Risk Analysis ===")
+        print(f"HIGH risk: {high}")
+
+    if "analysis_status" in result:
+        status = result["analysis_status"]
+        counters = status.get("counters", {})
+        print("\n=== Analysis Status ===")
+        print(f"Status: {status.get('status', 'unknown').upper()}")
+        print(
+            f"Counters: parse_failures={counters.get('parse_failures', 0)}, "
+            f"skipped_files={counters.get('skipped_files', 0)}, "
+            f"fallback_used={counters.get('fallback_used', 0)}"
+        )
+        runtime = status.get("runtime", {})
+        if runtime:
+            print(f"Runtime state: {runtime.get('state', 'unknown')}")
+
+    if "gate" in result:
+        gate = result["gate"]
+        print("\n=== Gate Summary ===")
+        print(f"Blocked: {str(gate.get('blocked', False)).lower()}")
+
+
 def check_staged() -> int:
-    """Pre-commit hook: run full pipeline on staged changes."""
+    """Pre-commit hook: run full pipeline on staged changes.
+
+    Extracts full file content from git (HEAD for old, index for new)
+    instead of relying on the lossy _parse_unified_diff reconstruction
+    from a diff with default context length.
+    """
     import os
     import subprocess
-    import sys
 
     if os.environ.get("SKIP_SIGNATURE_HOOK"):
         return 0
 
-    diff = subprocess.run(["git", "diff", "--cached"], capture_output=True, text=True)
-    if not diff.stdout.strip():
-        return 0
-
-    result = subprocess.run(
-        [sys.executable, "-m", "impactguard", "check-diff", "--pipe"],
-        input=diff.stdout,
+    changed = subprocess.run(
+        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"],
         capture_output=True,
         text=True,
     )
-    if result.stdout:
-        print(result.stdout, end="")
-    if result.stderr:
-        print(result.stderr, end="", file=sys.stderr)
-    return result.returncode
+    if not changed.stdout.strip():
+        return 0
+
+    py_files = [f for f in changed.stdout.splitlines() if f.endswith(".py")]
+    if not py_files:
+        return 0
+
+    extracted = _extract_staged_files(py_files)
+    if extracted is None:
+        return 0
+
+    old_paths, new_paths, old_base, new_base = extracted
+
+    from .pipeline import run_pipeline
+
+    result = run_pipeline(
+        old_files=old_paths or None,
+        new_files=new_paths,
+        old_base_path=old_base,
+        new_base_path=new_base,
+    )
+
+    _print_pipeline_summary(result)
+    gate = result.get("gate", {})
+    return 1 if gate.get("blocked", False) else 0
 
 
 def post_commit_hook() -> int:
