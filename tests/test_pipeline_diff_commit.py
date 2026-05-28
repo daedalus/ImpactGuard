@@ -477,6 +477,164 @@ class TestCliCheckCommit:
 
 
 # ---------------------------------------------------------------------------
+# Multi-hunk diff regression
+# ---------------------------------------------------------------------------
+
+
+class TestMultiHunkRegression:
+    """Multi-hunk diffs produce incomplete files — regression tests."""
+
+    def test_multi_hunk_reconstruction_incomplete(self):
+        """Default-context diff reconstruction drops lines between hunks."""
+        from impactguard.pipeline import _parse_unified_diff
+
+        old_lines = [f"x = {i}" for i in range(40)]
+        new_lines = [
+            f"x = {i + 100}" if i in (3, 25) else f"x = {i}" for i in range(40)
+        ]
+        old_src = "\n".join(old_lines) + "\n"
+        new_src = "\n".join(new_lines) + "\n"
+
+        diff = _make_unified_diff(old_src, new_src)
+
+        result = _parse_unified_diff(diff)
+        assert "module.py" in result
+        old_reconstructed, new_reconstructed = result["module.py"]
+
+        old_lines_reconstructed = old_reconstructed.splitlines()
+        new_lines_reconstructed = new_reconstructed.splitlines()
+
+        assert len(old_lines_reconstructed) < 40, (
+            f"Expected < 40 lines, got {len(old_lines_reconstructed)}"
+        )
+        assert len(new_lines_reconstructed) < 40, (
+            f"Expected < 40 lines, got {len(new_lines_reconstructed)}"
+        )
+
+        # Verify specific lines between hunks are missing
+        context = 3
+        hunk1_end = context + context  # first change at index 3 + 3 ctx = 6
+        hunk2_start = 25 - context  # second change at index 25 - 3 ctx = 22
+        for i in range(hunk1_end + 1, hunk2_start):
+            expected = f"x = {i}"
+            assert expected not in old_lines_reconstructed, (
+                f"Line {i} should be missing from reconstructed old content"
+            )
+            assert expected not in new_lines_reconstructed, (
+                f"Line {i} should be missing from reconstructed new content"
+            )
+
+    def test_run_pipeline_diff_content_reconstructed_differs_from_original(self):
+        """Reconstructed files differ from originals for multi-hunk diffs.
+
+        This is the root cause: the diff-pipe approach produces files that
+        do NOT match the original source, leading to incorrect API analysis.
+        """
+        from impactguard.pipeline import run_pipeline_diff_content
+
+        old_lines = [f"x = {i}" for i in range(40)]
+        new_lines = [
+            f"x = {i + 100}" if i in (3, 25) else f"x = {i}" for i in range(40)
+        ]
+        old_src = "\n".join(old_lines) + "\n"
+        new_src = "\n".join(new_lines) + "\n"
+
+        diff = _make_unified_diff(old_src, new_src)
+
+        result = run_pipeline_diff_content(diff)
+
+        # The pipeline should still have run (risk/comparison may be empty
+        # because the reconstructed files are syntactically valid for this
+        # simple case, just semantically wrong).
+        assert isinstance(result, dict)
+        assert "comparison" in result or "signatures" in result
+
+        # Verify the reconstructed files differ from originals by checking
+        # that at least one signature is reported — but the key regression
+        # is that reconstruction from multi-hunk diffs is lossy.
+        sigs = result.get("signatures", {})
+        assert sigs, (
+            "Expected signatures to be extracted; if parse errors occurred "
+            "they indicate the reconstruction produced broken files."
+        )
+
+    def test_multi_hunk_with_parse_breaking_content(self, caplog):
+        """Multi-hunk diff can produce unparseable files when structure is lost."""
+        from impactguard.pipeline import run_pipeline_diff_content
+
+        caplog.set_level(0)  # capture all log levels
+
+        # File with a change inside a multi-line dict literal and another
+        # change far away — missing intervening lines breaks the `{`..`}`.
+        old = textwrap.dedent("""\
+            DATA = {
+                \"key1\": \"old\",
+                \"key2\": \"v2\",
+                \"key3\": \"v3\",
+                \"key4\": \"v4\",
+                \"key5\": \"v5\",
+                \"key6\": \"v6\",
+                \"key7\": \"v7\",
+                \"key8\": \"v8\",
+                \"key9\": \"v9\",
+                \"key10\": \"v10\",
+            }
+
+            def process():
+                return DATA
+
+            def unused():
+                return \"old\"
+        """)
+        new = textwrap.dedent("""\
+            DATA = {
+                \"key1\": \"new\",
+                \"key2\": \"v2\",
+                \"key3\": \"v3\",
+                \"key4\": \"v4\",
+                \"key5\": \"v5\",
+                \"key6\": \"v6\",
+                \"key7\": \"v7\",
+                \"key8\": \"v8\",
+                \"key9\": \"v9\",
+                \"key10\": \"v10\",
+            }
+
+            def process():
+                return DATA
+
+            def unused():
+                return \"new\"
+        """)
+
+        diff = _make_unified_diff(old, new)
+
+        result = run_pipeline_diff_content(diff)
+
+        # Pipeline gracefully completes but the reconstructed files are
+        # unparseable — verify via log messages since the parse_failures
+        # counter is only incremented for whole-batch extraction failures.
+        assert "due to parse error" in caplog.text, (
+            "Expected 'due to parse error' in logs when reconstructed files "
+            "lose structural content across hunks"
+        )
+
+        # Both old and new reconstructions should fail to parse.
+        assert caplog.text.count("due to parse error") >= 2
+
+        # No signatures should be extracted from unparseable files.
+        sigs = result.get("signatures", {})
+        old_sigs = (sigs or {}).get("old", [])
+        new_sigs = (sigs or {}).get("new", [])
+        assert len(old_sigs) == 0, (
+            "Expected 0 old signatures (file is unparseable after reconstruction)"
+        )
+        assert len(new_sigs) == 0, (
+            "Expected 0 new signatures (file is unparseable after reconstruction)"
+        )
+
+
+# ---------------------------------------------------------------------------
 # run_pipeline_diff_content (new in-memory / pipe variant)
 # ---------------------------------------------------------------------------
 

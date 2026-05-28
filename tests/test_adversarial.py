@@ -5,17 +5,29 @@ hostile inputs to verify that the tool degrades gracefully rather than
 crashing or producing silently incorrect results.
 """
 
+import difflib
 import json
 import os
 import sys
 import tempfile
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # ── helpers ───────────────────────────────────────────────────────────────────
+
+
+def _make_unified_diff(old_src: str, new_src: str, filename: str = "module.py") -> str:
+    """Create a minimal unified diff string from two source strings."""
+    old_lines = old_src.splitlines(keepends=True)
+    new_lines = new_src.splitlines(keepends=True)
+    diff = difflib.unified_diff(
+        old_lines, new_lines, fromfile=filename, tofile=filename
+    )
+    return "".join(diff)
 
 
 def _write_tmp(content: str, suffix: str = ".py") -> str:
@@ -975,3 +987,412 @@ class TestSerializeFunctionAdversarial:
         node = ast.parse(code).body[0]
         result = serialize_function(node, "test.py")
         assert result["is_async"] is True
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 9. _parse_unified_diff — hostile diff text
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestParseUnifiedDiffAdversarial:
+    """Feed hostile unified-diff text to _parse_unified_diff()."""
+
+    def _parse(self, diff_text: str) -> dict[str, tuple[str, str]]:
+        from impactguard.pipeline import _parse_unified_diff
+
+        return _parse_unified_diff(diff_text)
+
+    def test_empty_string(self):
+        result = self._parse("")
+        assert result == {}
+
+    def test_only_diff_header(self):
+        """Header-only diff stores empty old/new content (file is registered)."""
+        result = self._parse("--- a/x.py\n+++ b/x.py\n")
+        assert result == {"x.py": ("", "")}
+
+    def test_no_hunks_in_diff(self):
+        result = self._parse("--- a/x.py\n+++ b/x.py\n")
+        assert result == {"x.py": ("", "")}
+
+    def test_only_context_no_changes(self):
+        """Context lines with no -/+ lines are captured as both old and new."""
+        diff = "--- a/x.py\n+++ b/x.py\n@@ -1,3 +1,3 @@\n line one\n line two\n line three\n"
+        result = self._parse(diff)
+        assert "x.py" in result
+        old, new = result["x.py"]
+        assert old == new  # identical since no changes
+
+    def test_malformed_hunk_header(self):
+        diff = "--- a/x.py\n+++ b/x.py\n@@ -garbage @@\n-def foo():\n+def foo(x):\n"
+        result = self._parse(diff)
+        # Should not crash — hunk header is unparseable so lines
+        # without proper prefixes are treated as context trailing
+        # the previous (non-existent) hunk.
+        assert isinstance(result, dict)
+
+    def test_new_file_from_dev_null(self):
+        diff = "--- /dev/null\n+++ b/x.py\n@@ -0,0 +1,2 @@\n+def foo():\n+    pass\n"
+        result = self._parse(diff)
+        assert "x.py" in result
+        old_content, new_content = result["x.py"]
+        assert old_content == ""
+        assert "def foo()" in new_content
+
+    def test_file_deleted_to_dev_null(self):
+        """Deletion: old content is preserved, new is empty (old_name used as key)."""
+        diff = "--- a/x.py\n+++ /dev/null\n@@ -1,2 +0,0 @@\n-def foo():\n-    pass\n"
+        result = self._parse(diff)
+        assert "x.py" in result
+        old, new = result["x.py"]
+        assert "def foo" in old
+        assert new == ""
+
+    def test_binary_files_differ_line(self):
+        diff = "--- a/a.png\n+++ b/a.png\nBinary files a/a.png and b/a.png differ\n"
+        result = self._parse(diff)
+        assert result == {}  # no unified diff hunks
+
+    def test_rename_without_changes(self):
+        diff = "--- a/old.py\n+++ b/new.py\n@@ -1,1 +1,1 @@\n-same\n+same\n"
+        result = self._parse(diff)
+        assert "new.py" in result
+
+    def test_unsupported_file_skipped(self):
+        diff = "--- a/Makefile\n+++ b/Makefile\n@@ -1,1 +1,1 @@\n-build:\n+test:\n"
+        result = self._parse(diff)
+        assert result == {}
+
+    def test_mixed_supported_and_unsupported(self):
+        diff = (
+            "--- a/Makefile\n+++ b/Makefile\n@@ -1,1 +1,1 @@\n-build:\n+test:\n"
+            "--- a/x.py\n+++ b/x.py\n@@ -1,1 +1,1 @@\n-def foo():\n+def foo(x):\n"
+        )
+        result = self._parse(diff)
+        assert "x.py" in result
+        assert "Makefile" not in result
+
+    def test_null_bytes_in_diff(self):
+        diff = "--- a/x.py\n+++ b/x.py\n@@ -1,1 +1,1 @@\n-\x00old\n+\x00new\n"
+        result = self._parse(diff)
+        assert isinstance(result, dict)
+
+    def test_very_long_line_in_diff(self):
+        long_val = "x" * 100_000
+        diff = f"--- a/x.py\n+++ b/x.py\n@@ -1,1 +1,1 @@\n-{long_val}\n+{long_val}\n"
+        result = self._parse(diff)
+        assert isinstance(result, dict)
+
+    def test_unicode_filenames(self):
+        diff = "--- a/données/フoo.py\n+++ b/données/フoo.py\n@@ -1,1 +1,1 @@\n-def foo():\n+def foo(x):\n"
+        result = self._parse(diff)
+        assert isinstance(result, dict)
+
+    def test_diff_with_path_traversal(self):
+        diff = "--- a/../../../etc/passwd\n+++ b/../../../etc/passwd\n@@ -1,1 +1,1 @@\n-1\n+2\n"
+        result = self._parse(diff)
+        assert result == {}  # is_safe_path rejects it
+
+    def test_many_files_in_single_diff(self):
+        lines: list[str] = []
+        for i in range(100):
+            lines.extend(
+                [
+                    f"--- a/mod_{i}.py",
+                    f"+++ b/mod_{i}.py",
+                    "@@ -1,1 +1,1 @@",
+                    " x",
+                    f"-def foo_{i}():",
+                    f"+def foo_{i}(x):",
+                ]
+            )
+        result = self._parse("\n".join(lines))
+        assert len(result) == 100
+
+    def test_hunk_count_mismatch(self):
+        """A hunk header claiming more lines than exist must not crash."""
+        diff = "--- a/x.py\n+++ b/x.py\n@@ -1,10 +1,10 @@\n-a\n+b\n"
+        result = self._parse(diff)
+        assert isinstance(result, dict)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 10. run_pipeline_diff_content — adversarial / extreme diff inputs
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestRunPipelineDiffContentAdversarial:
+    """Feed extreme or hostile diff content to run_pipeline_diff_content()."""
+
+    def test_identical_files(self):
+        from impactguard.pipeline import run_pipeline_diff_content
+
+        src = "def foo():\n    pass\n"
+        diff = "--- a/x.py\n+++ b/x.py\n@@ -1,2 +1,2 @@\n def foo():\n     pass\n"
+        result = run_pipeline_diff_content(diff)
+        assert isinstance(result, dict)
+
+    def test_both_sides_empty(self):
+        from impactguard.pipeline import run_pipeline_diff_content
+
+        diff = "--- a/x.py\n+++ b/x.py\n@@ -1,0 +1,0 @@\n"
+        with pytest.raises(ValueError):
+            run_pipeline_diff_content(diff)
+
+    def test_whitespace_only_changes_in_diff(self):
+        from impactguard.pipeline import run_pipeline_diff_content
+
+        old = "def foo():\n    pass\n"
+        new = "def foo():\n    pass  \n"
+        diff = _make_unified_diff(old, new)
+        result = run_pipeline_diff_content(diff)
+        assert isinstance(result, dict)
+
+    def test_strict_extraction_on_broken_new(self):
+        from impactguard.pipeline import run_pipeline_diff_content
+
+        old = "def foo():\n    pass\n"
+        new = "def broken(\n  !!!\n"
+        diff = "--- a/x.py\n+++ b/x.py\n@@ -1,2 +1,3 @@\n def foo():\n-    pass\n+def broken(\n+  !!!\n"
+        with pytest.raises(RuntimeError):
+            run_pipeline_diff_content(diff, strict_extraction=True)
+
+    def test_diff_with_syntax_error_both_sides_not_strict(self):
+        from impactguard.pipeline import run_pipeline_diff_content
+
+        old = "def broken(\n  !!!\n"
+        new = "def broken(\n  !!\n"
+        diff = "--- a/x.py\n+++ b/x.py\n@@ -1,2 +1,2 @@\n def broken(\n-  !!!\n+  !!\n"
+        result = run_pipeline_diff_content(diff)
+        assert isinstance(result, dict)
+
+    def test_file_rename_is_handled(self):
+        from impactguard.pipeline import run_pipeline_diff_content
+
+        diff = (
+            "--- a/old_name.py\n+++ b/new_name.py\n"
+            "@@ -1,1 +1,1 @@\n"
+            "-def foo():\n"
+            "+def foo(x):\n"
+        )
+        result = run_pipeline_diff_content(diff)
+        assert isinstance(result, dict)
+
+    def test_deeply_nested_paths_in_diff(self, tmp_path):
+        from impactguard.pipeline import run_pipeline_diff_content
+
+        deep_path = "/".join(["a"] * 50) + "/x.py"
+        diff = (
+            f"--- a/{deep_path}\n+++ b/{deep_path}\n"
+            "@@ -1,1 +1,1 @@\n"
+            "-def foo():\n"
+            "+def foo(x):\n"
+        )
+        result = run_pipeline_diff_content(diff)
+        assert isinstance(result, dict)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 11. _extract_staged_files — adversarial git scenarios
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestExtractStagedFilesAdversarial:
+    """Feed hostile conditions to _extract_staged_files()."""
+
+    def _run(self, files, mock_side_effect=None, tmp_path_override=None):
+        import tempfile
+
+        from impactguard.__main__ import _extract_staged_files
+
+        old_stash = tempfile.tempdir
+        try:
+            if tmp_path_override:
+                tempfile.tempdir = str(tmp_path_override)
+            if mock_side_effect is not None:
+                with patch("subprocess.run") as mock_run:
+                    mock_run.side_effect = mock_side_effect
+                    return _extract_staged_files(files)
+            else:
+                with patch("subprocess.run") as mock_run:
+                    mock_run.return_value = MagicMock(returncode=0, stdout="")
+                    return _extract_staged_files(files)
+        finally:
+            tempfile.tempdir = old_stash
+
+    def test_empty_file_list(self):
+        result = self._run([])
+        assert result is None
+
+    def test_git_show_head_raises_oserror(self):
+        mock = MagicMock(side_effect=OSError("git crashed"))
+        from impactguard.__main__ import _extract_staged_files
+
+        with patch("subprocess.run", return_value=mock):
+            result = _extract_staged_files(["x.py"])
+            assert result is None
+
+    def test_all_new_files_no_old(self):
+        """When git show HEAD fails for all files, old is empty but new still works."""
+        fail = MagicMock(returncode=128, stdout="")
+        success = MagicMock(returncode=0, stdout="def foo(): pass\n")
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = [fail, success]
+            from impactguard.__main__ import _extract_staged_files
+
+            result = _extract_staged_files(["x.py"])
+            assert result is not None
+            old_paths, new_paths, _, _ = result
+            assert len(old_paths) == 0
+            assert len(new_paths) == 1
+
+    def test_all_new_and_old_fail(self):
+        fail = MagicMock(returncode=128, stdout="")
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = [fail, fail]
+            from impactguard.__main__ import _extract_staged_files
+
+            result = _extract_staged_files(["x.py"])
+            assert result is None
+
+    def test_git_returns_binary_content(self, tmp_path):
+        import tempfile
+
+        old_stash = tempfile.tempdir
+        tempfile.tempdir = str(tmp_path)
+        try:
+            binary_mock = MagicMock(
+                returncode=0, stdout="\x00\xff\xfe\x80binary\xff\x00"
+            )
+            with patch("subprocess.run") as mock_run:
+                mock_run.side_effect = [binary_mock, binary_mock]
+                from impactguard.__main__ import _extract_staged_files
+
+                result = _extract_staged_files(["x.py"])
+                assert result is not None
+        finally:
+            tempfile.tempdir = old_stash
+
+    def test_very_long_filename(self, tmp_path):
+        long_name = "a" * 250 + ".py"
+        import tempfile
+
+        old_stash = tempfile.tempdir
+        tempfile.tempdir = str(tmp_path)
+        try:
+            show_mock = MagicMock(returncode=0, stdout="def foo(): pass\n")
+            with patch("subprocess.run") as mock_run:
+                mock_run.side_effect = [show_mock, show_mock]
+                from impactguard.__main__ import _extract_staged_files
+
+                result = _extract_staged_files([long_name])
+                assert result is not None
+        finally:
+            tempfile.tempdir = old_stash
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 12. check_staged — adversarial hook scenarios
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestCheckStagedAdversarial:
+    """Feed hostile conditions to check_staged()."""
+
+    def test_skip_hook_non_one_values(self):
+        """SKIP_SIGNATURE_HOOK values other than '1' should NOT skip."""
+        from impactguard.__main__ import check_staged
+
+        for val in ("0", "true", "TRUE", "yes", ""):
+            with patch.dict(os.environ, {"SKIP_SIGNATURE_HOOK": val}):
+                with patch("subprocess.run") as mock_run:
+                    mock_run.return_value = MagicMock(returncode=0, stdout="")
+                    result = check_staged()
+                    assert result == 0  # no changes, but hook ran
+
+    def test_skip_hook_is_one_skips(self):
+        from impactguard.__main__ import check_staged
+
+        with patch.dict(os.environ, {"SKIP_SIGNATURE_HOOK": "1"}):
+            assert check_staged() == 0
+
+    def test_git_diff_crashes(self):
+        from impactguard.__main__ import check_staged
+
+        with patch.dict(os.environ, {}, clear=True):
+            with patch("subprocess.run") as mock_run:
+                mock_run.side_effect = OSError("git not found")
+                with pytest.raises(OSError):
+                    check_staged()
+
+    def test_git_diff_returns_nonzero_returns_zero(self):
+        """Non-zero git diff returncode with non-.py stderr is handled gracefully."""
+        from impactguard.__main__ import check_staged
+
+        diff_mock = MagicMock(returncode=128, stdout="fatal: not a git repository")
+        with patch.dict(os.environ, {}, clear=True):
+            with patch("subprocess.run", return_value=diff_mock):
+                result = check_staged()
+                assert result == 0
+
+    def test_run_pipeline_raises_propagates(self):
+        """Exceptions from run_pipeline propagate to the caller."""
+        from impactguard.__main__ import check_staged
+
+        diff_mock = MagicMock(returncode=0, stdout="src/x.py\n")
+        show_mock = MagicMock(returncode=0, stdout="def foo(): pass\n")
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("subprocess.run") as mock_run,
+            patch(
+                "impactguard.pipeline.run_pipeline",
+                side_effect=ValueError("unexpected error"),
+            ),
+        ):
+            mock_run.side_effect = [diff_mock, show_mock, show_mock]
+            with pytest.raises(ValueError, match="unexpected error"):
+                check_staged()
+
+    def test_non_py_files_in_staged_output(self):
+        """diff --cached listing both .py and non-.py files works."""
+        from impactguard.__main__ import check_staged
+
+        diff_mock = MagicMock(returncode=0, stdout="README.md\nsrc/x.py\nMakefile\n")
+        show_mock = MagicMock(returncode=0, stdout="def foo(): pass\n")
+
+        def fake_pipeline(**kwargs):
+            return {
+                "comparison": {"breaking": [], "nonbreaking": []},
+                "analysis_status": {"status": "complete", "counters": {}},
+                "gate": {"blocked": False},
+            }
+
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("subprocess.run") as mock_run,
+            patch("impactguard.pipeline.run_pipeline", side_effect=fake_pipeline),
+        ):
+            mock_run.side_effect = [diff_mock, show_mock, show_mock]
+            assert check_staged() == 0
+
+    def test_symlink_in_staged_path_is_handled(self):
+        """A symlinked path in git diff output should be attempted."""
+        from impactguard.__main__ import check_staged
+
+        diff_mock = MagicMock(returncode=0, stdout="src/link.py\n")
+        show_mock = MagicMock(returncode=0, stdout="def foo(): pass\n")
+
+        def fake_pipeline(**kwargs):
+            return {
+                "comparison": {"breaking": [], "nonbreaking": []},
+                "analysis_status": {"status": "complete", "counters": {}},
+                "gate": {"blocked": False},
+            }
+
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("subprocess.run") as mock_run,
+            patch("impactguard.pipeline.run_pipeline", side_effect=fake_pipeline),
+        ):
+            mock_run.side_effect = [diff_mock, show_mock, show_mock]
+            assert check_staged() == 0

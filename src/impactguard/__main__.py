@@ -140,6 +140,8 @@ def cmd_compare(args: argparse.Namespace) -> int:
 
     print(f"Breaking changes: {len(result['breaking'])}")
     print(f"Non-breaking changes: {len(result['nonbreaking'])}")
+    for item in result.get("breaking", []):
+        print(f"  \u26a0 {item}")
 
     if args.output:
         with open(args.output, "w") as f:
@@ -402,6 +404,7 @@ def cmd_check(args: argparse.Namespace) -> int:
             print(
                 f"Non-breaking changes: {len(result.get('comparison', {}).get('nonbreaking', []))}"
             )
+            _print_breaking_details(result.get("comparison", {}))
 
             if "semver" in result:
                 sv = result["semver"]
@@ -487,6 +490,13 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def _print_breaking_details(comparison: dict[str, Any]) -> None:
+    """Print each breaking change item."""
+    items = comparison.get("breaking", [])
+    for item in items:
+        print(f"  \u26a0 {item}")
+
+
 def _print_check_result(
     result: dict[str, Any], args: argparse.Namespace, suggest_patch: bool
 ) -> None:
@@ -494,6 +504,7 @@ def _print_check_result(
     print("\n=== Comparison ===")
     print(f"Breaking changes: {len(comparison.get('breaking', []))}")
     print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
+    _print_breaking_details(comparison)
 
     if "risk" in result:
         risk_items = result["risk"]
@@ -664,6 +675,7 @@ def _print_diff_result(
     print("\n=== Comparison ===")
     print(f"Breaking changes: {len(comparison.get('breaking', []))}")
     print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
+    _print_breaking_details(comparison)
 
     if "semver" in result:
         sv = result["semver"]
@@ -757,6 +769,7 @@ def cmd_check_commit(args: argparse.Namespace) -> int:
     comparison = result.get("comparison", {})
     print(f"Breaking changes: {len(comparison.get('breaking', []))}")
     print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
+    _print_breaking_details(comparison)
 
     if "semver" in result:
         sv = result["semver"]
@@ -2417,6 +2430,7 @@ def _print_pipeline_summary(result: dict) -> None:
     print("\n=== Comparison ===")
     print(f"Breaking changes: {len(comparison.get('breaking', []))}")
     print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
+    _print_breaking_details(comparison)
 
     if "risk" in result:
         risk_items = result["risk"]
