@@ -43,24 +43,26 @@ It provides a quantitative risk framework to help developers understand the cons
 
 ## Language Support
 
-| Language | Extensions | Extraction Backend | Signature Extraction | Call-Site Extraction | Type Annotations | Optional Dependency | Status |
-|----------|------------|--------------------|:--------------------:|:--------------------:|:----------------:|---------------------|--------|
-| **Python** | `.py` | `ast` (stdlib) | Yes | Yes | Yes | — | Stable |
-| **TypeScript** | `.ts`, `.tsx` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
-| **JavaScript** | `.js`, `.mjs`, `.cjs` | tree-sitter (preferred) / regex fallback | Yes | Yes | No (no native annotations) | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
-| **Java** | `.java` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
-| **Kotlin** | `.kt`, `.kts` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
-| **Go** | `.go` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
-| **Rust** | `.rs` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
-| **Swift** | `.swift` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
-| **C** | `.c`, `.h` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
-| **C++** | `.cpp`, `.hpp`, `.cc`, `.cxx`, `.hxx` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
-| **C#** | `.cs` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
-| **Ruby** | `.rb` | tree-sitter (preferred) / regex fallback | Yes | Yes | No (no native annotations) | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
-| **Haskell** | `.hs`, `.lhs` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes (type signatures) | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
-| **Zig** | `.zig` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| Language | Extensions | Extraction Backend | Signature Extraction | Call-Site Extraction | Type Annotations | Runtime Tracing | CST Patching | Optional Dependency | Status |
+|----------|------------|--------------------|:--------------------:|:--------------------:|:----------------:|:---------------:|:------------:|---------------------|--------|
+| **Python** | `.py` | `ast` (stdlib) | Yes | Yes | Yes | ✅ | ✅ | — | Stable |
+| **TypeScript** | `.ts`, `.tsx` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | ❌ | ❌ | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **JavaScript** | `.js`, `.mjs`, `.cjs` | tree-sitter (preferred) / regex fallback | Yes | Yes | No (no native annotations) | ❌ | ❌ | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **Java** | `.java` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | ❌ | ❌ | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **Kotlin** | `.kt`, `.kts` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | ❌ | ❌ | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **Go** | `.go` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | ❌ | ❌ | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **Rust** | `.rs` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | ❌ | ❌ | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **Swift** | `.swift` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | ❌ | ❌ | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **C** | `.c`, `.h` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | ❌ | ❌ | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **C++** | `.cpp`, `.hpp`, `.cc`, `.cxx`, `.hxx` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | ❌ | ❌ | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **C#** | `.cs` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | ❌ | ❌ | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **Ruby** | `.rb` | tree-sitter (preferred) / regex fallback | Yes | Yes | No (no native annotations) | ❌ | ❌ | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **Haskell** | `.hs`, `.lhs` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes (type signatures) | ❌ | ❌ | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **Zig** | `.zig` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | ❌ | ❌ | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
 
-> **Note:** All tree-sitter backends require `tree-sitter>=0.23` plus the corresponding grammar package
+> **Note:** Runtime tracing and CST-based patch generation are Python-only. Non-Python languages can contribute runtime observations as JSON (see [Runtime Data JSON](#runtime-data-json) schema) and receive text-based patch suggestions.
+>
+> All tree-sitter backends require `tree-sitter>=0.23` plus the corresponding grammar package
 > (e.g. `tree-sitter-java>=0.23`), installed together via `pip install "impactguard[languages]"`.
 > When those packages are absent, ImpactGuard automatically falls back to regex-based extraction and
 > emits a `UserWarning`.

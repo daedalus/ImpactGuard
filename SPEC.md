@@ -35,6 +35,7 @@ ImpactGuard is a lightweight multi-language API impact analyzer. It tracks funct
 - Dynamic dispatch resolution
 - Higher-order function analysis
 - Production runtime tracing outside test runs (sampler exists but is optional)
+- Runtime tracing and CST-based patch generation for non-Python languages (Python-only; other languages supply runtime data as JSON and receive text-based patch suggestions)
 
 ## Language Support
 
