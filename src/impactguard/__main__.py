@@ -397,27 +397,16 @@ def cmd_check(args: argparse.Namespace) -> int:
                 generate_fixes=generate_fixes,
                 apply_safe_fixes=apply_safe_fixes,
             )
+            comparison = result.get("comparison", {})
             print("\n=== Comparison ===")
-            print(
-                f"Breaking changes: {len(result.get('comparison', {}).get('breaking', []))}"
-            )
-            print(
-                f"Non-breaking changes: {len(result.get('comparison', {}).get('nonbreaking', []))}"
-            )
-            _print_breaking_details(result.get("comparison", {}))
+            print(f"Breaking changes: {len(comparison.get('breaking', []))}")
+            print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
+            _print_breaking_details(comparison)
 
             if "semver" in result:
-                sv = result["semver"]
-                print("\n=== Semver Recommendation ===")
-                print(
-                    f"Bump: {sv.get('bump', 'patch').upper()}  — {sv.get('reason', '')}"
-                )
+                _print_semver(result["semver"])
 
-            if "risk" in result:
-                risk_items = result["risk"]
-                high = sum(1 for r in risk_items if r.get("risk") == "HIGH")
-                print("\n=== Risk Analysis ===")
-                print(f"HIGH risk: {high}")
+            _print_risk_analysis(result)
 
             if "report_html" in result:
                 output = args.output or "impact_report.html"
@@ -425,22 +414,14 @@ def cmd_check(args: argparse.Namespace) -> int:
                     f.write(result["report_html"])
                 print(f"\nReport written to {output}")
 
-            if "fixes" in result:
-                fixes = result["fixes"]
-                if fixes:
-                    print(f"\n=== Suggested Fixes ({len(fixes)}) ===")
-                    for fix in fixes[:5]:
-                        print(f"  - {fix}")
+            sarif_path = getattr(args, "report_sarif", None)
+            if sarif_path:
+                _write_sarif_output(result, sarif_path)
 
-            if suggest_patch and "patches" in result:
-                patches = result["patches"]
-                if patches:
-                    print(f"\n=== Generated Patches ({len(patches)}) ===")
-                    for func_name, patch_info in patches.items():
-                        print(
-                            f"  - {func_name}: {patch_info.get('type', 'unknown')} patch"
-                        )
-                        print(f"    File: {patch_info.get('file', '')}")
+            _print_fixes(result)
+
+            if suggest_patch:
+                _print_patches(result)
 
             return 0
         except Exception as e:
@@ -490,11 +471,95 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def _write_sarif_output(result: dict[str, Any], sarif_path: str) -> None:
+    """Write SARIF report from pipeline result if risk data is available."""
+    risk_data = result.get("risk")
+    if not risk_data:
+        return
+    import json
+
+    from .sarif import generate_sarif
+
+    sarif = generate_sarif(risk_data)
+    with open(sarif_path, "w") as f:
+        json.dump(sarif, f, indent=2)
+    print(f"SARIF report written to {sarif_path}")
+
+
 def _print_breaking_details(comparison: dict[str, Any]) -> None:
     """Print each breaking change item."""
     items = comparison.get("breaking", [])
     for item in items:
         print(f"  \u26a0 {item}")
+
+
+def _print_semver(semver: dict[str, Any]) -> None:
+    bump = semver.get("bump", "patch").upper()
+    reason = semver.get("reason", "")
+    print("\n=== Semver Recommendation ===")
+    print(f"Bump: {bump}  — {reason}")
+
+
+def _print_risk_analysis(result: dict[str, Any]) -> None:
+    risk_items = result.get("risk")
+    if not risk_items:
+        return
+    high = sum(1 for r in risk_items if r.get("risk") == "HIGH")
+    print("\n=== Risk Analysis ===")
+    print(f"HIGH risk: {high}")
+
+
+def _print_fixes(result: dict[str, Any]) -> None:
+    fixes = result.get("fixes")
+    if not fixes:
+        return
+    print(f"\n=== Suggested Fixes ({len(fixes)}) ===")
+    for fix in fixes[:5]:
+        print(f"  - {fix}")
+
+
+def _print_patches(result: dict[str, Any]) -> None:
+    patches = result.get("patches")
+    if not patches:
+        return
+    print(f"\n=== Generated Patches ({len(patches)}) ===")
+    for func_name, patch_info in patches.items():
+        print(f"  - {func_name}: {patch_info.get('type', 'unknown')} patch")
+        print(f"    File: {patch_info.get('file', '')}")
+
+
+def _print_analysis_status(result: dict[str, Any]) -> None:
+    status = result.get("analysis_status")
+    if not status:
+        return
+    counters = status.get("counters", {})
+    print("\n=== Analysis Status ===")
+    print(f"Status: {status.get('status', 'unknown').upper()}")
+    print(
+        "Counters: "
+        f"parse_failures={counters.get('parse_failures', 0)}, "
+        f"skipped_files={counters.get('skipped_files', 0)}, "
+        f"fallback_used={counters.get('fallback_used', 0)}, "
+        f"call_extraction_failures={counters.get('call_extraction_failures', 0)}, "
+        f"runtime_data_issues={counters.get('runtime_data_issues', 0)}"
+    )
+    runtime = status.get("runtime", {})
+    if runtime:
+        print(f"Runtime state: {runtime.get('state', 'unknown')}")
+
+
+def _print_gate_summary(result: dict[str, Any]) -> None:
+    gate = result.get("gate")
+    if not gate:
+        return
+    print("\n=== Gate Summary ===")
+    print(f"Blocked: {str(gate.get('blocked', False)).lower()}")
+    reasons = gate.get("reasons", [])
+    if not reasons:
+        return
+    print("Reasons:")
+    for reason in reasons:
+        print(f"  - {reason}")
 
 
 def _print_check_result(
@@ -506,49 +571,19 @@ def _print_check_result(
     print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
     _print_breaking_details(comparison)
 
-    if "risk" in result:
-        risk_items = result["risk"]
-        high = sum(1 for r in risk_items if r.get("risk") == "HIGH")
-        print("\n=== Risk Analysis ===")
-        print(f"HIGH risk: {high}")
-
-    if "analysis_status" in result:
-        status = result["analysis_status"]
-        counters = status.get("counters", {})
-        print("\n=== Analysis Status ===")
-        print(f"Status: {status.get('status', 'unknown').upper()}")
-        print(
-            "Counters: "
-            f"parse_failures={counters.get('parse_failures', 0)}, "
-            f"skipped_files={counters.get('skipped_files', 0)}, "
-            f"fallback_used={counters.get('fallback_used', 0)}, "
-            f"call_extraction_failures={counters.get('call_extraction_failures', 0)}, "
-            f"runtime_data_issues={counters.get('runtime_data_issues', 0)}"
-        )
-        runtime = status.get("runtime", {})
-        if runtime:
-            print(f"Runtime state: {runtime.get('state', 'unknown')}")
-
-    if "gate" in result:
-        gate = result["gate"]
-        print("\n=== Gate Summary ===")
-        print(f"Blocked: {str(gate.get('blocked', False)).lower()}")
-        reasons = gate.get("reasons", [])
-        if reasons:
-            print("Reasons:")
-            for reason in reasons:
-                print(f"  - {reason}")
+    _print_risk_analysis(result)
+    _print_analysis_status(result)
+    _print_gate_summary(result)
 
     if "report_html" in result and args.output:
         print(f"\nReport written to {args.output}")
 
-    if suggest_patch and "patches" in result:
-        patches = result["patches"]
-        if patches:
-            print(f"\n=== Generated Patches ({len(patches)}) ===")
-            for func_name, patch_info in patches.items():
-                print(f"  - {func_name}: {patch_info.get('type', 'unknown')} patch")
-                print(f"    File: {patch_info.get('file', '')}")
+    sarif_path = getattr(args, "report_sarif", None)
+    if sarif_path:
+        _write_sarif_output(result, sarif_path)
+
+    if suggest_patch:
+        _print_patches(result)
 
 
 def cmd_check_commits(args: argparse.Namespace) -> int:
@@ -598,6 +633,10 @@ def cmd_check_commits(args: argparse.Namespace) -> int:
         )
 
         _print_check_result(result, args, suggest_patch)
+
+        sarif_path = getattr(args, "report_sarif", None)
+        if sarif_path:
+            _write_sarif_output(result, sarif_path)
 
         if enforce_gate:
             gate = result.get("gate", {})
@@ -712,6 +751,10 @@ def _print_diff_result(
             f.write(result["report_html"])
         print(f"\nReport written to {report_path}")
 
+    sarif_path = getattr(args, "report_sarif", None)
+    if sarif_path:
+        _write_sarif_output(result, sarif_path)
+
     if suggest_patch and "patches" in result:
         patches = result["patches"]
         if patches:
@@ -796,6 +839,10 @@ def cmd_check_commit(args: argparse.Namespace) -> int:
 
     if "report_html" in result and args.output:
         print(f"\nReport written to {args.output}")
+
+    sarif_path = getattr(args, "report_sarif", None)
+    if sarif_path:
+        _write_sarif_output(result, sarif_path)
 
     if suggest_patch and "patches" in result:
         patches = result["patches"]
@@ -1286,6 +1333,23 @@ def cmd_semver(args: argparse.Namespace) -> int:
         with open(output, "w") as f:
             json.dump(rec, f, indent=2)
 
+    return 0
+
+
+def cmd_report_sarif(args: argparse.Namespace) -> int:
+    """Generate a SARIF v2.1.0 log from a risk report JSON."""
+    from .sarif import generate_sarif_from_file
+
+    output: str | None = getattr(args, "output", None)
+    try:
+        sarif = generate_sarif_from_file(args.report, output_path=output)
+    except (OSError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    if not output:
+        print(json.dumps(sarif, indent=2))
+    else:
+        print(f"SARIF log written to {output}")
     return 0
 
 
@@ -1824,6 +1888,13 @@ def main() -> int:
         "output", nargs="?", default="impact_report.html", help="Output HTML report"
     )
     check_parser.add_argument(
+        "--report-sarif",
+        nargs="?",
+        const="impact_report.sarif",
+        metavar="FILE",
+        help="Generate SARIF v2.1.0 log (default: impact_report.sarif)",
+    )
+    check_parser.add_argument(
         "--watch",
         action="store_true",
         help="Re-run automatically when source files change",
@@ -1900,6 +1971,11 @@ def main() -> int:
         default=False,
         help="Treat signature extraction failures as fatal when supported by the extractor.",
     )
+    check_diff_parser.add_argument(
+        "--report-sarif",
+        metavar="PATH",
+        help="Write SARIF v2.1.0 report to PATH",
+    )
     check_diff_parser.set_defaults(func=cmd_check_diff)
 
     # check-commit subcommand (single commit vs its parent)
@@ -1945,6 +2021,11 @@ def main() -> int:
         action="store_true",
         default=False,
         help="Treat signature extraction failures as fatal when supported by the extractor.",
+    )
+    check_commit_parser.add_argument(
+        "--report-sarif",
+        metavar="PATH",
+        help="Write SARIF v2.1.0 report to PATH",
     )
     check_commit_parser.set_defaults(func=cmd_check_commit)
 
@@ -2046,6 +2127,12 @@ def main() -> int:
         default=0,
         help="Maximum allowed runtime data load/parse issues before gate blocks.",
     )
+    check_commits_parser.add_argument(
+        "--report-sarif",
+        metavar="PATH",
+        help="Write SARIF v2.1.0 report to PATH",
+    )
+
     check_commits_parser.set_defaults(func=cmd_check_commits)
 
     # install-hooks subcommand
@@ -2159,6 +2246,16 @@ def main() -> int:
         "-o", "--output", help="Output JSON file for recommendation"
     )
     semver_parser.set_defaults(func=cmd_semver)
+
+    # report-sarif subcommand
+    report_sarif_parser = subparsers.add_parser(
+        "report-sarif", help="Generate SARIF v2.1.0 log from risk report JSON"
+    )
+    report_sarif_parser.add_argument("report", help="Risk report JSON file")
+    report_sarif_parser.add_argument(
+        "-o", "--output", help="Output SARIF JSON file (default: stdout)"
+    )
+    report_sarif_parser.set_defaults(func=cmd_report_sarif)
 
     # report-markdown subcommand
     report_md_parser = subparsers.add_parser(
@@ -2318,6 +2415,7 @@ def main() -> int:
             "analyze",
             "risk",
             "report",
+            "report-sarif",
             "report-markdown",
             "trace",
             "check",

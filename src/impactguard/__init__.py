@@ -100,6 +100,10 @@ from .runtime_intelligence import (
     load_runtime_observations,
     normalize_runtime_payload,
 )
+from .sarif import (
+    generate_sarif,
+    generate_sarif_from_file,
+)
 from .schema import (
     validate,
     validate_risk_report,
@@ -196,6 +200,8 @@ __all__ = [
     "generate_html_from_file",
     "generate_markdown",
     "generate_markdown_from_file",
+    "generate_sarif",
+    "generate_sarif_from_file",
     "enforce",
     "enforce_report",
     # CST patches

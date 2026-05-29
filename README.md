@@ -35,7 +35,7 @@ It provides a quantitative risk framework to help developers understand the cons
 | Risk Gate | `risk_gate.py`, `enforce_gate.py` | CI enforcement engine |
 | Runtime Intelligence | `trace_calls.py`, `trace_calls_prod.py`, `runtime_intelligence.py` | Python tracers plus language-agnostic runtime normalization |
 | Patch Generation | `cst_patch.py`, `patch_generator.py` | Format-preserving automated fixes |
-| Reporting | `generate_report.py` | Static HTML report generation |
+| Reporting | `generate_report.py`, `sarif.py` | Static HTML + SARIF v2.1.0 report generation |
 | Robustness Evaluation | `tools/robustness_evaluator.py` | Composite robustness score, fragility index, diversity |
 | CLI | `cli.py` | Command-line interface |
 
@@ -312,18 +312,19 @@ The `impactguard` command-line tool is the primary entry point for developers an
 
 ```
 impactguard [-h] [--version]
-            {extract,compare,analyze,risk,report,enforce,suggest,patch,extract-calls,trace,check,check-diff,check-commit,check-commits,install-hooks,generate-changelog,baseline,semver,report-markdown,feedback,history} ...
+             {extract,compare,analyze,risk,report,report-sarif,enforce,suggest,patch,extract-calls,trace,check,check-diff,check-commit,check-commits,install-hooks,generate-changelog,baseline,semver,report-markdown,feedback,history} ...
 
 ImpactGuard - API impact analyzer for Python
 
 positional arguments:
-  {extract,compare,analyze,risk,report,enforce,suggest,patch,extract-calls,trace,check,check-diff,check-commit,check-commits,install-hooks,generate-changelog,baseline,semver,report-markdown,feedback,history}
+  {extract,compare,analyze,risk,report,report-sarif,enforce,suggest,patch,extract-calls,trace,check,check-diff,check-commit,check-commits,install-hooks,generate-changelog,baseline,semver,report-markdown,feedback,history}
                         Available commands
     extract             Extract function signatures from source files
     compare             Compare signature snapshots or source files directly
     analyze             Analyze impact on call sites
     risk                Run risk analysis
     report              Generate HTML report
+    report-sarif        Generate SARIF v2.1.0 report from risk report JSON
     enforce             Enforce gate - block on HIGH risk
     suggest             Generate fix suggestions from risk report
     patch               Generate CST-based patches
@@ -368,6 +369,20 @@ impactguard check --suggest-patch --show-patch old.py new.py
 **Patch Generation Flags:**
 - `--suggest-patch`: Generate and save patch files to `patches/` directory
 - `--show-patch`: Display patched content inline (depends on `--suggest-patch`)
+
+**SARIF Output:**
+All check subcommands accept `--report-sarif PATH` to write a SARIF v2.1.0 report alongside the regular output:
+```bash
+impactguard check old/ new/ --report-sarif results.sarif
+impactguard check-diff --pipe --runtime runtime.json --report-sarif results.sarif
+impactguard check-commit HEAD --report-sarif results.sarif
+impactguard check-commits HEAD~1 HEAD --report-sarif results.sarif
+```
+
+A standalone subcommand converts an existing risk report JSON to SARIF:
+```bash
+impactguard report-sarif report.json -o results.sarif
+```
 
 ### Individual Commands (Advanced)
 
@@ -589,7 +604,8 @@ The pipeline relies on standardized JSON schemas to pass data between filters:
 | `.signatures.json` | `extract_signatures.py` | `compare_signatures.py`, `impact_analysis.py` | Function metadata including arguments, defaults, and line numbers |
 | `.calls.json` | `extract_calls.py` | `impact_analysis.py` | Static call sites mapped by caller and callee |
 | `.runtime_calls.json` | `trace_calls.py` | `impact_analysis.py`, `risk_gate.py` | Frequency and argument data from execution |
-| `report.json` | `risk_gate.py` | `generate_report.py`, `suggest_fixes.py` | Final risk classifications (HIGH/MEDIUM/LOW) |
+| `report.json` | `risk_gate.py` | `generate_report.py`, `suggest_fixes.py`, `sarif.py` | Final risk classifications (HIGH/MEDIUM/LOW) |
+| `*.sarif` | `sarif.py` | SARIF-compatible SAST tools | SARIF v2.1.0 output for IDE/CI integration |
 
 ---
 
