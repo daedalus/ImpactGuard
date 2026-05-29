@@ -1,3 +1,29 @@
+"""Static analysis of Python call sites via AST.
+
+This module resolves call expressions to fully-qualified names (FQNs) using
+import tracking and scope-based type inference.  It is a **best-effort**
+static analysis with known limitations — see caveats below.
+
+Known Failure Modes / Accuracy Caveats
+--------------------------------------
+- ``from x import *`` is ignored; star imports cannot be statically resolved.
+- ``import ... as`` aliases are tracked but attribute access on aliased modules
+  (e.g. ``pd.DataFrame``) resolves to the attribute name only, not the FQN.
+- Conditional imports (``if TYPE_CHECKING``, ``try/except ImportError``) are
+  parsed but their imports are mixed with regular imports — the resolver does
+  not distinguish availability paths.
+- ``__getattr__`` on modules (PEP 562) is invisible to static analysis.
+- ``__init__.py`` re-exports are not followed; types appear as belonging to
+  the package they were imported *from*, not where they were defined.
+- Dynamic attribute access (``getattr(obj, "method")()``,
+  ``functools.partial``, ``operator.methodcaller``) is invisible.
+- Lazy / deferred imports (e.g. ``import X`` inside a function body) are
+  tracked syntactically but the conditional guard is not evaluated.
+- Class inheritance and ``super()`` calls are not resolved.
+- No accuracy metrics are computed or reported; there is no test harness for
+  false-positive / false-negative rate on FQN resolution.
+"""
+
 from __future__ import annotations
 
 import ast
@@ -108,6 +134,13 @@ class Analyzer(ast.NodeVisitor):
         self.generic_visit(node)
 
     # --------------- resolution ---------------
+    #
+    # Known gaps in this resolver (beyond the module-level caveats above):
+    #   - chained calls: a.b.c() resolves to c (lossy)
+    #   - aliased-module attribute: import pandas as pd; pd.read_csv()
+    #     resolves to "pd.read_csv", not "pandas.read_csv"
+    #   - subscripts in call: obj["key"].method() is silently dropped
+    #   - nested attribute values: a.b().c() — b() return type unknown
 
     def resolve_call(self, node: ast.AST) -> str | None:
         # foo()

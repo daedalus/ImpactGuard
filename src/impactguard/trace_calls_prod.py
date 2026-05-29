@@ -45,9 +45,9 @@ def trace(func: Callable[..., Any]) -> Callable[..., Any]:
             with _lock:
                 COUNTS[name] += 1
 
-        # periodic flush (non-blocking-ish)
-        now = time.time()
+        # periodic flush
         with _lock:
+            now = time.time()
             if now - LAST_FLUSH > FLUSH_INTERVAL:
                 try:
                     flush()
@@ -65,12 +65,11 @@ def flush(path: str | None = None) -> None:
     import tempfile
 
     if path is None:
-        # Default to a project-relative path (like trace_calls.py) to avoid
-        # world-writable temp-directory symlink attacks.
         path = ".runtime_calls.json"
 
     with _lock:
         data = dict(COUNTS)
+        COUNTS.clear()
 
     dir_name = os.path.dirname(os.path.abspath(path)) or "."
     with tempfile.NamedTemporaryFile(
