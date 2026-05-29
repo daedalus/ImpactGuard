@@ -690,6 +690,7 @@ The table below compares ImpactGuard against the tools most commonly used for Py
 | Config file (TOML) | ✅ `impactguard.toml` | ✅ | ✅ | ✅ | ✅ |
 | Watch mode (live re-run) | ✅ `--watch` | ❌ | ❌ | ❌ | ✅ |
 | No network required | ✅ | ✅ | ❌ (PyPI / git) | ❌ (git) | ✅ |
+| SARIF v2.1.0 report | ✅ `report-sarif`, `--report-sarif` | ❌ | ❌ | ❌ | ❌ |
 
 ### Ecosystem-adjacent tools
 
