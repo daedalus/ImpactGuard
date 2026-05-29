@@ -36,7 +36,7 @@ _DEFAULTS: dict[str, Any] = {
             "confidence_threshold": 0.3,
             "high_exposure_min": 0.1,
             "medium_exposure_min": 0.01,
-            "block_unknown": False,
+            "block_unknown": True,
         },
         "patches": {
             "target_file_match": 1.0,
