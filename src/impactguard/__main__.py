@@ -487,10 +487,17 @@ def _write_sarif_output(result: dict[str, Any], sarif_path: str) -> None:
 
 
 def _print_breaking_details(comparison: dict[str, Any]) -> None:
-    """Print each breaking change item."""
-    items = comparison.get("breaking", [])
-    for item in items:
-        print(f"  \u26a0 {item}")
+    """Print breaking and non-breaking change items with clear separation."""
+    breaking = comparison.get("breaking", [])
+    nonbreaking = comparison.get("nonbreaking", [])
+    if breaking:
+        print("  Breaking:")
+        for item in breaking:
+            print(f"    \u26a0 {item}")
+    if nonbreaking:
+        print("  Non-breaking:")
+        for item in nonbreaking:
+            print(f"    \u2795 {item}")
 
 
 def _print_semver(semver: dict[str, Any]) -> None:
@@ -505,8 +512,16 @@ def _print_risk_analysis(result: dict[str, Any]) -> None:
     if not risk_items:
         return
     high = sum(1 for r in risk_items if r.get("risk") == "HIGH")
+    med = sum(1 for r in risk_items if r.get("risk") == "MEDIUM")
+    low = sum(1 for r in risk_items if r.get("risk") == "LOW")
+    unk = sum(1 for r in risk_items if r.get("risk") == "UNKNOWN")
     print("\n=== Risk Analysis ===")
-    print(f"HIGH risk: {high}")
+    print(f"HIGH: {high}   MEDIUM: {med}   LOW: {low}   UNKNOWN: {unk}")
+    for item in risk_items:
+        if item.get("risk") in ("HIGH", "UNKNOWN"):
+            func = item.get("function", "?")
+            change = item.get("raw_change") or item.get("change", "?")
+            print(f"  \u26a0 [{item['risk']}] {func} — {change}")
 
 
 def _print_fixes(result: dict[str, Any]) -> None:
@@ -721,11 +736,7 @@ def _print_diff_result(
         print("\n=== Semver Recommendation ===")
         print(f"Bump: {sv.get('bump', 'patch').upper()}  \u2014 {sv.get('reason', '')}")
 
-    if "risk" in result:
-        risk_items = result["risk"]
-        high = sum(1 for r in risk_items if r.get("risk") == "HIGH")
-        print("\n=== Risk Analysis ===")
-        print(f"HIGH risk: {high}")
+    _print_risk_analysis(result)
 
     if "analysis_status" in result:
         status = result["analysis_status"]
@@ -819,11 +830,7 @@ def cmd_check_commit(args: argparse.Namespace) -> int:
         print("\n=== Semver Recommendation ===")
         print(f"Bump: {sv.get('bump', 'patch').upper()}  — {sv.get('reason', '')}")
 
-    if "risk" in result:
-        risk_items = result["risk"]
-        high = sum(1 for r in risk_items if r.get("risk") == "HIGH")
-        print("\n=== Risk Analysis ===")
-        print(f"HIGH risk: {high}")
+    _print_risk_analysis(result)
 
     if "analysis_status" in result:
         status = result["analysis_status"]
@@ -2530,11 +2537,7 @@ def _print_pipeline_summary(result: dict) -> None:
     print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
     _print_breaking_details(comparison)
 
-    if "risk" in result:
-        risk_items = result["risk"]
-        high = sum(1 for r in risk_items if r.get("risk") == "HIGH")
-        print("\n=== Risk Analysis ===")
-        print(f"HIGH risk: {high}")
+    _print_risk_analysis(result)
 
     if "analysis_status" in result:
         status = result["analysis_status"]

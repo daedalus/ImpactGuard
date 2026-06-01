@@ -1,42 +1,68 @@
-"""Tests for cst_patch module."""
+"""Tests for CST patch module."""
 
-try:
-    from impactguard.cst_patch import AddDefaultTransformer, FixCallTransformer
+from unittest.mock import patch as mock_patch
 
-    LIBCST_AVAILABLE = True
-except ImportError:
-    LIBCST_AVAILABLE = False
+import pytest
+
+from impactguard.cst_patch import LIBCST_AVAILABLE, patch_call, patch_function
 
 
 def test_cst_available():
-    """Test if libcst is available."""
-    assert LIBCST_AVAILABLE or not LIBCST_AVAILABLE  # Always passes
+    assert LIBCST_AVAILABLE is True
 
 
-if LIBCST_AVAILABLE:
+def test_patch_function_non_matching_name():
+    source = "def bar(x): pass\n"
+    result, error = patch_function(source, "foo", "x")
+    assert result == source
+    assert error is None
 
-    def test_add_default_transformer():
-        """Test AddDefaultTransformer."""
-        import libcst as cst
 
-        code = "def foo(x): pass"
-        module = cst.parse_module(code)
+def test_patch_call_non_matching_name():
+    source = "bar(1)\n"
+    result, error = patch_call(source, "foo", "x")
+    assert result == source
+    assert error is None
 
-        transformer = AddDefaultTransformer("foo", "x")
-        new_module = module.visit(transformer)
 
-        # Should add default=None to x
-        assert "None" in new_module.code or True  # Basic check
+def test_patch_call_with_kwarg_already_present():
+    source = "foo(x=1)\n"
+    result, error = patch_call(source, "foo", "x")
+    assert result == source
+    assert error is None
 
-    def test_fix_call_transformer():
-        """Test FixCallTransformer."""
-        import libcst as cst
 
-        code = "foo(1, 2)"
-        module = cst.parse_module(code)
+def test_patch_call_adds_new_arg():
+    source = "foo(1)\n"
+    result, error = patch_call(source, "foo", "y")
+    assert error is None
+    assert "y" in result
+    assert result != source
 
-        transformer = FixCallTransformer("foo", "new_arg")
-        new_module = module.visit(transformer)
 
-        # Should add new_arg to the call
-        assert "new_arg" in new_module.code or True  # Basic check
+def test_patch_function_libcst_not_available():
+    with mock_patch("impactguard.cst_patch.LIBCST_AVAILABLE", False):
+        result, error = patch_function("def foo(x): pass\n", "foo", "x")
+        assert result is None
+        assert error == "libcst not installed"
+
+
+def test_patch_call_libcst_not_available():
+    with mock_patch("impactguard.cst_patch.LIBCST_AVAILABLE", False):
+        result, error = patch_call("foo(1)\n", "foo", "x")
+        assert result is None
+        assert error == "libcst not installed"
+
+
+def test_patch_function_adds_default():
+    source = "def foo(x, y): pass\n"
+    result, error = patch_function(source, "foo", "y")
+    assert error is None
+    assert "None" in result
+
+
+def test_patch_function_exception():
+    with mock_patch("impactguard.cst_patch.cst.parse_module", side_effect=RuntimeError("parse failed")):
+        result, error = patch_function("def foo(x): pass\n", "foo", "x")
+        assert result is None
+        assert error == "parse failed"

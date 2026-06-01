@@ -268,3 +268,24 @@ class TestCLILogLevel:
         result = self._run(["--log-level", "VERBOSE"])
         assert isinstance(result, int)
         assert result != 0
+
+
+class TestConfigFunctions:
+    def test_logging_config_from_config_defaults(self):
+        from impactguard._logging import _logging_config_from_config
+        result = _logging_config_from_config()
+        assert "level" in result
+        assert "format" in result
+        assert "log_file" in result
+
+    def test_logging_config_from_config_exception(self):
+        from unittest.mock import patch
+        from impactguard._logging import _logging_config_from_config
+        with patch("impactguard.config.get", side_effect=OSError("no config")):
+            result = _logging_config_from_config()
+            assert result["level"] == "WARNING"
+
+    def test_level_from_config(self):
+        from impactguard._logging import _level_from_config
+        level = _level_from_config()
+        assert isinstance(level, str)

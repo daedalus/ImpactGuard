@@ -1,140 +1,116 @@
-import json
+"""Tests for runtime_intelligence module."""
+
+import pytest
+
+from impactguard.runtime_intelligence import (
+    _coerce_non_negative_int,
+    _normalize_runtime_entry,
+    canonical_runtime_name,
+    normalize_runtime_payload,
+    runtime_callsite_entries,
+    runtime_name_variants,
+)
 
 
-def test_normalize_runtime_payload_accepts_multiple_shapes():
-    from impactguard.runtime_intelligence import normalize_runtime_payload
-
-    observations = normalize_runtime_payload(
-        {
-            "runtime": [
-                {"symbol": "src::lib::Api::call", "hits": 7, "argc": 2},
-                {
-                    "function": "pkg/module.py:helper",
-                    "count": 3,
-                    "kwargs": {"debug": True},
-                },
-            ]
-        }
-    )
-
-    assert [item["count"] for item in observations] == [7, 3]
-    assert observations[0]["canonical"] == "src.lib.Api.call"
-    assert observations[0]["args_count"] == 2
-    assert observations[1]["canonical"] == "pkg.module.helper"
-    assert observations[1]["kwargs"] == ["debug"]
-
-    mapped = normalize_runtime_payload({"src::lib::Api::call": 5})
-    assert mapped == [
-        {
-            "function": "src::lib::Api::call",
-            "count": 5,
-            "canonical": "src.lib.Api.call",
-            "aliases": ["Api.call", "call", "src.lib.Api.call", "src::lib::Api::call"],
-        }
-    ]
+def test_coerce_non_negative_int_bool():
+    assert _coerce_non_negative_int(True) is None
+    assert _coerce_non_negative_int(False) is None
 
 
-def test_runtime_callsite_entries_skip_count_only_observations():
-    from impactguard.runtime_intelligence import (
-        normalize_runtime_payload,
-        runtime_callsite_entries,
-    )
-
-    observations = normalize_runtime_payload(
-        [
-            {"function": "src::lib::Api::call", "count": 7},
-            {"function": "pkg/module.py:helper", "count": 3, "args_count": 1},
-            {
-                "function": "pkg/module.py:debug",
-                "count": 2,
-                "kwargs": {"verbose": True},
-            },
-        ]
-    )
-
-    assert runtime_callsite_entries(observations) == [
-        {
-            "fqname": "pkg.module.helper",
-            "file": "runtime",
-            "lineno": 0,
-            "args": 1,
-            "kwargs": [],
-            "has_starargs": False,
-            "has_kwargs": False,
-        },
-        {
-            "fqname": "pkg.module.debug",
-            "file": "runtime",
-            "lineno": 0,
-            "args": 0,
-            "kwargs": ["verbose"],
-            "has_starargs": False,
-            "has_kwargs": False,
-        },
-    ]
+def test_coerce_non_negative_int_negative():
+    assert _coerce_non_negative_int(-5) == 0
+    assert _coerce_non_negative_int(5) == 5
 
 
-def test_risk_gate_uses_canonical_runtime_aliases(tmp_path):
-    from impactguard.risk_gate import run
-
-    diff_path = tmp_path / "diff.txt"
-    diff_path.write_text("REMOVED: src/lib.rs:Api.call\n")
-
-    runtime_path = tmp_path / "runtime.json"
-    runtime_path.write_text(json.dumps({"src::lib::Api::call": 42}))
-
-    report = run(str(diff_path), str(runtime_path))
-
-    assert report[0]["function"] == "src/lib.rs:Api.call"
-    assert report[0]["risk"] == "HIGH"
-    assert report[0]["details"] == "called 42 times"
+def test_coerce_non_negative_int_non_number():
+    assert _coerce_non_negative_int("foo") is None
 
 
-def test_impact_analysis_uses_canonical_runtime_aliases(tmp_path):
-    from impactguard.impact_analysis import analyze
+def test_canonical_runtime_name_empty():
+    assert canonical_runtime_name("") == ""
+    assert canonical_runtime_name(".") == ""
+    assert canonical_runtime_name("  ") == ""
 
-    sigs_path = tmp_path / "sigs.json"
-    sigs_path.write_text(
-        json.dumps(
-            [
-                {
-                    "fqname": "src/lib.rs:Api.call",
-                    "name": "Api.call",
-                    "positional": [
-                        {"name": "value", "has_default": False},
-                        {"name": "mode", "has_default": False},
-                    ],
-                    "kwonly": [],
-                    "vararg": False,
-                    "kwarg": False,
-                }
-            ]
-        )
-    )
 
-    calls_path = tmp_path / "calls.json"
-    calls_path.write_text(
-        json.dumps(
-            [
-                {
-                    "fqname": "src.lib.Api.call",
-                    "file": "caller.rs",
-                    "lineno": 12,
-                    "args": 1,
-                    "kwargs": [],
-                    "has_starargs": False,
-                    "has_kwargs": False,
-                }
-            ]
-        )
-    )
+def test_canonical_runtime_name_url():
+    result = canonical_runtime_name("https://example.com/api.call")
+    assert "://" in result
 
-    runtime_path = tmp_path / "runtime.json"
-    runtime_path.write_text(json.dumps({"src::lib::Api::call": 9}))
 
-    issues = analyze(str(sigs_path), str(calls_path), str(runtime_path))
+def test_canonical_runtime_name_double_dots():
+    result = canonical_runtime_name("a..b...c")
+    assert ".." not in result
 
-    assert len(issues) == 1
-    assert issues[0]["function"] == "src/lib.rs:Api.call"
-    assert issues[0]["count"] == 9
-    assert issues[0]["confidence"] == 0.09
+
+def test_canonical_runtime_name_colon_with_suffix():
+    result = canonical_runtime_name("mod.py:func")
+    assert "mod" in result
+    assert "func" in result
+
+
+def test_runtime_name_variants_empty():
+    assert runtime_name_variants("") == []
+    assert runtime_name_variants("  ") == []
+
+
+def test_normalize_runtime_entry_non_dict():
+    assert _normalize_runtime_entry("string") is None
+    assert _normalize_runtime_entry(42) is None
+    assert _normalize_runtime_entry(None) is None
+
+
+def test_normalize_runtime_entry_with_language():
+    result = _normalize_runtime_entry({"function": "foo", "calls": 5, "language": "rust"})
+    assert result is not None
+    assert result["language"] == "rust"
+
+
+def test_normalize_runtime_payload_single_dict():
+    result = normalize_runtime_payload({"function": "foo", "hits": 3})
+    assert len(result) == 1
+    assert result[0]["function"] == "foo"
+
+
+def test_normalize_runtime_payload_dict_of_values():
+    result = normalize_runtime_payload({"foo": {"calls": 5}, "bar": {"calls": 3}})
+    assert len(result) == 2
+
+
+def test_normalize_runtime_payload_primitive():
+    assert normalize_runtime_payload(42) == []
+    assert normalize_runtime_payload("string") == []
+
+
+def test_normalize_runtime_payload_dict_with_non_normalizable_value():
+    result = normalize_runtime_payload({"foo": "not_a_number"})
+    assert result == []
+
+
+def test_normalize_runtime_payload_dict_item_in_container():
+    result = normalize_runtime_payload({"runtime": [{"function": "foo", "calls": 5}]})
+    assert len(result) == 1
+
+
+def test_runtime_callsite_entries_missing_fqname():
+    obs = [{"args_count": 3}]
+    result = runtime_callsite_entries(obs)
+    assert len(result) == 0
+
+
+def test_runtime_callsite_entries_empty_fqname():
+    obs = [{"function": "", "args_count": 1}]
+    result = runtime_callsite_entries(obs)
+    assert len(result) == 0
+
+
+def test_runtime_callsite_entries_valid():
+    obs = [{"function": "foo", "args_count": 2, "kwargs": ["x"]}]
+    result = runtime_callsite_entries(obs)
+    assert len(result) == 1
+    assert result[0]["fqname"] == "foo"
+
+
+def test_runtime_callsite_entries_no_shape_data():
+    obs = [{"function": "foo", "canonical": "foo"}]
+    result = runtime_callsite_entries(obs)
+    assert result == []

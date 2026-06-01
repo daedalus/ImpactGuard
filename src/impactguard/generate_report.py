@@ -110,7 +110,7 @@ def generate_html(report_data: list[dict[str, Any]]) -> str:
     for item in report_data:
         level = item.get("risk", "UNKNOWN")
         func = item.get("function", "unknown")
-        change = item.get("change", "")
+        change = item.get("raw_change") or item.get("change", "")
         exp = item.get("exposure", 0)
         conf = item.get("confidence", 0)
         details = item.get("details", "")
@@ -265,7 +265,7 @@ def generate_markdown(
         for item in table_items:
             lvl = str(item.get("risk", "UNKNOWN"))
             func = str(item.get("function", ""))
-            change = str(item.get("change", ""))
+            change = str(item.get("raw_change") or item.get("change", ""))
             exp = item.get("exposure", 0)
             transitive = item.get("transitive", False)
             func_cell = f"`{func}`" + (" *(indirect)*" if transitive else "")
