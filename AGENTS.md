@@ -121,6 +121,17 @@ This avoids extra commits but couples working tree mutation with commit creation
   - Enforcement gate
   - **Changelog generation** from signature diffs
 
+### Release Script
+
+- `release.sh` — automated release workflow:
+  - Checks working tree is clean; warns if not on `master`/`main`
+  - ```
+    ./release.sh          # bump patch (default)
+    ./release.sh minor
+    ./release.sh major
+    ```
+  - Steps: `bumpversion <part> --tag --verbose` → `git push` + `git push --tags` → `python -m build` → `gh release create <tag> --generate-notes`
+
 ---
 
 ## Future Directions
