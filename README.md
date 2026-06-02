@@ -108,7 +108,7 @@ pip install -e ".[test]"
 | `src/impactguard/` | Core package containing the analysis logic, risk model, and CLI |
 | `extract_signatures.py` | Utility for extracting function metadata into JSON/Text |
 | `extract_calls.py` | AST-based call site extractor |
-| `impact_analysis.py` | Logic for correlating signatures with call sites |
+| `impact_analysis.py` | Logic for correlating signatures with call sites — builds a call graph, detects arity mismatches, and finds **transitively** affected callers via BFS up to a configurable depth |
 | `risk_gate.py` | The CI-ready enforcement engine |
 | `trace_calls.py` | Runtime instrumentation for capturing live execution data |
 | `SPEC.md` | Technical specification and public API |
@@ -187,9 +187,18 @@ To understand the "blast radius" of a change, ImpactGuard must find where the mo
 
 The final stage of the core pipeline, `analyze`, correlates the detected API changes with the discovered call sites. It validates whether the arguments passed at a specific call site still satisfy the requirements of the new function signature. If runtime data is available, it is integrated here to provide context on how often a specific impacted path is actually executed.
 
+**Transitive impact tracking:** Beyond direct call-site validation, the analyzer builds an inverted call graph (callee → set-of-callers) and runs a BFS to find functions that are transitively affected up to a configurable number of hops. For example, if `get_user()` removes a parameter, every function that calls `get_user()` breaks directly, but any function calling *those* callers is also at risk. The hop distance is recorded in each issue record (`hop: 1`, `hop: 2`, …) and the `transitive` flag distinguishes indirect from direct issues.
+
+Enable this by setting `transitive_depth` in `impactguard.toml`:
+
+```toml
+[impactguard.analysis]
+transitive_depth = 2   # 0 = disabled (default), 1 = direct callers only
+```
+
 - **Key Component:** `impact_analysis.py`
 - **Input:** Signature diffs, call-site data, and optional runtime traces
-- **Role:** Pinpoints exactly which lines of code are broken by a change
+- **Role:** Pinpoints exactly which lines of code are broken by a change, including transitively
 
 ---
 
