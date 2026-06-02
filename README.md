@@ -531,13 +531,17 @@ Runs the complete ImpactGuard pipeline on staged changes before allowing a commi
 impactguard check-diff --pipe --runtime .runtime_calls.json
 ```
 
+**Performance:** The pre-commit hook is intentionally incremental — it only processes **staged files** (those modified in the current commit), using ``git diff --cached --diff-filter=ACMR``. On a codebase of 500k+ lines, a typical commit touches only a handful of files, so extraction completes in milliseconds. This avoids the startup cost of re-scanning every file on every commit.
+
 This catches breaking changes early, before they enter the commit history.
 
 ### Post-Commit Hook (Signature Tracking)
 
 After each commit, the post-commit hook:
 1. Runs `check-commit HEAD` to analyze the committed changes
-2. Updates `.signatures.txt` with current function signatures
+2. Re-scans **all tracked Python files** (via ``git ls-files '*.py'``) and updates `.signatures.txt` with the full snapshot
+
+The post-commit hook is intentionally **not** incremental — it replaces the entire baseline on every commit so that the stored snapshot always reflects the full codebase. This guarantees that ``check-diff`` (used by the pre-commit hook on the *next* commit) has a complete picture to diff against, at the cost of a full scan after each commit. For a 500k-line codebase this may take several seconds; the hook runs asynchronously and does not block the developer.
 
 ### GitHub Actions Workflow
 
