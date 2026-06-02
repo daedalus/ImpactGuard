@@ -51,6 +51,7 @@ htmlcov/
 .signatures.json
 .calls.json
 .runtime_calls.json
+.runtime_calls.json.lock
 impact_report.html
 out.json
 

@@ -1,5 +1,7 @@
 import json
+import os
 import random
+import signal
 import threading
 import time
 from collections import defaultdict
@@ -14,12 +16,22 @@ _lock = threading.RLock()
 COUNTS: dict[str, int] = defaultdict(int)
 LAST_FLUSH = time.time()
 
+# Signal-safe flush request flag.  Set by SIGTERM handler, drained on the next
+# sampled call so flush() runs from normal execution context (avoiding lock
+# re-entrancy hazards in signal handlers).
+_flush_requested = False
+
 # Use a dedicated Random instance rather than the module-level shared state.
 # random.random() delegates to a module-level instance whose internal state is
 # shared across all threads; under heavy concurrent use the GIL prevents data
 # corruption but can cause non-uniform sampling distributions.  A private
 # instance avoids this without requiring per-call locking.
 _rng = random.Random()
+
+
+def _signal_handler(signum: int, frame: object) -> None:
+    global _flush_requested
+    _flush_requested = True
 
 
 def set_seed(seed: int) -> None:
@@ -39,16 +51,17 @@ def trace(func: Callable[..., Any]) -> Callable[..., Any]:
 
     @wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-        global LAST_FLUSH
+        global LAST_FLUSH, _flush_requested
 
         if should_sample():
             with _lock:
                 COUNTS[name] += 1
 
-        # periodic flush
+        # periodic flush (also drains signal-requested flushes)
         with _lock:
             now = time.time()
-            if now - LAST_FLUSH > FLUSH_INTERVAL:
+            if _flush_requested or (now - LAST_FLUSH > FLUSH_INTERVAL):
+                _flush_requested = False
                 try:
                     flush()
                 except OSError:
@@ -61,7 +74,7 @@ def trace(func: Callable[..., Any]) -> Callable[..., Any]:
 
 
 def flush(path: str | None = None) -> None:
-    import os
+    import fcntl
     import tempfile
 
     if path is None:
@@ -72,18 +85,45 @@ def flush(path: str | None = None) -> None:
         COUNTS.clear()
 
     dir_name = os.path.dirname(os.path.abspath(path)) or "."
-    with tempfile.NamedTemporaryFile(
-        mode="w", dir=dir_name, delete=False, suffix=".json"
-    ) as f:
-        json.dump(data, f)
-        temp_path = f.name
+    lock_path = path + ".lock"
 
-    os.replace(temp_path, path)
+    # Read-merge-write under an fcntl flock so that multiple processes (e.g.
+    # gunicorn workers) can safely flush without clobbering each other.
+    with open(lock_path, "w") as lf:
+        fcntl.flock(lf, fcntl.LOCK_EX)
+        try:
+            existing: dict[str, int] = {}
+            try:
+                with open(path) as f:
+                    existing = json.load(f)
+            except (FileNotFoundError, json.JSONDecodeError):
+                pass
+
+            for k, v in data.items():
+                existing[k] = existing.get(k, 0) + v
+
+            with tempfile.NamedTemporaryFile(
+                mode="w", dir=dir_name, delete=False, suffix=".json"
+            ) as f:
+                json.dump(existing, f)
+                temp_path = f.name
+
+            os.replace(temp_path, path)
+        finally:
+            fcntl.flock(lf, fcntl.LOCK_UN)
 
 
 import atexit as _atexit
 
 _atexit.register(flush)
+
+# Best-effort SIGTERM handler — sets a flag drained on the next sampled call.
+# This covers graceful shutdown paths (e.g. gunicorn, supervisord) where the
+# default SIGTERM disposition would kill the process before atexit runs.
+try:
+    signal.signal(signal.SIGTERM, _signal_handler)
+except (ValueError, OSError):
+    pass
 
 
 def install_tracer(module: object, prefix: str | None = None) -> None:
