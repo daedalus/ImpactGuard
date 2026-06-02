@@ -123,7 +123,7 @@ This avoids extra commits but couples working tree mutation with commit creation
 
 ### Release Script
 
-- `release.sh` — automated release workflow:
+- `tools/release.sh` — automated release workflow:
   - Checks working tree is clean; warns if not on `master`/`main`
   - ```
     ./release.sh          # bump patch (default)
