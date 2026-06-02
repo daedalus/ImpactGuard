@@ -28,6 +28,7 @@ from .class_hierarchy import (
 from .compare_signatures import compare, load
 from .config import get as get_config_value
 from .config import get_config, load_config, reload_config, validate_config
+from .constraint_check import check_subsumption, classify_type_change
 from .cst_patch import patch_call, patch_function
 from .enforce_gate import enforce, enforce_report
 from .extract_signatures import extract, extract_reexports, serialize_function
@@ -226,6 +227,9 @@ __all__ = [
     "run_pipeline_diff_content",
     "run_pipeline_commit",
     "ImpactGuard",
+    # Formal / constraint checking
+    "check_subsumption",
+    "classify_type_change",
     # Config
     "get_config",
     "load_config",

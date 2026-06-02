@@ -153,6 +153,18 @@ def _type_change_kind(
     """
     if old_type == new_type:
         return None
+
+    # ── Attempt Z3-backed proof (requires impactguard[formal]) ──────────
+    try:
+        from .constraint_check import classify_type_change
+
+        z3_result = classify_type_change(old_type, new_type)
+        if z3_result is not None:
+            return z3_result
+    except ImportError:
+        pass
+
+    # ── Heuristic fallback (set-based union parsing) ────────────────────
     parse = union_parser if union_parser is not None else _parse_union_members
     old_members = parse(old_type)
     new_members = parse(new_type)

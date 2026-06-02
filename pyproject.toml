@@ -55,7 +55,8 @@ languages = [
     "tree-sitter-c-sharp>=0.23,<0.26",
     "tree-sitter-haskell>=0.23,<0.26",
 ]
-all = ["impactguard[dev,test,lint,languages]"]
+formal = ["z3-solver>=4.13.0"]
+all = ["impactguard[dev,test,lint,languages,formal]"]
 
 [project.scripts]
 impactguard = "impactguard.__main__:main"
