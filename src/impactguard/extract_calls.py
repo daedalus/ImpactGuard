@@ -2,6 +2,8 @@ import ast
 from pathlib import Path
 from typing import Any
 
+from ._ast_cache import cached_ast_parse, cached_read_text
+
 
 class CallVisitor(ast.NodeVisitor):
     def __init__(self, file: str) -> None:
@@ -36,7 +38,8 @@ class CallVisitor(ast.NodeVisitor):
 
 def extract(path: Path) -> list[dict[str, Any]]:
     try:
-        tree = ast.parse(path.read_text())
+        source_text = cached_read_text(path)
+        tree = cached_ast_parse(source_text)
     except (SyntaxError, OSError, UnicodeDecodeError):
         return []
 

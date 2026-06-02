@@ -2,6 +2,7 @@ import ast
 from pathlib import Path
 from typing import Any
 
+from ._ast_cache import cached_ast_parse, cached_read_text
 from ._logging import get_logger
 
 # ImpactGuard signature extractor
@@ -65,7 +66,7 @@ def extract_reexports(files: list[str]) -> dict[str, str]:
         if path.name != "__init__.py":
             continue
         try:
-            tree = ast.parse(path.read_text())
+            tree = cached_ast_parse(cached_read_text(path))
         except (SyntaxError, OSError, UnicodeDecodeError):
             continue
 
@@ -208,8 +209,8 @@ def extract(
     for f in files:
         path = Path(f)
         try:
-            source_text = path.read_text()
-            tree = ast.parse(source_text)
+            source_text = cached_read_text(path)
+            tree = cached_ast_parse(source_text)
         except Exception as exc:
             if strict:
                 raise RuntimeError(

@@ -228,8 +228,6 @@ def check_subsumption(
 
     import z3
 
-    _reset(force=True)
-
     old_pred = _make_predicate(old_type, z3)
     new_pred = _make_predicate(new_type, z3)
 

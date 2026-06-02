@@ -8,6 +8,7 @@ using static and runtime techniques.
 """
 from ._logging import configure_logging, get_logger
 from .analyze_module import analyze as analyze_module
+from .cache import BloomFilter, Cache, get_cache, get_cache_metrics_snapshot, reset_cache_metrics
 from .analyze_module import analyze_calls
 from .baseline import (
     baseline_exists,
@@ -290,6 +291,12 @@ __all__ = [
     "analyze_behavior",
     "compare_behavior",
     "SEMANTIC_SEVERITY",
+    # Cache
+    "Cache",
+    "BloomFilter",
+    "get_cache",
+    "get_cache_metrics_snapshot",
+    "reset_cache_metrics",
     # Logging
     "get_logger",
     "configure_logging",

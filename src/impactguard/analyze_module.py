@@ -27,8 +27,9 @@ Known Failure Modes / Accuracy Caveats
 from __future__ import annotations
 
 import ast
-from pathlib import Path
 from typing import Any
+
+from ._ast_cache import cached_ast_parse, cached_read_text
 
 
 class Scope:
@@ -189,7 +190,8 @@ class Analyzer(ast.NodeVisitor):
 
 def analyze(path: str) -> dict[str, Any] | None:
     try:
-        tree = ast.parse(Path(path).read_text())
+        source_text = cached_read_text(path)
+        tree = cached_ast_parse(source_text)
     except (SyntaxError, OSError, UnicodeDecodeError):
         return None
 

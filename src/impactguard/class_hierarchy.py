@@ -10,6 +10,8 @@ import ast
 from pathlib import Path
 from typing import Any
 
+from ._ast_cache import cached_ast_parse, cached_read_text
+
 # ── Data structures ───────────────────────────────────────────────────────────
 
 # {class_name: {"bases": [str, ...], "file": str,
@@ -65,7 +67,7 @@ def extract_class_hierarchy(files: list[str]) -> Hierarchy:
     for file_path in files:
         path = Path(file_path)
         try:
-            tree = ast.parse(path.read_text())
+            tree = cached_ast_parse(cached_read_text(path))
         except (SyntaxError, OSError, UnicodeDecodeError):
             continue
 

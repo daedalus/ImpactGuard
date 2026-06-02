@@ -36,6 +36,7 @@ import hashlib
 from pathlib import Path
 from typing import Any
 
+from ._ast_cache import cached_ast_parse, cached_read_text
 from ._logging import get_logger
 
 _log = get_logger(__name__)
@@ -317,8 +318,8 @@ def analyze_behavior(
     for f in files:
         path = Path(f)
         try:
-            source_text = path.read_text()
-            tree = ast.parse(source_text)
+            source_text = cached_read_text(path)
+            tree = cached_ast_parse(source_text)
         except Exception as exc:
             _log.warning("Skipping '%s' in behavior analysis: %s", path, exc)
             continue
