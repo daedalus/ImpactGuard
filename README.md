@@ -231,6 +231,13 @@ The core logic resides in `risk_model.py`. It quantifies risk by evaluating thre
 
 **Exposure Calculation:** `min(1.0, log(1 + count) / log(1 + max_count))`
 
+> **Normalization caveat:** `max_count` defaults to the highest call count in the
+> current scan, making exposure **relative** by default. A hot function with 1M
+> calls inflates the denominator and compresses all other scores toward zero.
+> Scores are not comparable across projects or scan windows without an absolute
+> anchor.  Set `exposure_max_count` in `[impactguard.risk]` config (e.g.
+> `exposure_max_count = 100_000`) for stable cross-scan scoring.
+
 **Sensitivity Tuning:**
 - `--lambda-factor=2` — doubles effective severity, making ImpactGuard more sensitive (more changes flagged HIGH/MEDIUM)
 

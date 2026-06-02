@@ -593,6 +593,10 @@ strict = false
 [impactguard.risk]
 lambda = 1.0
 block_unknown = false
+exposure_max_count = 0
+# ^ 0 = auto (relative to scan-local maximum).
+#   Set to an absolute value (e.g. 100_000) for stable cross-scan scores.
+#   See risk_model.exposure() docstring for caveats.
 
 [impactguard.logging]
 level = "WARNING"

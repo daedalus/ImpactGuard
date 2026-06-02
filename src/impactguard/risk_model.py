@@ -102,7 +102,37 @@ def get_severity(change_type: str) -> float:
 
 
 def exposure(count: int, max_count: int) -> float:
-    if count == 0:
+    """Calculate exposure as a relative log-scale score.
+
+    ``min(1.0, log(1 + count) / log(1 + max_count))``
+
+    Normalization assumption
+    ------------------------
+    ``max_count`` defaults to the highest call count in the current scan's
+    runtime data.  This makes exposure **relative**: a function called 10×
+    in a small codebase scores the same as one called 10⁶× in a large one,
+    as long as both are the hottest function in their respective scans.
+
+    Caveats
+    ~~~~~~~
+    - A single very-hot function inflates ``max_count`` and compresses all
+      other exposures toward zero, making them appear less risky than they
+      are in absolute terms.
+    - Scores are **not comparable across projects or scan windows** unless
+      the same ``max_count`` is used.
+
+    Mitigation
+    ~~~~~~~~~~
+    Set ``exposure_max_count`` in ``[impactguard.risk]`` config to an
+    absolute threshold.  When non-zero, that value replaces the scan-local
+    maximum, giving stable cross-scan scores:
+
+    .. code:: toml
+
+        [impactguard.risk]
+        exposure_max_count = 100_000  # absolute reference point
+    """
+    if count == 0 or max_count <= 0:
         return 0
     return min(1.0, math.log(1 + count) / math.log(1 + max_count))
 

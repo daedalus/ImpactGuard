@@ -37,6 +37,7 @@ _DEFAULTS: dict[str, Any] = {
             "high_exposure_min": 0.1,
             "medium_exposure_min": 0.01,
             "block_unknown": True,
+            "exposure_max_count": 0,
         },
         "patches": {
             "target_file_match": 1.0,

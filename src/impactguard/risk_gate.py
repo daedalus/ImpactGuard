@@ -131,7 +131,13 @@ def _load_runtime_data(runtime_path: str) -> tuple[dict[str, int], int]:
         runtime = build_runtime_index(load_runtime_observations(runtime_path))
     except (json.JSONDecodeError, KeyError, OSError):
         runtime = {}
-    max_count = max(runtime.values()) if runtime else 1
+    scan_max = max(runtime.values()) if runtime else 1
+    from .config import get as cfg_get
+    configured_max: int = cfg_get("risk", "exposure_max_count", 0)
+    if configured_max > 0:
+        max_count = configured_max
+    else:
+        max_count = scan_max
     return runtime, max_count
 
 
