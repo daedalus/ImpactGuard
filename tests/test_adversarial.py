@@ -439,11 +439,10 @@ class TestRiskModelAdversarial:
         assert exposure(0, 0) == 0
 
     def test_exposure_positive_count_zero_max_raises(self):
-        """exposure(1, 0) exposes a division-by-zero: log(1+0)==0 is used as divisor."""
+        """exposure(1, 0) is guarded by max_count <= 0 check; returns 0."""
         from impactguard.risk_model import exposure
 
-        with pytest.raises(ZeroDivisionError):
-            exposure(1, 0)
+        assert exposure(1, 0) == 0
 
     def test_exposure_count_equals_max(self):
         from impactguard.risk_model import exposure

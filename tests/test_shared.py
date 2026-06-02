@@ -36,6 +36,8 @@ def test_make_parser_exception():
 
 
 def test_make_parser_success():
+    pytest.importorskip("tree_sitter")
+    pytest.importorskip("tree_sitter_c")
     from tree_sitter import Language as TSLanguage
     from tree_sitter_c import language as c_language
 
@@ -347,6 +349,8 @@ def test_extract_calls_read_error(tmp_path):
 
 
 def test_extract_calls_with_real_c_parser(tmp_path):
+    pytest.importorskip("tree_sitter")
+    pytest.importorskip("tree_sitter_c")
     from tree_sitter import Language as TSLanguage
     from tree_sitter_c import language as c_language
 

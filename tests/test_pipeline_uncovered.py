@@ -458,11 +458,7 @@ def test_extract_python_calls_fallback_and_extract_fail():
     }
     events: list[dict] = []
 
-    with patch("impactguard.pipeline.Path") as MockPath:
-        mock_path = MagicMock()
-        MockPath.return_value = mock_path
-        mock_path.read_bytes.side_effect = OSError("fallback also fails")
-
+    with patch("impactguard.extract_calls.extract", side_effect=OSError("fallback also fails")):
         _extract_python_calls(
             "test.py",
             analyze_module=mock_analyze,

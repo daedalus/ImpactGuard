@@ -38,7 +38,7 @@ def test_print_pipeline_summary_basic(capsys):
     captured = capsys.readouterr().out
     assert "Breaking changes: 1" in captured
     assert "Non-breaking changes: 1" in captured
-    assert "HIGH risk: 1" in captured
+    assert "HIGH: 1" in captured
     assert "COMPLETE" in captured
 
 
@@ -371,5 +371,5 @@ def test_check_staged_prints_result(capsys):
         check_staged()
         captured = capsys.readouterr().out
         assert "Breaking changes: 1" in captured
-        assert "HIGH risk: 1" in captured
+        assert "HIGH: 1" in captured
         assert "Blocked: true" in captured
