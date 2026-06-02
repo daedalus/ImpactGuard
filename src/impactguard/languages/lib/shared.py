@@ -100,11 +100,58 @@ def register_extractor(extractor_instance: Any) -> None:
     register(extractor_instance)
 
 
-# ── Warning helpers ────────────────────────────────────────────────────────
+# ── Regex fallback — known failure modes per language ─────────────────────
+#
+# When tree-sitter is absent, each language falls back to regex-based
+# extraction.  These patterns are the most common constructs that regex
+# cannot reliably handle, listed so users can judge the risk for their
+# codebase without installing tree-sitter first.
+
+_REGEX_WEAKNESSES: dict[str, str] = {
+    "C": "function pointers, typedef aliases, K&R-style declarations, "
+    "nested macros expanding to function-like constructs",
+    "C#": "generic methods (Foo<T>), lambda expressions, extension methods, "
+    "ref/out/in parameter modifiers, nested partial classes",
+    "C++": "templates (including variadic), function-style macros, operator "
+    "overloads, lambda expressions, constexpr/consteval specifiers, "
+    "SFINAE and enable_if constructs",
+    "Go": "generic functions (func Foo[T any]), method receivers on generic "
+    "types, embedded interfaces, multiline parameter lists",
+    "Haskell": "typeclass constraints in signatures, GADTs, pattern synonym "
+    "type signatures, multiline type annotations, fixity declarations",
+    "Java": "generic type parameters (<T>), wildcard bounds, annotation-heavy "
+    "declarations, default methods in interfaces, varargs combined with "
+    "generics, multiline throws clauses",
+    "JavaScript": "arrow-function-as-type annotations (JSDoc), `@type` "
+    "imports, TS-in-JS typedefs, callable-object signatures, destructured "
+    "parameter patterns, variadic catch bindings",
+    "Kotlin": "inline/reified type parameters, extension functions with "
+    "receiver types, multiline lambda signatures, context receivers, "
+    "suspend/operator/infix modifiers, default-parameter expressions",
+    "Ruby": "keyword-argument destructuring, block parameters with shadowed "
+    "outer variables, multiline parameter spans across `do...end`, method "
+    "names with non-alphanumeric characters (!, ?, =), singleton-method "
+    "definitions on literals",
+    "Rust": "generic type parameters with trait bounds, impl Trait in "
+    "argument/return position, lifetime annotations, async fn within impl "
+    "blocks, macro-generated functions, const generics, where clauses",
+    "Swift": "generic where clauses, opaque result types (some), protocol "
+    "associatedtype requirements, multiline parameter labels, inout "
+    "parameters, async/await specifiers, closure parameter shorthand",
+    "TypeScript": "generic constraints (extends keyof), conditional types, "
+    "mapped types, template literal types, overloaded function signatures, "
+    "decorators with complex arguments, multiline type annotations",
+    "Zig": "comptime parameters, generic function declarations, multiline "
+    "parameter lists, function returning error union types, inline/export/"
+    "extern calling convention specifiers",
+}
 
 
 def warn_if_no_tree_sitter(self: Any, language_name: str, package_name: str) -> None:
     """Warn if tree-sitter is not available (calls warn only once).
+
+    Includes language-specific known regex failure modes so users can judge
+    how incomplete their results might be.
 
     Note: The caller should check the language-specific availability flag
     before calling this function.
@@ -115,11 +162,14 @@ def warn_if_no_tree_sitter(self: Any, language_name: str, package_name: str) -> 
         package_name: PyPI package name (e.g., "tree-sitter-java")
     """
     if not getattr(self, "_warned", False):
+        weaknesses = _REGEX_WEAKNESSES.get(language_name, "complex function signatures")
         warnings.warn(
             f"tree-sitter and {package_name} are not installed; "
-            f"{language_name} extraction will use a regex-based fallback which "
-            "may miss some function signatures.  Install the 'languages' "
-            "extra for full support:  pip install 'impactguard[languages]'",
+            f"{language_name} extraction will use a regex-based fallback.\n\n"
+            f"Known patterns the regex fallback misses or misparses:\n"
+            f"  {weaknesses}\n\n"
+            "Install the 'languages' extra for full support:\n"
+            "  pip install 'impactguard[languages]'",
             UserWarning,
             stacklevel=3,
         )
