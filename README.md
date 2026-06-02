@@ -251,6 +251,37 @@ The core logic resides in `risk_model.py`. It quantifies risk by evaluating thre
 - `--lambda-factor=2` — doubles effective severity, making ImpactGuard more sensitive (more changes flagged HIGH/MEDIUM)
 
 - `--lambda-factor=0.5` — halves effective severity, making ImpactGuard less sensitive (fewer changes flagged HIGH/MEDIUM)
+
+> **Note:** The `--lambda-factor` CLI flag is spelled `--lambda-factor` (not `--lambda`) to avoid conflicting with Python's `lambda` keyword. The corresponding Python API parameter is named `lambda_`, following the PEP 8 trailing-underscore convention for reserved-word disambiguation.
+
+### Feedback Loop for Confidence Calibration
+
+The `feedback` command closes the loop between patch suggestions and real-world outcomes. It records whether generated patches were accepted or rejected, then calibrates the patch-confidence weights so future scoring reflects actual acceptance patterns.
+
+**Subcommands:**
+
+| Subcommand | Description |
+|------------|-------------|
+| `feedback record <patch_id> [--accepted|--rejected] [--change-type TYPE]` | Record a patch outcome |
+| `feedback stats` | Show acceptance rates (total, per category) |
+| `feedback calibrate [--config-path impactguard.toml]` | Derive weights from outcomes and write to config |
+
+**Typical workflow:**
+
+```bash
+# 1. Review a suggested patch and record the outcome
+impactguard feedback record fix_login_timeout --accepted --change-type positional
+impactguard feedback record fix_logout_call --rejected --change-type kwarg
+
+# 2. View current acceptance rates
+impactguard feedback stats
+
+# 3. Calibrate — writes calibrated weights to [impactguard.patches] in impactguard.toml
+impactguard feedback calibrate
+```
+
+Calibration uses heuristic name matching (e.g. `"positional"` → `structural_positional`). A minimum of 5 outcomes per category is required before a weight is updated.
+
 ### CI Enforcement
 
 The risk assessment is operationalized through `risk_gate.py` and `enforce_gate.py`:

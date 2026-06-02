@@ -156,6 +156,70 @@ jobs:
               sys.exit(1)
           PY
 
+  robustness:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --locked --extra test --extra languages
+
+      - name: Run tests with JUnit output
+        run: uv run pytest --junitxml=test-results.xml --cov --cov-report=xml
+
+      - name: Compute robustness metrics
+        run: |
+          uv run python - <<'PY'
+          import json, sys, subprocess, xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          tree = ET.parse("test-results.xml")
+          total = 0; adv_total = 0; adv_passed = 0; norm_passed = 0
+          for suite in tree.iter("testsuite"):
+              name = suite.get("name","")
+              tests = int(suite.get("tests",0))
+              failures = int(suite.get("failures",0))
+              errors = int(suite.get("errors",0))
+              passed = tests - failures - errors
+              total += tests
+              if "adversarial" in name.lower():
+                  adv_total += tests; adv_passed += passed
+              else:
+                  norm_passed += passed
+
+          cov = 0.0
+          cov_path = Path("coverage.xml")
+          if cov_path.exists():
+              line_rate = float(ET.parse(str(cov_path)).getroot().get("line-rate",0))
+              cov = round(line_rate * 100, 1)
+
+          print(f"Total: {total} | Adversarial: {adv_total}/{adv_passed} passed | Normal: {norm_passed} passed | Coverage: {cov}%")
+
+          result = subprocess.run(
+              [sys.executable, "tools/robustness_evaluator.py",
+               "--n-total", str(total), "--n-adversarial", str(adv_total),
+               "--passing-adv", str(adv_passed), "--passing-norm", str(norm_passed),
+               "--coverage", str(cov), "--output-json"],
+              capture_output=True, text=True, check=False)
+          print(result.stdout)
+          if result.stderr:
+              print(result.stderr, file=sys.stderr)
+
+          data = json.loads(result.stdout)
+          if not data["meets_adversarial_minimum"]:
+              print("::warning::Adversarial minimum not met (below 25%)")
+          print(f"R={data['robustness_score']:.4f} [{data['robustness_label']}] | F={data['fragility_index']:.4f} [{data['fragility_label']}]")
+          PY
+
   impactguard:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
