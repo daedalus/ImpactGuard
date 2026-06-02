@@ -249,7 +249,13 @@ The risk assessment is operationalized through `risk_gate.py` and `enforce_gate.
 1. **Risk Gate Execution**: `risk_gate.py` contains the `run()` function which parses the diff and runtime data to generate a comprehensive `report.json`
 2. **Gate Enforcement**: `enforce_gate.py` consumes this report:
    - If any item is flagged as `HIGH` risk → exits with code `1` (blocks build)
-   - If `UNKNOWN` risks are detected → issues a warning but allows build (exit code `0`)
+   - If `UNKNOWN` risks are detected → by default **blocks the build** (exit code `1`). Can be relaxed to warn-only via `block_unknown = false` in config.
+
+> **⚠️ UNKNOWN risk footgun:** UNKNOWN means runtime data is absent or confidence
+> is too low to classify. A team that never sets up runtime tracing will always
+> see UNKNOWN on every change. The default (`block_unknown = true`) blocks the
+> build to force proper instrumentation, but if you set `block_unknown = false`
+> the **only signal is a console warning** — easy to miss in CI logs.
 
 ---
 

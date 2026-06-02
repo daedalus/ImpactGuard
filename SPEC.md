@@ -592,7 +592,11 @@ strict = false
 
 [impactguard.risk]
 lambda = 1.0
-block_unknown = false
+block_unknown = true
+# ^ true = UNKNOWN risk blocks the build (exit 1), same as HIGH.
+#   false = UNKNOWN issues a stderr warning but exits 0.
+#   ⚠️  A team without runtime tracing always sees UNKNOWN.
+#      Defaulting to true forces proper instrumentation.
 exposure_max_count = 0
 # ^ 0 = auto (relative to scan-local maximum).
 #   Set to an absolute value (e.g. 100_000) for stable cross-scan scores.

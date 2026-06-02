@@ -63,11 +63,12 @@ def enforce(
             print()
         elif risk == "UNKNOWN":
             has_unknown = True
-            _log.info("UNKNOWN-risk change: %s — %s", func, item.get("change", ""))
-            if block_unknown:
-                print(f"🟡 UNKNOWN — {func}")
-                print(f"   change: {item.get('change', '')}")
-                print()
+            _log.warning("UNKNOWN-risk change: %s — %s", func, item.get("change", ""))
+            reason = "insufficient runtime data" if item.get("confidence", 0) < 0.3 else "below confidence threshold"
+            print(f"🟡 UNKNOWN — {func}")
+            print(f"   change: {item.get('change', '')}")
+            print(f"   reason: {reason}")
+            print()
 
     if has_high:
         _log.error("Gate BLOCKED: HIGH risk API changes detected")
@@ -81,11 +82,28 @@ def enforce(
 
     if has_unknown:
         _log.warning("Unknown risk areas detected — not blocking")
-        print("⚠️ Warning: Unknown risk areas detected")
+        _print_unknown_warning()
 
     _log.info("API risk acceptable — gate passed")
     print("✅ API risk acceptable")
     return 0
+
+
+def _print_unknown_warning() -> None:
+    """Print a hard-to-miss warning about UNKNOWN risk items passing the gate."""
+    line = "=" * 72
+    print()
+    print(line, file=sys.stderr)
+    print("  ⚠️  UNKNOWN RISK CHANGES DETECTED — NOT BLOCKING", file=sys.stderr)
+    print(file=sys.stderr)
+    print("  One or more API changes could not be classified because runtime", file=sys.stderr)
+    print("  data is absent or confidence is below the threshold. These changes", file=sys.stderr)
+    print("  may be HIGH risk but have been allowed through.", file=sys.stderr)
+    print(file=sys.stderr)
+    print("  To block on UNKNOWN, set `block_unknown = true` in", file=sys.stderr)
+    print("  [impactguard.risk] config, or pass --block-unknown on the CLI.", file=sys.stderr)
+    print(line, file=sys.stderr)
+    print()
 
 
 def enforce_report(report_path: str, block_unknown: bool | None = None) -> int:
@@ -125,8 +143,10 @@ def enforce_report(report_path: str, block_unknown: bool | None = None) -> int:
             print(f"🔴 HIGH — {func}")
         elif risk == "UNKNOWN":
             has_unknown = True
+            reason = "insufficient runtime data" if item.get("confidence", 0) < 0.3 else "below confidence threshold"
+            print(f"🟡 UNKNOWN — {func}  ({reason})")
             if block_unknown:
-                print(f"🟡 UNKNOWN — {func}")
+                print(f"   change: {item.get('change', '')}")
 
     if has_high:
         print("❌ Blocking: HIGH risk API changes detected")
@@ -137,7 +157,7 @@ def enforce_report(report_path: str, block_unknown: bool | None = None) -> int:
         return 1
 
     if has_unknown:
-        print("⚠️ Warning: Unknown risk areas detected")
+        _print_unknown_warning()
 
     print("✅ API risk acceptable")
     return 0
