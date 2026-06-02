@@ -19,6 +19,9 @@ jobs:
         python-version: ["3.11", "3.12", "3.13"]
 
     steps:
+      - name: cicd-sensor
+        uses: cicd-sensor/cicd-sensor-action@1935de498397aa7b9bf6ac7ca822ddb430a34843 # v0.0.31
+
       - uses: actions/checkout@v4
 
       - name: Set up Python ${{ matrix.python-version }}
@@ -45,6 +48,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: cicd-sensor
+        uses: cicd-sensor/cicd-sensor-action@1935de498397aa7b9bf6ac7ca822ddb430a34843 # v0.0.31
+
       - uses: actions/checkout@v4
 
       - name: Set up Python
@@ -83,6 +89,9 @@ jobs:
         python-version: ["3.11", "3.12", "3.13"]
 
     steps:
+      - name: cicd-sensor
+        uses: cicd-sensor/cicd-sensor-action@1935de498397aa7b9bf6ac7ca822ddb430a34843 # v0.0.31
+
       - uses: actions/checkout@v4
 
       - name: Set up Python ${{ matrix.python-version }}
@@ -109,6 +118,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: cicd-sensor
+        uses: cicd-sensor/cicd-sensor-action@1935de498397aa7b9bf6ac7ca822ddb430a34843 # v0.0.31
+
       - uses: actions/checkout@v4
 
       - name: Set up Python
@@ -129,6 +141,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: cicd-sensor
+        uses: cicd-sensor/cicd-sensor-action@1935de498397aa7b9bf6ac7ca822ddb430a34843 # v0.0.31
+
       - uses: actions/checkout@v4
 
       - name: Set up Python
@@ -160,6 +175,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: cicd-sensor
+        uses: cicd-sensor/cicd-sensor-action@1935de498397aa7b9bf6ac7ca822ddb430a34843 # v0.0.31
+
       - uses: actions/checkout@v4
 
       - name: Set up Python
@@ -229,6 +247,9 @@ jobs:
       pull-requests: write
 
     steps:
+      - name: cicd-sensor
+        uses: cicd-sensor/cicd-sensor-action@1935de498397aa7b9bf6ac7ca822ddb430a34843 # v0.0.31
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Need full history for git comparisons
