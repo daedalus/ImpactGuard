@@ -21,7 +21,7 @@ if [ "$BRANCH" != "master" ] && [ "$BRANCH" != "main" ]; then
 fi
 
 echo "==> bumpversion $PART"
-rtk bumpversion "$PART" --tag --verbose
+rtk bumpversion "$PART" --tag --verbose --commit
 
 echo "==> push commit + tags"
 rtk git push
