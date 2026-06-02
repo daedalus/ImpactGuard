@@ -55,6 +55,7 @@ class Analyzer(ast.NodeVisitor):
         self.from_imports: dict[str, str] = {}
         self.calls: list[dict[str, Any]] = []
         self.scope = Scope()
+        self._current_func: str | None = None
 
     # --------------- imports ---------------
 
@@ -72,10 +73,11 @@ class Analyzer(ast.NodeVisitor):
     # --------------- scopes ---------------
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        prev = self.scope
-        self.scope = Scope(parent=prev)
+        prev_scope = self.scope
+        prev_func = self._current_func
+        self.scope = Scope(parent=prev_scope)
+        self._current_func = node.name
 
-        # arguments with annotations
         for arg in node.args.args:
             if arg.annotation:
                 typ = self._type_name(arg.annotation)
@@ -83,7 +85,24 @@ class Analyzer(ast.NodeVisitor):
                     self.scope.set(arg.arg, typ)
 
         self.generic_visit(node)
-        self.scope = prev
+        self.scope = prev_scope
+        self._current_func = prev_func
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        prev_scope = self.scope
+        prev_func = self._current_func
+        self.scope = Scope(parent=prev_scope)
+        self._current_func = node.name
+
+        for arg in node.args.args:
+            if arg.annotation:
+                typ = self._type_name(arg.annotation)
+                if typ is not None:
+                    self.scope.set(arg.arg, typ)
+
+        self.generic_visit(node)
+        self.scope = prev_scope
+        self._current_func = prev_func
 
     # --------------- assignments ---------------
 
@@ -129,6 +148,7 @@ class Analyzer(ast.NodeVisitor):
                     "kwargs": [kw.arg for kw in node.keywords if kw.arg],
                     "starargs": any(isinstance(a, ast.Starred) for a in node.args),
                     "kwargs_any": any(kw.arg is None for kw in node.keywords),
+                    "caller": self._current_func,
                 }
             )
 

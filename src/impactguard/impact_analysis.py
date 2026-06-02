@@ -71,9 +71,9 @@ def build_call_graph(calls: list[dict[str, Any]]) -> dict[str, set[str]]:
     graph: dict[str, set[str]] = {}
     for call in calls:
         callee = call.get("fqname") or call.get("name", "")
-        caller_file = call.get("file", "")
+        caller_identity = call.get("caller") or call.get("file", "")
         if callee:
-            graph.setdefault(callee, set()).add(caller_file)
+            graph.setdefault(callee, set()).add(caller_identity)
     return graph
 
 

@@ -63,6 +63,11 @@ SEVERITY_SCORES = {
     "EXCEPTION_ADDED": 0.5,
     # Return-value semantics changed (e.g. now always returns None).
     "RETURNS_NONE_CHANGED": 0.5,
+    # ── Required-argument added (breaking) ──
+    # These are handled by _is_unconditional_high() before get_severity()
+    # in classify(), but need dedicated entries for direct callers.
+    "REQUIRED_POSITIONAL_ADDED": 0.9,
+    "REQUIRED_KWONLY_ADDED": 0.9,
     # Informational / non-breaking semantic changes.
     "SIDE_EFFECT_REMOVED": 0.3,
     "CONTRACT_CHANGED": 0.3,
@@ -91,10 +96,11 @@ def _effective_severity_scores() -> dict[str, float]:
 
 def get_severity(change_type: str) -> float:
     scores = _effective_severity_scores()
-    # Normalize: strip, collapse internal whitespace
     ct = " ".join(change_type.strip().split())
-    # Use startswith for consistency with _is_unconditional_high()
-    # This avoids false substring matches like "SOME_REMOVED" matching "REMOVED"
+    # Exact match first
+    if ct in scores:
+        return scores[ct]
+    # Prefix match (longest first) for compound messages like "TYPE_CHANGED: foo arg 'x'"
     for key in sorted(scores.keys(), key=len, reverse=True):
         if ct.startswith(key):
             return scores[key]
@@ -169,7 +175,7 @@ _UNCONDITIONAL_HIGH = frozenset(
         "REQUIRED_POSITIONAL_ADDED",
         "REQUIRED_KWONLY_ADDED",
     }
-)
+)  # Keep in sync with SEVERITY_SCORES — entries must have a score defined there
 
 
 def _is_unconditional_high(change_type: str) -> bool:
@@ -240,3 +246,11 @@ def compute_risk(
     severity: float, exposure_val: float, confidence_val: float, lambda_: float = 1.0
 ) -> float:
     return severity * exposure_val * confidence_val * lambda_
+
+
+# Verify _UNCONDITIONAL_HIGH and SEVERITY_SCORES are in sync at import time
+_missing = _UNCONDITIONAL_HIGH - SEVERITY_SCORES.keys()
+if _missing:
+    raise AssertionError(
+        f"_UNCONDITIONAL_HIGH entries missing from SEVERITY_SCORES: {_missing}"
+    )

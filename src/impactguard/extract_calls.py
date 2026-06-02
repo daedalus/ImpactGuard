@@ -9,6 +9,19 @@ class CallVisitor(ast.NodeVisitor):
     def __init__(self, file: str) -> None:
         self.file = file
         self.calls: list[dict[str, Any]] = []
+        self._current_func: str | None = None
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        prev = self._current_func
+        self._current_func = node.name
+        self.generic_visit(node)
+        self._current_func = prev
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        prev = self._current_func
+        self._current_func = node.name
+        self.generic_visit(node)
+        self._current_func = prev
 
     def visit_Call(self, node: ast.Call) -> None:
         name = self.get_name(node.func)
@@ -23,6 +36,7 @@ class CallVisitor(ast.NodeVisitor):
                     "has_starargs": any(isinstance(a, ast.Starred) for a in node.args),
                     "has_kwargs": any(kw.arg is None for kw in node.keywords),
                     "file": self.file,
+                    "caller": self._current_func,
                 }
             )
 

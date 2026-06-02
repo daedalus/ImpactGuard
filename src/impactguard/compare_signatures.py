@@ -159,7 +159,7 @@ def _type_change_kind(
         from .constraint_check import classify_type_change
 
         z3_result = classify_type_change(old_type, new_type)
-        if z3_result is not None:
+        if z3_result is not None and z3_result != "unknown":
             return z3_result
     except ImportError:
         pass
@@ -268,7 +268,6 @@ def _compare_positional_args(
     new_pos = new_sig["positional"]
     if len(new_pos) < len(old_pos):
         breaking.append(f"POSITIONAL_REMOVED: {fqname}")
-        return
 
     for old_arg, new_arg in zip(old_pos, new_pos):
         if old_arg["name"] != new_arg["name"]:
@@ -298,7 +297,7 @@ def _compare_kwonly_args(
 
     for name in old_kw:
         if name not in new_kw:
-            breaking.append(f"KWONLY_REMOVED: {fqname}")
+            breaking.append(f"KWONLY_REMOVED: {fqname} '{name}'")
 
     for name, new_arg in new_kw.items():
         if name in old_kw:

@@ -118,12 +118,26 @@ import atexit as _atexit
 _atexit.register(flush)
 
 # Best-effort SIGTERM handler — sets a flag drained on the next sampled call.
-# This covers graceful shutdown paths (e.g. gunicorn, supervisord) where the
-# default SIGTERM disposition would kill the process before atexit runs.
+# Chains with any existing handler so the app's own handler is not replaced.
+_try_sigterm = True
+_existing_sigterm = None
 try:
-    signal.signal(signal.SIGTERM, _signal_handler)
+    _existing_sigterm = signal.getsignal(signal.SIGTERM)
 except (ValueError, OSError):
-    pass
+    _try_sigterm = False
+
+
+def _sigterm_chain(signum: int, frame: object) -> None:
+    _signal_handler(signum, frame)
+    if _existing_sigterm is not None and callable(_existing_sigterm):
+        _existing_sigterm(signum, frame)
+
+
+if _try_sigterm:
+    try:
+        signal.signal(signal.SIGTERM, _sigterm_chain)
+    except (ValueError, OSError):
+        pass
 
 
 def install_tracer(module: object, prefix: str | None = None) -> None:

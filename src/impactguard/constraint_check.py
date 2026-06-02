@@ -33,6 +33,7 @@ Callers should fall back to their existing heuristic classification.
 from __future__ import annotations
 
 import re
+import threading
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -70,19 +71,23 @@ def _z3_available() -> bool:
 
 _PREDICATES: dict[str, Any] = {}
 _VALUE_SORT = None
+_LOCK = threading.Lock()
 
 
 def _reset(force: bool = False) -> None:
     global _PREDICATES, _VALUE_SORT
-    if force:
-        _PREDICATES = {}
-        _VALUE_SORT = None
+    with _LOCK:
+        if force:
+            _PREDICATES = {}
+            _VALUE_SORT = None
 
 
 def _value_sort(z3: Any) -> Any:
     global _VALUE_SORT
     if _VALUE_SORT is None:
-        _VALUE_SORT = z3.DeclareSort("Value")
+        with _LOCK:
+            if _VALUE_SORT is None:
+                _VALUE_SORT = z3.DeclareSort("Value")
     return _VALUE_SORT
 
 
@@ -91,10 +96,13 @@ def _predicate(name: str, z3: Any) -> Any:
     cached = _PREDICATES.get(name)
     if cached is not None:
         return cached
-    val_sort = _value_sort(z3)
-    fn = z3.Function(name, val_sort, z3.BoolSort())
-    _PREDICATES[name] = fn
-    return fn
+    with _LOCK:
+        if name in _PREDICATES:
+            return _PREDICATES[name]
+        val_sort = _value_sort(z3)
+        fn = z3.Function(name, val_sort, z3.BoolSort())
+        _PREDICATES[name] = fn
+        return fn
 
 
 # ── Type-string → callable predicate ─────────────────────────────────────────
@@ -131,15 +139,15 @@ def _make_predicate(type_str: str, z3: Any) -> Callable[[Any], Any]:
 
     if base == "list":
         elem_pred = _make_predicate(args[0], z3) if args else (lambda _: z3.BoolVal(True))
-        return lambda v: elem_pred(v)
+        return lambda v, _p=elem_pred: _p(v)
 
     if base == "dict":
         val_pred = _make_predicate(args[1], z3) if len(args) > 1 else (lambda _: z3.BoolVal(True))
-        return lambda v: val_pred(v)
+        return lambda v, _p=val_pred: _p(v)
 
     if base in ("set", "frozenset"):
         elem_pred = _make_predicate(args[0], z3) if args else (lambda _: z3.BoolVal(True))
-        return lambda v: elem_pred(v)
+        return lambda v, _p=elem_pred: _p(v)
 
     if base == "tuple":
         return lambda _: z3.BoolVal(True)
