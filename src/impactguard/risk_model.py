@@ -137,7 +137,28 @@ def exposure(count: int, max_count: int) -> float:
     return min(1.0, math.log(1 + count) / math.log(1 + max_count))
 
 
-def confidence(samples: int, threshold: int = 100) -> float:
+def confidence(samples: int, threshold: int | None = None) -> float:
+    """Confidence based on sample count relative to a scaling threshold.
+
+    ``min(1.0, samples / threshold)``
+
+    The *threshold* is the number of samples at which confidence reaches 1.0.
+    When *threshold* is ``None`` (the default) it is read from the config key
+    ``[impactguard.risk].confidence_samples_threshold``, which defaults to
+    100.  Low-traffic services may want to lower this (e.g. 10) so that a
+    handful of observations are not automatically discounted, while
+    high-traffic services may raise it (e.g. 1 000) to demand stronger
+    statistical evidence before flagging.
+    """
+    if threshold is None:
+        try:
+            from .config import get as cfg_get
+
+            threshold = cfg_get("risk", "confidence_samples_threshold", 100)
+            if not isinstance(threshold, int) or threshold <= 0:
+                threshold = 100
+        except (OSError, ValueError, AttributeError, KeyError):
+            threshold = 100
     return min(1.0, samples / threshold)
 
 
@@ -171,6 +192,16 @@ def classify(
     lambda_: float = 1.0,
     change_type: str = "",
 ) -> tuple[str, float, float]:
+    """Classify risk level from severity × exposure × confidence.
+
+    Config keys respected (``[impactguard.risk]``):
+
+    * ``confidence_threshold`` (default 0.3) — minimum confidence score;
+      results below this are classified UNKNOWN.
+    * ``confidence_samples_threshold`` (default 100) — sample count at
+      which confidence reaches 1.0.  Tune up for high-traffic services,
+      down for low-traffic ones.
+    """
     try:
         from .config import get as cfg_get
 

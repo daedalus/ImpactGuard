@@ -34,6 +34,7 @@ _DEFAULTS: dict[str, Any] = {
         },
         "risk": {
             "confidence_threshold": 0.3,
+            "confidence_samples_threshold": 100,
             "high_exposure_min": 0.1,
             "medium_exposure_min": 0.01,
             "block_unknown": True,
