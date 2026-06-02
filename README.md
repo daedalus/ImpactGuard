@@ -226,15 +226,15 @@ The core logic resides in `risk_model.py`. It quantifies risk by evaluating thre
 | **Severity (S)** | `get_severity()` | Score (0.1 to 1.0) based on change type (e.g., `REMOVED` = 1.0, `ADDED` = 0.1) |
 | **Exposure (E)** | `exposure()` | Logarithmic scale mapping call counts to a 0.0-1.0 range |
 | **Confidence (C)** | `confidence()` | Measures data reliability based on sample size against a threshold |
-| **Lambda (λ)** | `--lambda` / `lambda_` | Sensitivity multiplier (default 1.0). Values >1 increase sensitivity; values <1 decrease it |
+| **Lambda (λ)** | `--lambda-factor` / `lambda_` | Sensitivity multiplier (default 1.0). Values >1 increase sensitivity; values <1 decrease it |
 | **Classification** | `classify()` | Uses a decision tree to assign the final risk label |
 
 **Exposure Calculation:** `min(1.0, log(1 + count) / log(1 + max_count))`
 
 **Sensitivity Tuning:**
-- `--lambda=2` — doubles effective severity, making ImpactGuard more sensitive (more changes flagged HIGH/MEDIUM)
-- `--lambda=0.5` — halves effective severity, making ImpactGuard less sensitive (fewer changes flagged HIGH/MEDIUM)
+- `--lambda-factor=2` — doubles effective severity, making ImpactGuard more sensitive (more changes flagged HIGH/MEDIUM)
 
+- `--lambda-factor=0.5` — halves effective severity, making ImpactGuard less sensitive (fewer changes flagged HIGH/MEDIUM)
 ### CI Enforcement
 
 The risk assessment is operationalized through `risk_gate.py` and `enforce_gate.py`:
@@ -259,7 +259,9 @@ Designed for test suites and local execution where performance is less critical 
 
 ### Production Sampler (`trace_calls_prod.py`)
 
-Optimized for minimal overhead in live environments. It employs a probabilistic sampling strategy (default 1%) to capture a representative subset of traffic.
+Optimized for light-weight optional use in live environments. It employs a probabilistic sampling strategy (default 1%) to capture a representative subset of traffic.
+
+> **Note:** The production sampler is a **best-effort** tool, not a production-grade APM solution. It is suitable for low-overhead visibility but should not be relied upon as the sole tracing infrastructure in critical deployments.
 
 - **Sampling Logic:** Only records data if `random.random() < SAMPLE_RATE`
 - **Background Flushing:** Periodically flushes captured counts to disk (default every 10 seconds)
@@ -660,7 +662,7 @@ ImpactGuard follows strict quality gates:
 - **Severity (S)**: The technical impact of the change type (0.1 to 1.0)
 - **Exposure (E)**: How often the function is called, calculated logarithmically
 - **Confidence (C)**: The reliability of runtime data based on sample size
-- **Lambda (λ)**: Sensitivity multiplier (default 1.0); tune via `--lambda`
+- **Lambda (λ)**: Sensitivity multiplier (default 1.0); tune via `--lambda-factor`
 
 ### Patching
 

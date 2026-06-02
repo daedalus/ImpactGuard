@@ -142,7 +142,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Multi-language extractors: Java, Go, Rust, C, C++, Ruby, JavaScript, Kotlin, Swift, Zig, C#, Haskell
 - Tree-sitter integration with regex fallback
-- `--lambda` parameter to risk model (S×E×C×λ)
+- `--lambda-factor` parameter to risk model (S×E×C×λ)
 - Adversarial generator with 10 camouflage strategies
 - Robustness evaluator and estimator wired to test suite
 - GitHub workflow generation and pre-commit hook framework
