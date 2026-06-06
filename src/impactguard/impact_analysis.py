@@ -2,7 +2,15 @@ import json
 import sys
 from typing import Any
 
+from ._logging import get_logger
 from .risk_model import exposure
+from .runtime_intelligence import (
+    build_runtime_index,
+    load_runtime_observations,
+    lookup_runtime_count,
+)
+
+_log = get_logger(__name__)
 
 
 def required_positional(func: dict[str, Any]) -> int:
@@ -17,16 +25,212 @@ def total_positional(func: dict[str, Any]) -> int:
 
 def load_funcs(path: str) -> dict[str, dict[str, Any]]:
     """Load function signatures from JSON file."""
-    with open(path) as f:
-        data: list[dict[str, Any]] = json.load(f)
-    return {f["fqname"]: f for f in data}
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON in signatures file '{path}': {exc}") from exc
+    if not isinstance(data, list):
+        raise ValueError(
+            f"Signatures file '{path}': expected a JSON array, got {type(data).__name__}"
+        )
+    result: dict[str, dict[str, Any]] = {}
+    for entry in data:
+        if not isinstance(entry, dict) or "fqname" not in entry:
+            continue
+        result[entry["fqname"]] = entry
+    return result
+
 
 
 def load_calls(path: str) -> list[dict[str, Any]]:
     """Load call sites from JSON file."""
-    with open(path) as f:
-        data: list[dict[str, Any]] = json.load(f)
-    return data
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON in call sites file '{path}': {exc}") from exc
+    if not isinstance(data, list):
+        raise ValueError(
+            f"Call sites file '{path}': expected a JSON array, got {type(data).__name__}"
+        )
+    return [entry for entry in data if isinstance(entry, dict)]
+
+
+# ── Transitive impact helpers ─────────────────────────────────────────────────
+
+
+def build_call_graph(calls: list[dict[str, Any]]) -> dict[str, set[str]]:
+    """Build a callee → set-of-callers inverted call graph.
+
+    Args:
+        calls: List of call-site dicts (as returned by extract_calls / analyze_module).
+
+    Returns:
+        Dict mapping each called function name to the set of functions that call it.
+    """
+    graph: dict[str, set[str]] = {}
+    for call in calls:
+        callee = call.get("fqname") or call.get("name", "")
+        caller_identity = call.get("caller") or call.get("file", "")
+        if callee:
+            graph.setdefault(callee, set()).add(caller_identity)
+    return graph
+
+
+def find_transitive_callers(
+    directly_affected: set[str],
+    call_graph: dict[str, set[str]],
+    depth: int = 1,
+) -> dict[str, int]:
+    """Return functions transitively affected by *directly_affected* up to *depth* hops.
+
+    Args:
+        directly_affected: Set of fqnames with direct breaking changes.
+        call_graph: Inverted call graph (callee → callers) from :func:`build_call_graph`.
+        depth: Maximum number of hops to follow (1 = only direct callers).
+
+    Returns:
+        Dict mapping affected caller names to their hop distance (1-based).
+
+    Note:
+        Cycle-safe: the ``found`` dict acts as a visited set, so a cycle such
+        as A → B → A will not cause infinite iteration — once a node is
+        recorded in ``found`` it is never added to the next frontier again.
+    """
+    found: dict[str, int] = {}
+    frontier = set(directly_affected)
+
+    for hop in range(1, depth + 1):
+        next_frontier: set[str] = set()
+        for callee in frontier:
+            for caller in call_graph.get(callee, set()):
+                if caller not in found and caller not in directly_affected:
+                    found[caller] = hop
+                    next_frontier.add(caller)
+        frontier = next_frontier
+        if not frontier:
+            break
+
+    return found
+
+
+# ── Core analysis ─────────────────────────────────────────────────────────────
+
+
+def _fqname_to_runtime_key(fqname: str) -> str:
+    """Convert signature fqname to runtime key format.
+
+    Signature fqnames look like "module.py:func" or "path/to/file.py:Class.method".
+    Runtime keys (from trace_calls.py) look like "module.func" or "path.to.module.Class.method".
+
+    Converts "module.py:func" → "module.func" by removing .py extension and replacing : with .
+    """
+    if ":" in fqname:
+        file_part, func_part = fqname.split(":", 1)
+        # Convert file path to module path: remove .py, replace / with .
+        module_part = file_part.replace(".py", "").replace("/", ".")
+        return f"{module_part}.{func_part}"
+    return fqname
+
+
+def _load_runtime_data(runtime_path: str | None) -> dict[str, int]:
+    """Load runtime observations, falling back to an empty index on error."""
+    if not runtime_path:
+        return {}
+
+    try:
+        return build_runtime_index(load_runtime_observations(runtime_path))
+    except (json.JSONDecodeError, KeyError) as exc:
+        _log.warning("Failed to parse runtime data from '%s': %s", runtime_path, exc)
+        print(f"Warning: Failed to parse runtime data: {exc}", file=sys.stderr)
+    except OSError as exc:
+        _log.warning("Failed to read runtime data from '%s': %s", runtime_path, exc)
+        print(f"Warning: Failed to read runtime data: {exc}", file=sys.stderr)
+    return {}
+
+
+def _resolve_target(target: str, funcs: dict[str, dict[str, Any]]) -> str | None:
+    """Resolve a call target against loaded signatures."""
+    if target in funcs:
+        return target
+    matches = [f for f in funcs if f.endswith("." + target.split(".")[-1])]
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+def _risk_level_for_mismatch(
+    argc: int, min_args: int, severity: float, exp: float
+) -> str:
+    """Return a risk label for an arity mismatch."""
+    if argc < min_args:
+        return "HIGH"
+    if severity > 0.8 and exp > 0.1:
+        return "HIGH"
+    if severity > 0.5:
+        return "MEDIUM"
+    return "LOW"
+
+
+def _build_issue(
+    call: dict[str, Any],
+    target: str,
+    func: dict[str, Any],
+    argc: int,
+    min_args: int,
+    runtime: dict[str, int],
+    max_count: int,
+) -> dict[str, Any]:
+    """Build an issue record for a direct arity mismatch."""
+    func_name = func.get("name", target)
+    runtime_key = _fqname_to_runtime_key(target)
+    count = lookup_runtime_count(runtime, target, func_name, runtime_key) or 1
+    exp = exposure(count, max_count)
+    severity = 0.9 if argc < min_args else 0.3
+    return {
+        "function": target,
+        "risk": _risk_level_for_mismatch(argc, min_args, severity, exp),
+        "change": "missing args" if argc < min_args else "too many args",
+        "exposure": exp,
+        "confidence": min(1.0, count / 100),
+        "file": call.get("file", ""),
+        "lineno": call.get("lineno", 0),
+        "count": count,
+        "transitive": False,
+    }
+
+
+def _append_transitive_issues(
+    issues: list[dict[str, Any]],
+    directly_affected: set[str],
+    calls: list[dict[str, Any]],
+    transitive_depth: int,
+) -> None:
+    """Append transitive callers to the issue list when enabled."""
+    if transitive_depth <= 0 or not directly_affected:
+        return
+
+    call_graph = build_call_graph(calls)
+    transitive = find_transitive_callers(
+        directly_affected, call_graph, transitive_depth
+    )
+    for caller, hop in transitive.items():
+        issues.append(
+            {
+                "function": caller,
+                "risk": "LOW",
+                "change": f"indirect impact (hop {hop})",
+                "exposure": 0.0,
+                "confidence": 0.0,
+                "file": caller,
+                "lineno": 0,
+                "count": 0,
+                "transitive": True,
+                "hop": hop,
+            }
+        )
+
 
 
 # ── Transitive impact helpers ─────────────────────────────────────────────────
@@ -126,17 +330,7 @@ def analyze(
 
     funcs = load_funcs(sigs_path)
     calls = load_calls(calls_path)
-
-    # Load runtime data if provided
-    runtime: dict[str, int] = {}
-    if runtime_path:
-        try:
-            with open(runtime_path) as f_file:
-                rt_data = json.load(f_file)
-            runtime = {item["function"]: item.get("count", 1) for item in rt_data}
-        except (json.JSONDecodeError, KeyError) as e:
-            print(f"Warning: Failed to parse runtime data: {e}", file=sys.stderr)
-            runtime = {}
+    runtime = _load_runtime_data(runtime_path)
 
     # Get max count for exposure calculation
     max_count = max(runtime.values()) if runtime else 1
@@ -144,16 +338,17 @@ def analyze(
     issues: list[dict[str, Any]] = []
     directly_affected: set[str] = set()
 
-    for call in calls:
-        target = call.get("fqname", call.get("name", ""))
+    _log.debug(
+        "Analyzing impact: %d signatures, %d call sites",
+        len(funcs),
+        len(calls),
+    )
 
-        if target not in funcs:
-            # Try fallback matching
-            matches = [f for f in funcs if f.endswith("." + target.split(".")[-1])]
-            if len(matches) == 1:
-                target = matches[0]
-            else:
-                continue
+    for call in calls:
+        raw_target = call.get("fqname", call.get("name", ""))
+        target = _resolve_target(raw_target, funcs)
+        if target is None:
+            continue
 
         f = funcs[target]
 
@@ -161,75 +356,22 @@ def analyze(
             continue
 
         min_args = required_positional(f)
-        max_args = total_positional(f) if not f["vararg"] else float("inf")
-
+        max_args = total_positional(f) if not f.get("vararg") else float("inf")
         argc = call.get("args", 0)
 
-        if argc < min_args or argc > max_args:
-            func_name = f.get("name", target)
-            # Try multiple key formats to match runtime data:
-            # 1. target (fqname like "module.py:func")
-            # 2. func_name (bare name like "func")
-            # 3. Converted runtime key (like "module.func")
-            runtime_key = _fqname_to_runtime_key(target)
-            count = runtime.get(target, runtime.get(func_name, runtime.get(runtime_key, 1)))
-            exp = exposure(count, max_count)
-            
-            # Determine change type for proper risk classification
-            change_type = "missing args" if argc < min_args else "too many args"
-            severity = 0.9 if argc < min_args else 0.3
-            
-            # REMOVED and REQIARED changes are unconditionally HIGH
-            # (bypass confidence check since these are guaranteed breaking)
-            if argc < min_args:
-                risk_level = "HIGH"
-            else:
-                risk_level = (
-                    "HIGH"
-                    if severity > 0.8 and exp > 0.1
-                    else "MEDIUM"
-                    if severity > 0.5
-                    else "LOW"
-                )
+        if argc >= min_args and argc <= max_args:
+            continue
 
-            directly_affected.add(target)
-            issues.append(
-                {
-                    "function": target,
-                    "risk": risk_level,
-                    "change": "missing args" if argc < min_args else "too many args",
-                    "exposure": exp,
-                    "confidence": min(1.0, count / 100),
-                    "file": call.get("file", ""),
-                    "lineno": call.get("lineno", 0),
-                    "count": count,
-                    "transitive": False,
-                }
-            )
+        directly_affected.add(target)
+        issues.append(_build_issue(call, target, f, argc, min_args, runtime, max_count))
 
-    # ── Transitive impact ─────────────────────────────────────────────────────
-    if transitive_depth > 0 and directly_affected:
-        call_graph = build_call_graph(calls)
-        transitive = find_transitive_callers(
-            directly_affected, call_graph, transitive_depth
-        )
+    _append_transitive_issues(issues, directly_affected, calls, transitive_depth)
 
-        for caller, hop in transitive.items():
-            issues.append(
-                {
-                    "function": caller,
-                    "risk": "LOW",
-                    "change": f"indirect impact (hop {hop})",
-                    "exposure": 0.0,
-                    "confidence": 0.0,
-                    "file": caller,
-                    "lineno": 0,
-                    "count": 0,
-                    "transitive": True,
-                    "hop": hop,
-                }
-            )
-
+    _log.debug(
+        "Impact analysis complete: %d direct issue(s), %d transitive",
+        sum(1 for i in issues if not i.get("transitive")),
+        sum(1 for i in issues if i.get("transitive")),
+    )
     return issues
 
 

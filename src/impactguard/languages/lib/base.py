@@ -47,7 +47,7 @@ class LanguageExtractor(Protocol):
             Each dict must include at minimum the fields required by
             :func:`schema.validate_signatures`.
         """
-        ...
+        ...  # pragma: no cover
 
     def extract_calls(self, path: Path) -> list[dict[str, Any]]:
         """Extract call sites from a single source file.
@@ -61,7 +61,7 @@ class LanguageExtractor(Protocol):
             and should include ``args``, ``kwargs``, ``file``,
             ``has_starargs``, and ``has_kwargs`` where applicable.
         """
-        ...
+        ...  # pragma: no cover
 
     def parse_union_members(self, type_str: str) -> frozenset[str]:
         """Decompose a union type annotation into its constituent member types.
@@ -76,4 +76,4 @@ class LanguageExtractor(Protocol):
             Frozenset of member-type strings.  For a scalar type ``"int"``
             return ``frozenset({"int"})``.
         """
-        ...
+        ...  # pragma: no cover

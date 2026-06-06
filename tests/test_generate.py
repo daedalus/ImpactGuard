@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
-import os  
+import os
 import sys
-import tempfile  
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
 
 def test_generate_report_final(tmp_path):
     """Final coverage push for generate_report.py."""
@@ -19,6 +20,7 @@ def test_generate_report_final(tmp_path):
 
     result = generate_html(items)
     assert "HIGH" in result
+
 
 def test_generate_report_deep_coverage(tmp_path):
     """Cover more lines in generate_report.py."""
@@ -35,6 +37,7 @@ def test_generate_report_deep_coverage(tmp_path):
     assert "HIGH" in result
     assert "MEDIUM" in result
     assert "LOW" in result
+
 
 def test_generate_report_complex(tmp_path):
     """Test generate_report with complex data."""
@@ -61,6 +64,7 @@ def test_generate_report_complex(tmp_path):
     assert "HIGH" in result
     assert "MEDIUM" in result
 
+
 def test_generate_report_coverage_final(tmp_path):
     """Target missing lines in generate_report.py."""
     from impactguard.generate_report import generate_html
@@ -72,6 +76,7 @@ def test_generate_report_coverage_final(tmp_path):
 
     result = generate_html(items)
     assert "HIGH" in result
+
 
 def test_generate_changelog_with_files(tmp_path):
     """Test generate_changelog function."""
@@ -90,6 +95,7 @@ def test_generate_changelog_with_files(tmp_path):
 
     assert "## [Unreleased]" in changelog
     assert "foo" in changelog
+
 
 def test_generate_changelog_output_path(tmp_path):
     """Test generate_changelog with output path."""
@@ -112,7 +118,9 @@ def test_generate_changelog_output_path(tmp_path):
     assert output_path.exists()
     assert "## [Unreleased]" in output_path.read_text()
 
+
 # =======================================
+
 
 def test_generate_report_full_coverage(tmp_path):
     """Test generate_report module fully."""
@@ -137,6 +145,7 @@ def test_generate_report_full_coverage(tmp_path):
     assert "MEDIUM" in result
     assert "LOW" in result
 
+
 def test_generate_report_coverage_push(tmp_path):
     """Push generate_report.py coverage up."""
     from impactguard.generate_report import generate_html
@@ -153,4 +162,3 @@ def test_generate_report_coverage_push(tmp_path):
     result = generate_html(items)
     assert "HIGH" in result
     assert "LOW" in result
-

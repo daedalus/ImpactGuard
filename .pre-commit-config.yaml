@@ -11,13 +11,13 @@ repos:
   rev: v2.16
   hooks:
   - id: vulture
-    args: ["--min-confidence", "90", "."]
+    args: ["--min-confidence", "90", "--exclude", ".venv", "."]
 - repo: https://github.com/pre-commit/mirrors-mypy
   rev: v1.13.0
   hooks:
   - id: mypy
     additional_dependencies: [types-PyYAML, libcst>=0.4.0]
-    exclude: ^(examples/|tests/)
+    exclude: ^(examples/|tests/|src/impactguard/__main__\.py)
 - repo: https://github.com/pre-commit/pre-commit-hooks
   rev: v5.0.0
   hooks:
@@ -27,6 +27,15 @@ repos:
   - id: check-added-large-files
 - repo: local
   hooks:
+  - id: lizard
+    name: lizard - Code Complexity Check
+    entry: lizard src/ -x .venv --languages python --CCN 15 -w
+    language: system
+    files: ^src/impactguard/.*\.py$
+    pass_filenames: false
+    stages:
+      - pre-commit
+      - manual
   - id: impactguard-check
     name: ImpactGuard - Full Pipeline Check
     entry: impactguard-check-staged

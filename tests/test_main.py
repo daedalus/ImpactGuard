@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
-import os  
+import os
 import sys
-import tempfile  
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
 
 def test_main_final(tmp_path):
     """Final coverage push for __main__.py."""
@@ -24,6 +25,7 @@ def test_main_final(tmp_path):
         main()
     except SystemExit as e:
         assert e.code in [0, 1]
+
 
 def test_main_cli_coverage(tmp_path):
     """Boost coverage for __main__.py."""
@@ -52,6 +54,7 @@ def test_main_cli_coverage(tmp_path):
         main()
     except SystemExit as e:
         assert e.code in [0, 1]
+
 
 def test_main_deep_coverage(tmp_path):
     """Cover more lines in __main__.py."""
@@ -85,6 +88,7 @@ def test_main_deep_coverage(tmp_path):
     except SystemExit as e:
         assert e.code in [0, 1]
 
+
 def test_main_coverage_final(tmp_path):
     """Target missing lines in __main__.py."""
     import sys
@@ -102,6 +106,7 @@ def test_main_coverage_final(tmp_path):
         main()
     except SystemExit as e:
         assert e.code in [0, 1]
+
 
 def test_main_missing_lines(tmp_path):
     """Target missing lines in __main__.py - functions 79-96, 101-105, 110-126, etc."""
@@ -157,6 +162,7 @@ def test_main_missing_lines(tmp_path):
     except SystemExit as e:
         assert e.code in [0, 1]
 
+
 def test_main_cmd_check_commits(tmp_path):
     """Target cmd_check_commits (lines 171-204)."""
     import sys
@@ -170,6 +176,29 @@ def test_main_cmd_check_commits(tmp_path):
     except SystemExit as e:
         assert e.code in [0, 1]
 
+
+def test_check_commits_enforce_gate_blocks_on_gate_status(monkeypatch):
+    """check-commits should return non-zero when --enforce-gate sees blocked status."""
+    from impactguard.__main__ import main
+
+    def _fake_pipeline_git(**kwargs):
+        return {
+            "comparison": {"breaking": [], "nonbreaking": []},
+            "risk": [],
+            "analysis_status": {"status": "partial", "counters": {}},
+            "gate": {"blocked": True, "reasons": ["policy violation"]},
+        }
+
+    with patch("impactguard.pipeline.run_pipeline_git", side_effect=_fake_pipeline_git):
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["impactguard", "check-commits", "old", "new", "--enforce-gate"],
+        )
+        result = main()
+        assert result == 1
+
+
 def test_main_cmd_install_hooks(tmp_path):
     """Target cmd_install_hooks (lines 209-284)."""
     import sys
@@ -182,6 +211,7 @@ def test_main_cmd_install_hooks(tmp_path):
         main()
     except SystemExit as e:
         assert e.code in [0, 1]
+
 
 def test_main_cmd_generate_changelog(tmp_path):
     """Target cmd_generate_changelog."""
@@ -207,6 +237,7 @@ def test_main_cmd_generate_changelog(tmp_path):
     except SystemExit as e:
         assert e.code in [0, 1]
 
+
 def test_main_coverage_push(tmp_path):
     """Push __main__.py coverage up."""
     import sys
@@ -224,4 +255,3 @@ def test_main_coverage_push(tmp_path):
         main()
     except SystemExit as e:
         assert e.code in [0, 1]
-

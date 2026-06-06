@@ -40,6 +40,7 @@ _BY_EXTENSION: dict[str, LanguageExtractor] = {}
 _BY_LANGUAGE: dict[str, LanguageExtractor] = {}
 
 _T = TypeVar("_T")
+_LOADED: bool = False
 
 
 def register(extractor: LanguageExtractor) -> None:
@@ -125,9 +126,6 @@ def _ensure_loaded() -> None:
         return
     _LOADED = True
     _load_plugins()
-
-
-_LOADED: bool = False
 
 
 def _load_plugins() -> None:

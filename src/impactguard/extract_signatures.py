@@ -1,9 +1,114 @@
 import ast
-import warnings
 from pathlib import Path
 from typing import Any
 
+from ._ast_cache import cached_ast_parse, cached_read_text
+from ._logging import get_logger
+
 # ImpactGuard signature extractor
+_log = get_logger(__name__)
+
+
+def _has_ignore_comment(source_lines: list[str], lineno: int) -> bool:
+    """Return *True* if a ``# impactguard: ignore`` comment appears on the
+    function definition line or on the line immediately preceding it.
+
+    Args:
+        source_lines: All lines of the source file (0-indexed list).
+        lineno: 1-based line number of the ``def`` keyword.
+    """
+    tag = "impactguard: ignore"
+    def_line_idx = lineno - 1
+    for idx in (def_line_idx - 1, def_line_idx):
+        if 0 <= idx < len(source_lines) and tag in source_lines[idx]:
+            return True
+    return False
+
+
+def _extract_all_names(tree: ast.Module) -> set[str] | None:
+    """Return the names listed in ``__all__``, or *None* when not defined.
+
+    Handles only the simple ``__all__ = [...]`` / ``__all__ = (...)`` form.
+    """
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name) and target.id == "__all__":
+                val = node.value
+                if isinstance(val, ast.List | ast.Tuple):
+                    names: set[str] = set()
+                    for elt in val.elts:
+                        if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                            names.add(elt.value)
+                    return names
+    return None
+
+
+def extract_reexports(files: list[str]) -> dict[str, str]:
+    """Parse ``__init__.py`` files and collect explicit re-exports.
+
+    Recognises ``from .<module> import <name>`` and
+    ``from .<module> import <name> as <alias>`` statements.
+
+    Args:
+        files: List of Python file paths.  Only ``__init__.py`` files are
+            processed; all others are ignored.
+
+    Returns:
+        Mapping ``{public_fqname: source_fqname}`` where *public_fqname* is
+        ``<init_basename>:<exported_name>`` and *source_fqname* is the
+        inferred ``<source_module_basename>:<original_name>``.
+    """
+    reexports: dict[str, str] = {}
+    for file_path in files:
+        path = Path(file_path)
+        if path.name != "__init__.py":
+            continue
+        try:
+            tree = cached_ast_parse(cached_read_text(path))
+        except (SyntaxError, OSError, UnicodeDecodeError):
+            continue
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            if not node.module:
+                continue
+            # Only relative imports (from .module import ...)
+            if node.level == 0:
+                continue
+            # Source module base name (last segment)
+            source_module = node.module.split(".")[-1] + ".py"
+            for alias in node.names:
+                original = alias.name
+                exported = alias.asname or alias.name
+                public_fq = f"{path.name}:{exported}"
+                source_fq = f"{source_module}:{original}"
+                reexports[public_fq] = source_fq
+
+    return reexports
+
+
+def _unparse_annotation(node: ast.expr | None) -> str | None:
+    """Safely unparse an AST annotation node to a string.
+
+    Returns *None* when the node is absent or cannot be unparsed.
+    """
+    if node is None:
+        return None
+    try:
+        return ast.unparse(node)
+    except (RecursionError, ValueError):
+        return None
+
+
+def _decorator_name(node: ast.expr) -> str:
+    """Return the string representation of a decorator expression."""
+    try:
+        return ast.unparse(node)
+    except (RecursionError, ValueError):
+        return "<decorator>"
 
 
 def _has_ignore_comment(source_lines: list[str], lineno: int) -> bool:
@@ -198,22 +303,22 @@ def extract(
     """
     all_funcs: list[dict[str, Any]] = []
 
+    _log.debug("Extracting signatures from %d file(s)", len(files))
+
     # Prefer the public `base_path` kwarg; fall back to the legacy `_base_path`.
     effective_base = base_path if base_path is not None else _base_path
 
     for f in files:
         path = Path(f)
         try:
-            source_text = path.read_text()
-            tree = ast.parse(source_text)
+            source_text = cached_read_text(path)
+            tree = cached_ast_parse(source_text)
         except Exception as exc:
             if strict:
-                raise RuntimeError(f"ImpactGuard: failed to parse {path}: {exc}") from exc
-            warnings.warn(
-                f"ImpactGuard: skipping {path} due to parse error: {exc}",
-                SyntaxWarning,
-                stacklevel=2,
-            )
+                raise RuntimeError(
+                    f"ImpactGuard: failed to parse {path}: {exc}"
+                ) from exc
+            _log.warning("Skipping '%s' due to parse error: %s", path, exc)
             continue
 
         # Compute fqname file key: relative to base_path when provided,
@@ -267,6 +372,7 @@ def extract(
 
         visitor = ContextVisitor()
         visitor.visit(tree)
+        _log.debug("Extracted %d signature(s) from '%s'", len(visitor.functions), path)
         all_funcs.extend(visitor.functions)
 
     # Append re-export alias signatures when requested

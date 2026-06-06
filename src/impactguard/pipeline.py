@@ -1,12 +1,791 @@
 """Pipeline orchestrator - connects all ImpactGuard components."""
 
+import inspect
 import json
 import re
 import subprocess
 import sys
 import tempfile
+import warnings
 from pathlib import Path
 from typing import Any
+
+from ._logging import get_logger
+from ._pathutils import is_safe_path
+from .runtime_intelligence import load_runtime_observations, runtime_callsite_entries
+
+_log = get_logger(__name__)
+_PARTIAL_ANALYSIS_COUNTERS = (
+    "parse_failures",
+    "skipped_files",
+    "fallback_used",
+    "call_extraction_failures",
+    "runtime_data_issues",
+    "fqname_collision_risk",
+)
+
+
+def _validate_git_ref(ref: str) -> bool:
+    """Validate git ref format to prevent command injection.
+
+    Allows: alphanumeric, dots, hyphens, slashes, underscores, ~, ^, @, {, }
+    Disallows: shell metacharacters, path traversal
+    """
+    if not ref or len(ref) > 255:
+        return False
+    # Disallow shell metacharacters
+    if any(c in ref for c in ["|", ";", "&", "$", "`", "!", "(", ")", "<", ">"]):
+        return False
+    # Disallow path traversal
+    if ".." in ref or ref.startswith("/"):
+        return False
+    # Allow safe git ref characters
+    if not re.match(r"^[a-zA-Z0-9._\-/~^@{}]+$", ref):
+        return False
+    return True
+
+
+def _validate_git_path(path: str) -> bool:
+    """Validate file path from git to prevent path traversal.
+
+    Delegates to :func:`is_safe_path` with ``max_length=255``, which also
+    rejects Windows drive/UNC prefixes.  This is **intentional**: git paths
+    are always relative and POSIX-style, so rejecting Windows-only patterns
+    is a safe hardening measure.
+    """
+    return is_safe_path(path, max_length=255)
+
+
+def _summarize_files(files: list[str], limit: int = 5) -> str:
+    """Return a compact, deterministic summary for file-path lists."""
+    if len(files) <= limit:
+        return ",".join(files)
+    shown = ",".join(files[:limit])
+    remaining = len(files) - limit
+    return f"{shown} (+{remaining} more)"
+
+
+def _record_unsupported_file(
+    f: str, stats: dict[str, int] | None, events: list[dict[str, str]] | None
+) -> None:
+    if stats is not None:
+        stats["skipped_files"] = stats.get("skipped_files", 0) + 1
+        stats["unsupported_files"] = stats.get("unsupported_files", 0) + 1
+    if events is not None:
+        events.append(
+            {
+                "level": "warning",
+                "kind": "unsupported_file",
+                "file": str(f),
+                "message": "No registered extractor; file skipped.",
+            }
+        )
+
+
+def _group_files_by_extractor(files: list[str]) -> dict[str, tuple[Any, list[str]]]:
+    from .languages.lib.registry import get_extractor as _get_extractor
+
+    groups: dict[str, tuple[Any, list[str]]] = {}
+    for f in files:
+        extractor = _get_extractor(f)
+        if extractor is None:
+            continue
+        lang = extractor.language
+        if lang not in groups:
+            groups[lang] = (extractor, [])
+        groups[lang][1].append(f)
+    return groups
+
+
+def _extract_group(
+    extractor: Any,
+    lang_files: list[str],
+    base_path: str | None,
+    strict_extraction: bool,
+    stats: dict[str, int] | None,
+    events: list[dict[str, str]] | None,
+) -> list[dict[str, Any]]:
+    assert extractor is not None
+    supports_strict = False
+    if strict_extraction:
+        try:
+            supports_strict = (
+                "strict" in inspect.signature(extractor.extract_signatures).parameters
+            )
+        except (TypeError, ValueError):
+            supports_strict = False
+    try:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            method = extractor.extract_signatures
+            kwargs: dict[str, Any] = {"_base_path": base_path}
+            if strict_extraction and supports_strict:
+                kwargs["strict"] = True
+            extracted: list[dict[str, Any]] = method(lang_files, **kwargs)
+
+        for w in caught:
+            msg = str(w.message)
+            if "regex-based fallback" in msg:
+                if stats is not None:
+                    stats["fallback_used"] = stats.get("fallback_used", 0) + 1
+                if events is not None:
+                    events.append(
+                        {
+                            "level": "warning",
+                            "kind": "fallback_used",
+                            "file": _summarize_files(lang_files),
+                            "message": msg,
+                        }
+                    )
+        return extracted
+    except (OSError, SyntaxError, UnicodeDecodeError, ValueError, TypeError) as exc:
+        if stats is not None:
+            stats["parse_failures"] = stats.get("parse_failures", 0) + 1
+        if events is not None:
+            events.append(
+                {
+                    "level": "error",
+                    "kind": "extract_signatures_failed",
+                    "file": _summarize_files(lang_files),
+                    "message": str(exc),
+                }
+            )
+        _log.warning(
+            "Signature extraction failed for language '%s' (%d file(s)): %s",
+            extractor.language,
+            len(lang_files),
+            exc,
+        )
+        return []
+
+
+def _extract_by_language(
+    files: list[str],
+    base_path: str | None = None,
+    stats: dict[str, int] | None = None,
+    events: list[dict[str, str]] | None = None,
+    strict_extraction: bool = False,
+) -> list[dict[str, Any]]:
+    """Extract signatures from *files* using the registry extractor for each file.
+
+    Files whose extension has no registered extractor are silently skipped.
+    """
+    from .languages.lib.registry import get_extractor as _get_extractor
+
+    groups: dict[str, tuple[Any, list[str]]] = {}
+    for f in files:
+        extractor = _get_extractor(f)
+        if extractor is None:
+            _record_unsupported_file(f, stats, events)
+            continue
+        lang = extractor.language
+        if lang not in groups:
+            groups[lang] = (extractor, [])
+        groups[lang][1].append(f)
+
+    all_sigs: list[dict[str, Any]] = []
+    for extractor, lang_files in groups.values():
+        all_sigs.extend(
+            _extract_group(
+                extractor, lang_files, base_path, strict_extraction, stats, events
+            )
+        )
+    return all_sigs
+
+
+def _has_basename_collisions(files: list[str]) -> bool:
+    """Return True when two or more files share the same basename."""
+    seen: set[str] = set()
+    for f in files:
+        name = Path(f).name
+        if name in seen:
+            return True
+        seen.add(name)
+    return False
+
+
+def _evaluate_analysis_policy(
+    counters: dict[str, int],
+    *,
+    max_parse_failures: int,
+    max_skipped_files: int,
+    max_call_extraction_failures: int,
+    max_runtime_data_issues: int,
+) -> dict[str, Any]:
+    """Evaluate configured analysis-completeness thresholds."""
+    checks = {
+        "parse_failures": {
+            "value": int(counters.get("parse_failures", 0)),
+            "max_allowed": int(max_parse_failures),
+        },
+        "skipped_files": {
+            "value": int(counters.get("skipped_files", 0)),
+            "max_allowed": int(max_skipped_files),
+        },
+        "call_extraction_failures": {
+            "value": int(counters.get("call_extraction_failures", 0)),
+            "max_allowed": int(max_call_extraction_failures),
+        },
+        "runtime_data_issues": {
+            "value": int(counters.get("runtime_data_issues", 0)),
+            "max_allowed": int(max_runtime_data_issues),
+        },
+    }
+    violations = {
+        key: detail
+        for key, detail in checks.items()
+        if detail["value"] > detail["max_allowed"]
+    }
+    return {
+        "checks": checks,
+        "violations": violations,
+        "passes": not violations,
+    }
+
+
+def _compute_base_path(path: str) -> str:
+    """Return a stable base path for fqname normalization."""
+    p = Path(path).resolve()
+    return str(p if p.is_dir() else p.parent)
+
+
+def _append_analysis_event(
+    events: list[dict[str, str]],
+    *,
+    level: str,
+    kind: str,
+    file: str,
+    message: str,
+) -> None:
+    """Append a structured analysis event."""
+    events.append(
+        {
+            "level": level,
+            "kind": kind,
+            "file": file,
+            "message": message,
+        }
+    )
+
+
+def _write_json(path: str | Path, payload: Any) -> None:
+    """Write JSON payloads with stable formatting."""
+    with open(path, "w") as f:
+        json.dump(payload, f, indent=2)
+
+
+def _prepare_signature_snapshot(
+    files: list[str] | None,
+    provided_path: str | None,
+    *,
+    base_path: str | None,
+    output_dir: str,
+    output_name: str,
+    stats: dict[str, int],
+    events: list[dict[str, str]],
+    strict_extraction: bool,
+) -> tuple[str | None, list[dict[str, Any]] | None]:
+    """Extract signatures to an output file or reuse an existing snapshot path."""
+    if files:
+        if base_path is None and _has_basename_collisions(files):
+            stats["fqname_collision_risk"] += 1
+            _append_analysis_event(
+                events,
+                level="warning",
+                kind="fqname_collision_risk",
+                file=_summarize_files(files),
+                message=(
+                    "Duplicate basenames detected without base path; fqname collisions are possible."
+                ),
+            )
+        signatures = _extract_by_language(
+            files,
+            base_path=base_path,
+            stats=stats,
+            events=events,
+            strict_extraction=strict_extraction,
+        )
+        snapshot_path = str(Path(output_dir) / output_name)
+        _write_json(snapshot_path, signatures)
+        return snapshot_path, signatures
+    if provided_path and Path(provided_path).exists():
+        return provided_path, None
+    return None, None
+
+
+def _extract_hierarchy_map(files: list[str]) -> dict[str, Any]:
+    """Extract class hierarchy information from Python files only."""
+    from .class_hierarchy import extract_class_hierarchy
+
+    py_files = [file_path for file_path in files if file_path.endswith(".py")]
+    if not py_files:
+        return {}
+    return extract_class_hierarchy(py_files)
+
+
+def _build_hierarchy_data(
+    old_files: list[str] | None,
+    new_files: list[str] | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Build hierarchy and implementation maps for cascade analysis."""
+    from .class_hierarchy import find_implementations
+
+    hierarchy: dict[str, Any] = {}
+    if old_files:
+        hierarchy.update(_extract_hierarchy_map(old_files))
+    if new_files:
+        hierarchy.update(_extract_hierarchy_map(new_files))
+
+    implementations = find_implementations(hierarchy) if hierarchy else {}
+    return hierarchy, implementations
+
+
+def _extract_python_calls(
+    file_path: str,
+    *,
+    analyze_module: Any,
+    all_calls: list[dict[str, Any]],
+    stats: dict[str, int],
+    events: list[dict[str, str]],
+) -> None:
+    """Extract Python call sites with analyze_module and a fallback path."""
+    try:
+        mod_result = analyze_module(file_path)
+        if mod_result and "calls" in mod_result:
+            all_calls.extend(mod_result["calls"])
+        return
+    except (OSError, SyntaxError, UnicodeDecodeError, ValueError, TypeError) as exc:
+        stats["parse_failures"] += 1
+        stats["fallback_used"] += 1
+        _append_analysis_event(
+            events,
+            level="warning",
+            kind="analyze_module_failed",
+            file=file_path,
+            message=str(exc),
+        )
+
+    from .extract_calls import extract as _extract_calls
+
+    try:
+        all_calls.extend(_extract_calls(Path(file_path)))
+    except (OSError, SyntaxError, UnicodeDecodeError, ValueError, TypeError) as exc:
+        stats["call_extraction_failures"] += 1
+        _append_analysis_event(
+            events,
+            level="error",
+            kind="extract_calls_failed",
+            file=file_path,
+            message=str(exc),
+        )
+        _log.warning("Fallback call extraction failed for '%s': %s", file_path, exc)
+
+
+def _extract_non_python_calls(
+    file_path: str,
+    *,
+    extractor: Any,
+    all_calls: list[dict[str, Any]],
+    stats: dict[str, int],
+    events: list[dict[str, str]],
+) -> None:
+    """Extract non-Python call sites and track fallback warnings."""
+    try:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            all_calls.extend(extractor.extract_calls(Path(file_path)))
+        for warning in caught:
+            message = str(warning.message)
+            if "regex-based fallback" not in message:
+                continue
+            stats["fallback_used"] += 1
+            _append_analysis_event(
+                events,
+                level="warning",
+                kind="fallback_used",
+                file=file_path,
+                message=message,
+            )
+    except (OSError, SyntaxError, UnicodeDecodeError, ValueError, TypeError) as exc:
+        stats["call_extraction_failures"] += 1
+        _append_analysis_event(
+            events,
+            level="error",
+            kind="extract_calls_failed",
+            file=file_path,
+            message=str(exc),
+        )
+        _log.warning("Call extraction failed for '%s': %s", file_path, exc)
+        print(
+            f"Warning: call extraction failed for {file_path}: {exc}", file=sys.stderr
+        )
+
+
+def _extract_calls_to_path(
+    calls_path: str | None,
+    *,
+    new_files: list[str] | None,
+    output_dir: str,
+    runtime_path: str | None,
+    stats: dict[str, int],
+    events: list[dict[str, str]],
+    analyze_module: Any,
+) -> str:
+    """Extract call sites when needed and return the calls JSON path."""
+    if calls_path:
+        return calls_path
+
+    from .languages.lib.registry import get_extractor as _get_extractor
+
+    output_path = str(Path(output_dir) / "calls.json")
+    all_calls: list[dict[str, Any]] = []
+    for file_path in new_files or []:
+        extractor = _get_extractor(file_path)
+        if extractor is None:
+            stats["skipped_files"] += 1
+            stats["unsupported_files"] += 1
+            _append_analysis_event(
+                events,
+                level="warning",
+                kind="unsupported_file",
+                file=file_path,
+                message="No registered extractor for call extraction.",
+            )
+            continue
+        if extractor.language == "python":
+            _extract_python_calls(
+                file_path,
+                analyze_module=analyze_module,
+                all_calls=all_calls,
+                stats=stats,
+                events=events,
+            )
+        else:
+            _extract_non_python_calls(
+                file_path,
+                extractor=extractor,
+                all_calls=all_calls,
+                stats=stats,
+                events=events,
+            )
+
+    if runtime_path and Path(runtime_path).exists():
+        try:
+            all_calls.extend(
+                runtime_callsite_entries(load_runtime_observations(runtime_path))
+            )
+        except (json.JSONDecodeError, OSError) as exc:
+            _log.warning(
+                "Failed to process runtime data from '%s': %s", runtime_path, exc
+            )
+            stats["runtime_data_issues"] += 1
+            _append_analysis_event(
+                events,
+                level="error",
+                kind="runtime_data_invalid",
+                file=runtime_path,
+                message=str(exc),
+            )
+            print(f"Warning: Failed to process runtime data: {exc}", file=sys.stderr)
+    elif runtime_path:
+        stats["runtime_data_issues"] += 1
+        _append_analysis_event(
+            events,
+            level="error",
+            kind="runtime_data_missing",
+            file=runtime_path,
+            message="Runtime data path does not exist.",
+        )
+    else:
+        _append_analysis_event(
+            events,
+            level="warning",
+            kind="runtime_data_not_provided",
+            file="",
+            message="No runtime data provided; confidence may be reduced.",
+        )
+
+    _write_json(output_path, all_calls)
+    return output_path
+
+
+def _write_risk_inputs(
+    comparison: dict[str, Any],
+    output_dir: str,
+    structured_changes: list[dict[str, Any]] | None = None,
+) -> tuple[list[dict[str, str]], str]:
+    """Write structured and plain-text breaking-change inputs for the risk gate."""
+    from .risk_gate import parse_change_line as _parse_change_line
+
+    effective_structured: list[dict[str, Any]] = structured_changes or []
+    if not effective_structured:
+        for change in comparison.get("breaking", []):
+            parsed = _parse_change_line(str(change))
+            if parsed is not None:
+                effective_structured.append(parsed)
+
+    diff_path = str(Path(output_dir) / "diff.txt")
+    with open(diff_path, "w") as f:
+        for change in comparison["breaking"]:
+            f.write(f"{change}\n")
+
+    structured_path = Path(output_dir) / "changes_structured.json"
+    _write_json(structured_path, effective_structured)
+    return effective_structured, diff_path
+
+
+def _attach_patch_source_info(
+    risk: list[dict[str, Any]],
+    *,
+    old_sigs_path: str,
+    old_files: list[str] | None,
+    stats: dict[str, int],
+    events: list[dict[str, str]],
+) -> None:
+    """Add source file information to risk items for patch generation."""
+    try:
+        with open(old_sigs_path) as f:
+            old_sigs_list = json.load(f)
+    except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        _log.warning("Could not load old signatures for patch generation: %s", exc)
+        print(f"Warning: Could not load old signatures: {exc}", file=sys.stderr)
+        stats["parse_failures"] += 1
+        _append_analysis_event(
+            events,
+            level="warning",
+            kind="old_signatures_load_failed",
+            file=old_sigs_path,
+            message=str(exc),
+        )
+        return
+
+    fqname_to_file: dict[str, str] = {}
+    for sig in old_sigs_list:
+        fqname = sig.get("fqname", "")
+        sig_file = sig.get("file", "")
+        for old_file in old_files or []:
+            if old_file.endswith(sig_file):
+                fqname_to_file[fqname] = old_file
+                break
+
+    for risk_item in risk:
+        fqname = risk_item.get("function", "")
+        if fqname in fqname_to_file:
+            risk_item["file"] = fqname_to_file[fqname]
+
+
+def _calibrate_feedback(stats: dict[str, int], events: list[dict[str, str]]) -> None:
+    """Apply feedback-derived weights when outcome data is available."""
+    try:
+        from .feedback import (
+            apply_weights_to_config,
+            compute_calibrated_weights,
+            load_outcomes,
+        )
+
+        outcomes = load_outcomes()
+        if not outcomes:
+            return
+        calibrated = compute_calibrated_weights(outcomes)
+        if calibrated:
+            apply_weights_to_config(calibrated)
+    except ImportError:
+        return
+    except (OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
+        _log.warning("Feedback calibration skipped: %s", exc)
+        stats["parse_failures"] += 1
+        _append_analysis_event(
+            events,
+            level="warning",
+            kind="feedback_calibration_failed",
+            file="",
+            message=str(exc),
+        )
+
+
+def _generate_patches(
+    fixes: list[dict[str, Any]],
+    *,
+    output_dir: str,
+    suggest_patch: bool,
+    show_patch: bool,
+) -> dict[str, Any]:
+    """Generate patch output artifacts."""
+    patches: dict[str, Any] = {}
+    patch_dir = Path(output_dir) / "patches"
+    if suggest_patch:
+        patch_dir.mkdir(parents=True, exist_ok=True)
+
+    for item in fixes:
+        if "patch" not in item or not item["patch"]:
+            continue
+        patch_content = item["patch"]
+        patch_type = item.get("type", "")
+
+        if show_patch:
+            func_name = item.get("function", "unknown")
+            if ":" in func_name:
+                func_name = func_name.split(":")[-1]
+            print(f"\n=== Patched: {func_name} ===")
+            print(patch_content)
+
+        if not suggest_patch:
+            continue
+
+        counter = len(patches) + 1
+        patch_file = patch_dir / f"patch_{counter}.py"
+        patch_file.write_text(patch_content)
+        patches[f"patch_{counter}"] = {
+            "type": patch_type,
+            "file": str(patch_file),
+            "content": patch_content,
+            "confidence_level": item.get("confidence_level"),
+            "confidence": item.get("confidence"),
+            "auto_applicable": item.get("auto_applicable", False),
+            "function": item.get("function"),
+            "param_name": item.get("param_name"),
+        }
+
+    return patches
+
+
+def _runtime_state(runtime_path: str | None, stats: dict[str, int]) -> str:
+    """Summarize runtime data availability for analysis status."""
+    if runtime_path and stats.get("runtime_data_issues", 0) == 0:
+        return "loaded"
+    if runtime_path:
+        return "invalid_or_missing"
+    return "not_provided"
+
+
+def _build_gate_reasons(
+    high_count: int,
+    unknown_count: int,
+    block_unknown: bool,
+    policy: dict[str, Any],
+    runtime_gate_blocked: bool,
+) -> list[str]:
+    reasons: list[str] = []
+    if high_count > 0:
+        reasons.append(f"HIGH risk items detected: {high_count}")
+    if block_unknown and unknown_count > 0:
+        reasons.append(
+            f"UNKNOWN risk items blocked by policy (block_unknown=true): {unknown_count}"
+        )
+    for key, detail in policy["violations"].items():
+        reasons.append(
+            f"analysis policy violation: {key}={detail['value']} exceeds {detail['max_allowed']}"
+        )
+    if runtime_gate_blocked:
+        reasons.append("runtime data is required but missing/invalid")
+    return reasons
+
+
+def _inject_coverage_disclaimer(html: str, reliability_stats: dict[str, int]) -> str:
+    if not any(reliability_stats.get(k, 0) > 0 for k in _PARTIAL_ANALYSIS_COUNTERS):
+        return html
+    disclaimer = (
+        "<p><strong>Analysis coverage warning:</strong> "
+        "this report was generated from partial analysis. Review analysis_summary.json "
+        "for skipped/failed extraction details before treating LOW/MEDIUM findings as complete.</p>"
+    )
+    return html.replace("<body>", f"<body>{disclaimer}", 1)
+
+
+def _count_fixability(risk: list[dict[str, Any]]) -> tuple[int, int]:
+    high_auto = 0
+    high_manual = 0
+    for item in risk:
+        if item.get("risk") != "HIGH":
+            continue
+        candidates = item.get("fix_candidates", [])
+        if not isinstance(candidates, list):
+            high_manual += 1
+            continue
+        has_auto = any(
+            isinstance(fc, dict)
+            and fc.get("type") == "cst_patch"
+            and bool(fc.get("auto_applicable", False))
+            for fc in candidates
+        )
+        if has_auto:
+            high_auto += 1
+        else:
+            high_manual += 1
+    return high_auto, high_manual
+
+
+def _finalize_analysis_status(
+    *,
+    result: dict[str, Any],
+    output_dir: str,
+    reliability_stats: dict[str, int],
+    analysis_events: list[dict[str, str]],
+    risk: list[dict[str, Any]],
+    max_parse_failures: int,
+    max_skipped_files: int,
+    max_call_extraction_failures: int,
+    max_runtime_data_issues: int,
+    block_unknown: bool,
+    require_runtime: bool,
+) -> None:
+    """Populate analysis and gate summaries in the pipeline result."""
+    partial_analysis = any(
+        reliability_stats.get(key, 0) > 0 for key in _PARTIAL_ANALYSIS_COUNTERS
+    )
+    runtime_state = _runtime_state(result.get("runtime_path"), reliability_stats)
+    policy = _evaluate_analysis_policy(
+        reliability_stats,
+        max_parse_failures=max_parse_failures,
+        max_skipped_files=max_skipped_files,
+        max_call_extraction_failures=max_call_extraction_failures,
+        max_runtime_data_issues=max_runtime_data_issues,
+    )
+    high_count = sum(1 for item in risk if item.get("risk") == "HIGH")
+    unknown_count = sum(1 for item in risk if item.get("risk") == "UNKNOWN")
+    high_auto_fixable, high_manual_required = _count_fixability(risk)
+    risk_gate_blocked = high_count > 0 or (block_unknown and unknown_count > 0)
+    analysis_gate_blocked = not policy["passes"]
+    runtime_gate_blocked = require_runtime and runtime_state != "loaded"
+
+    analysis_status = {
+        "status": "partial" if partial_analysis else "complete",
+        "partial_analysis": partial_analysis,
+        "counters": reliability_stats,
+        "events": analysis_events,
+        "runtime": {"state": runtime_state, "required": require_runtime},
+        "policy": policy,
+    }
+    gate_status = {
+        "blocked": risk_gate_blocked or analysis_gate_blocked or runtime_gate_blocked,
+        "risk_gate_blocked": risk_gate_blocked,
+        "analysis_gate_blocked": analysis_gate_blocked,
+        "runtime_gate_blocked": runtime_gate_blocked,
+        "block_unknown": block_unknown,
+        "risk": {"high": high_count, "unknown": unknown_count},
+        "fixability": {
+            "high_confidence_auto_fixable": high_auto_fixable,
+            "manual_required": high_manual_required,
+        },
+        "reasons": _build_gate_reasons(
+            high_count, unknown_count, block_unknown, policy, runtime_gate_blocked
+        ),
+    }
+    result["analysis_status"] = analysis_status
+    result["gate"] = gate_status
+    _write_json(Path(output_dir) / "analysis_summary.json", analysis_status)
+    _write_json(Path(output_dir) / "gate_summary.json", gate_status)
+
+
+def _load_result_signatures(
+    old_sigs_path: str, new_sigs_path: str
+) -> dict[str, list[Any]]:
+    """Load signature snapshots for the final pipeline result."""
+    with open(old_sigs_path) as f:
+        old_signatures = json.load(f)
+    with open(new_sigs_path) as f:
+        new_signatures = json.load(f)
+    return {"old": old_signatures, "new": new_signatures}
 
 
 def _validate_git_ref(ref: str) -> bool:
@@ -87,6 +866,17 @@ def run_pipeline(
     config: dict[str, Any] | None = None,
     suggest_patch: bool = False,
     show_patch: bool = False,
+    generate_fixes: bool = True,
+    apply_safe_fixes: bool = False,
+    strict_extraction: bool = False,
+    old_base_path: str | None = None,
+    new_base_path: str | None = None,
+    max_parse_failures: int = 0,
+    max_skipped_files: int = 0,
+    max_call_extraction_failures: int = 0,
+    max_runtime_data_issues: int = 0,
+    block_unknown: bool = False,
+    require_runtime: bool = False,
 ) -> dict[str, Any]:
     """Run the full ImpactGuard pipeline.
 
@@ -122,70 +912,81 @@ def run_pipeline(
         - patches: dict  # generated patches (if suggest_patch=True)
     """
     from .analyze_module import analyze as analyze_module
-    from .class_hierarchy import extract_class_hierarchy, find_implementations
     from .compare_signatures import compare
+    from .fix_generation import (
+        apply_safe_fixes as _apply_safe_fixes,
+    )
+    from .fix_generation import (
+        build_change_events,
+        enrich_risk_with_fix_candidates,
+    )
     from .generate_report import generate_html
     from .impact_analysis import analyze
-    from .languages.lib.registry import get_extractor as _get_extractor
     from .risk_gate import run as run_risk
     from .suggest_fixes import enrich_with_fixes
 
     result: dict[str, Any] = {}
+    # Counter semantics:
+    # - parse_failures: primary parsing/extraction failures
+    # - skipped_files: unsupported files intentionally skipped
+    # - fallback_used: fallback parsing/extraction path used
+    # - call_extraction_failures: fallback call extraction also failed
+    reliability_stats: dict[str, int] = {
+        "parse_failures": 0,
+        "skipped_files": 0,
+        "unsupported_files": 0,
+        "fallback_used": 0,
+        "call_extraction_failures": 0,
+        "runtime_data_issues": 0,
+        "fqname_collision_risk": 0,
+    }
+    analysis_events: list[dict[str, str]] = []
 
     # Use temp dir if no output_dir specified
     if output_dir is None:
         output_dir = tempfile.mkdtemp(prefix="impactguard_")
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-    # Step 1: Extract or load signatures
-    if old_files:
-        old_sigs = _extract_by_language(old_files)
-        old_sigs_path = str(Path(output_dir) / "old_signatures.json")
-        with open(old_sigs_path, "w") as f:
-            json.dump(old_sigs, f, indent=2)
-    elif old_sigs_path and Path(old_sigs_path).exists():
-        pass  # Use provided path
-    else:
-        old_sigs_path = None
+    _log.debug("Pipeline started; output_dir='%s'", output_dir)
 
-    if new_files:
-        new_sigs = _extract_by_language(new_files)
-        new_sigs_path = str(Path(output_dir) / "new_signatures.json")
-        with open(new_sigs_path, "w") as f:
-            json.dump(new_sigs, f, indent=2)
-    elif new_sigs_path and Path(new_sigs_path).exists():
-        pass  # Use provided path
-    else:
+    # Step 1: Extract or load signatures
+    _log.debug("Step 1: Extracting/loading signatures")
+    old_sigs_path, _ = _prepare_signature_snapshot(
+        old_files,
+        old_sigs_path,
+        base_path=old_base_path,
+        output_dir=output_dir,
+        output_name="old_signatures.json",
+        stats=reliability_stats,
+        events=analysis_events,
+        strict_extraction=strict_extraction,
+    )
+    new_sigs_path, new_sigs = _prepare_signature_snapshot(
+        new_files,
+        new_sigs_path,
+        base_path=new_base_path,
+        output_dir=output_dir,
+        output_name="new_signatures.json",
+        stats=reliability_stats,
+        events=analysis_events,
+        strict_extraction=strict_extraction,
+    )
+    if new_sigs_path is None:
         raise ValueError("Must provide new_files or new_sigs_path")
 
     # If no old signatures, just return new signatures
     if not old_sigs_path:
-        with open(new_sigs_path) as f:
-            result["signatures"] = {"new": json.load(f)}
+        if new_sigs is None:
+            with open(new_sigs_path) as f:
+                new_sigs = json.load(f)
+        result["signatures"] = {"new": new_sigs}
         return result
 
     # Step 1.5: Extract class hierarchy (for cascade impact)
-    hierarchy: dict[str, Any] = {}
-    implementations: dict[str, Any] = {}
-
-    def _extract_hierarchy(files: list[str]) -> dict[str, Any]:
-        """Extract class hierarchy from Python files only."""
-        py_files = [f for f in files if f.endswith(".py")]
-        if py_files:
-            return extract_class_hierarchy(py_files)
-        return {}
-
-    if old_files:
-        old_hierarchy = _extract_hierarchy(old_files)
-        hierarchy.update(old_hierarchy)
-    if new_files:
-        new_hierarchy = _extract_hierarchy(new_files)
-        hierarchy.update(new_hierarchy)
-
-    if hierarchy:
-        implementations = find_implementations(hierarchy)
+    hierarchy, implementations = _build_hierarchy_data(old_files, new_files)
 
     # Step 2: Compare signatures
+    _log.debug("Step 2: Comparing signatures")
     comparison = compare(
         old_sigs_path,
         new_sigs_path,
@@ -193,73 +994,53 @@ def run_pipeline(
         implementations=implementations,
     )
     result["comparison"] = comparison
+    _log.info(
+        "Signature comparison: %d breaking, %d non-breaking",
+        len(comparison.get("breaking", [])),
+        len(comparison.get("nonbreaking", [])),
+    )
 
     # Step 3: Extract call sites (if not provided)
-    if not calls_path:
-        calls_path = str(Path(output_dir) / "calls.json")
-        all_calls: list[dict[str, Any]] = []
-
-        # Use analyze_module for Python files; language extractor for others
-        if new_files:
-            for file_path in new_files:
-                extractor = _get_extractor(file_path)
-                if extractor is None:
-                    continue
-                if extractor.language == "python":
-                    try:
-                        mod_result = analyze_module(file_path)
-                        if mod_result and "calls" in mod_result:
-                            all_calls.extend(mod_result["calls"])
-                    except Exception:
-                        # Fall back to basic extraction
-                        from .extract_calls import extract as _extract_calls
-
-                        all_calls.extend(_extract_calls(Path(file_path)))
-                else:
-                    try:
-                        all_calls.extend(extractor.extract_calls(Path(file_path)))
-                    except Exception as exc:
-                        print(
-                            f"Warning: call extraction failed for {file_path}: {exc}",
-                            file=sys.stderr,
-                        )
-
-        # Also include runtime data if available
-        if runtime_path and Path(runtime_path).exists():
-            try:
-                with open(runtime_path) as f:
-                    rt_data = json.load(f)
-                for item in rt_data:
-                    all_calls.append(
-                        {
-                            "fqname": item.get("function", ""),
-                            "file": "runtime",
-                            "lineno": 0,
-                            "args": item.get("args_count", 0),
-                            "kwargs": item.get("kwargs", []),
-                            "has_starargs": False,
-                            "has_kwargs": False,
-                        }
-                    )
-            except (json.JSONDecodeError, OSError) as e:
-                print(f"Warning: Failed to process runtime data: {e}", file=sys.stderr)
-
-        with open(calls_path, "w") as f:
-            json.dump(all_calls, f, indent=2)
+    _log.debug("Step 3: Extracting call sites")
+    calls_path = _extract_calls_to_path(
+        calls_path,
+        new_files=new_files,
+        output_dir=output_dir,
+        runtime_path=runtime_path,
+        stats=reliability_stats,
+        events=analysis_events,
+        analyze_module=analyze_module,
+    )
+    result["runtime_path"] = runtime_path
 
     # Step 4: Analyze impact
+    _log.debug("Step 4: Analyzing impact")
     impact = analyze(new_sigs_path, calls_path, runtime_path)
     result["impact"] = impact
+    _log.debug("Impact analysis found %d issue(s)", len(impact))
 
     # Step 5: Assess risk
-    diff_path = str(Path(output_dir) / "diff.txt")
-    with open(diff_path, "w") as f:
-        for change in comparison["breaking"]:
-            f.write(f"{change}\n")
-
+    _log.debug("Step 5: Assessing risk")
+    signature_pair = _load_result_signatures(old_sigs_path, new_sigs_path)
+    old_signatures = signature_pair["old"]
+    new_signatures = signature_pair["new"]
+    change_events = build_change_events(comparison, old_signatures, new_signatures)
+    structured_breaking_changes, diff_path = _write_risk_inputs(
+        comparison, output_dir, change_events
+    )
     risk_report_path = str(Path(output_dir) / "risk_report.json")
-    risk = run_risk(diff_path, runtime_path or "", risk_report_path)
+    risk = run_risk(
+        diff_path,
+        runtime_path or "",
+        risk_report_path,
+        changes=structured_breaking_changes,
+    )
+    risk, default_fixes = enrich_risk_with_fix_candidates(
+        risk, change_events, generate_fixes=generate_fixes or apply_safe_fixes
+    )
+    _write_json(Path(risk_report_path), risk)
     result["risk"] = risk
+    _log.debug("Risk assessment: %d item(s)", len(risk))
 
     # Add file/lineno from signatures to risk items for patch generation
     if suggest_patch or show_patch:
@@ -294,79 +1075,58 @@ def run_pipeline(
     # Step 6: Generate HTML report
 
     # Step 6: Generate HTML report
-    html = generate_html(risk)
-    result["report_html"] = html
+    _log.debug("Step 6: Generating HTML report")
+    result["report_html"] = _inject_coverage_disclaimer(
+        generate_html(risk), reliability_stats
+    )
 
     # Step 7: Suggest fixes with confidence
-    fixes = []
-    for item in risk:
-        if "function" in item:
-            enriched = enrich_with_fixes(item, [item])
-            fixes.extend(enriched)
+    fixes = list(default_fixes)
+    if generate_fixes and not fixes:
+        for item in risk:
+            if "function" in item:
+                fixes.extend(enrich_with_fixes(item, [item]))
 
-    # Apply calibrated weights from feedback loop if available
-    try:
-        from .feedback import compute_calibrated_weights, load_outcomes
-
-        outcomes = load_outcomes()
-        if outcomes:
-            calibrated = compute_calibrated_weights(outcomes)
-            if calibrated:
-                # Write calibrated weights to config for patch_confidence to use
-                from .feedback import apply_weights_to_config
-
-                apply_weights_to_config(calibrated)
-    except Exception:
-        pass  # Feedback loop not set up, continue without calibration
+    _calibrate_feedback(reliability_stats, analysis_events)
 
     result["fixes"] = fixes
+    if apply_safe_fixes:
+        result["applied_fixes"] = _apply_safe_fixes(risk)
 
     # Step 8: Generate/show patches if requested
     if suggest_patch or show_patch:
-        patches: dict[str, Any] = {}
-        patch_dir = Path(output_dir) / "patches"
-        if suggest_patch:
-            patch_dir.mkdir(parents=True, exist_ok=True)
-
-        for item in fixes:
-            patch_type = item.get("type", "")
-            if "patch" in item and item["patch"]:
-                patch_content = item["patch"]
-
-                # Display patched content if requested
-                if show_patch:
-                    # Extract function name from fqname (e.g., "main.py:add" -> "add")
-                    func_name = item.get("function", "unknown")
-                    if ":" in func_name:
-                        func_name = func_name.split(":")[-1]
-                    print(f"\n=== Patched: {func_name} ===")
-                    print(patch_content)
-
-                # Save to file if suggest_patch is set
-                if suggest_patch:
-                    counter = len(patches) + 1
-                    patch_file = patch_dir / f"patch_{counter}.py"
-                    patch_file.write_text(patch_content)
-                    patches[f"patch_{counter}"] = {
-                        "type": patch_type,
-                        "file": str(patch_file),
-                        "content": patch_content,
-                    }
-
+        patches = _generate_patches(
+            fixes,
+            output_dir=output_dir,
+            suggest_patch=suggest_patch,
+            show_patch=show_patch,
+        )
         if suggest_patch:
             result["patches"] = patches
 
     # Step 9: Semver recommendation
+    _log.debug("Step 9: Semver recommendation")
     from .semver import format_semver_recommendation
 
     result["semver"] = format_semver_recommendation(comparison)
 
-    # Add signatures to result
-    with open(old_sigs_path) as f:
-        result["signatures"] = {"old": json.load(f), "new": []}
-    with open(new_sigs_path) as f:
-        result["signatures"]["new"] = json.load(f)
+    _finalize_analysis_status(
+        result=result,
+        output_dir=output_dir,
+        reliability_stats=reliability_stats,
+        analysis_events=analysis_events,
+        risk=risk,
+        max_parse_failures=max_parse_failures,
+        max_skipped_files=max_skipped_files,
+        max_call_extraction_failures=max_call_extraction_failures,
+        max_runtime_data_issues=max_runtime_data_issues,
+        block_unknown=block_unknown,
+        require_runtime=require_runtime,
+    )
+    result.pop("runtime_path", None)
+    result["signatures"] = _load_result_signatures(old_sigs_path, new_sigs_path)
 
+    _log.info("Pipeline complete: semver=%s", result["semver"].get("bump", "patch"))
     return result
 
 
@@ -376,6 +1136,15 @@ def quick_check(
     runtime_path: str | None = None,
     suggest_patch: bool = False,
     show_patch: bool = False,
+    generate_fixes: bool = True,
+    apply_safe_fixes: bool = False,
+    strict_extraction: bool = False,
+    max_parse_failures: int = 0,
+    max_skipped_files: int = 0,
+    max_call_extraction_failures: int = 0,
+    max_runtime_data_issues: int = 0,
+    block_unknown: bool = False,
+    require_runtime: bool = False,
 ) -> dict[str, Any]:
     """Quick check between two Python files or directories.
 
@@ -407,6 +1176,8 @@ def quick_check(
 
     old_files = collect_files(old_path)
     new_files = collect_files(new_path)
+    old_base = _compute_base_path(old_path)
+    new_base = _compute_base_path(new_path)
 
     return run_pipeline(
         old_files=old_files,
@@ -414,7 +1185,121 @@ def quick_check(
         runtime_path=runtime_path,
         suggest_patch=suggest_patch,
         show_patch=show_patch,
+        generate_fixes=generate_fixes,
+        apply_safe_fixes=apply_safe_fixes,
+        strict_extraction=strict_extraction,
+        old_base_path=old_base,
+        new_base_path=new_base,
+        max_parse_failures=max_parse_failures,
+        max_skipped_files=max_skipped_files,
+        max_call_extraction_failures=max_call_extraction_failures,
+        max_runtime_data_issues=max_runtime_data_issues,
+        block_unknown=block_unknown,
+        require_runtime=require_runtime,
     )
+
+
+def _extract_git_ref_signatures(ref: str, dest: Path) -> list[dict[str, Any]]:
+    """Extract signatures for all supported files at a git ref into *dest*."""
+    from .languages.lib.registry import get_extractor as _get_extractor
+
+    try:
+        result = subprocess.run(
+            ["git", "ls-tree", "-r", "--name-only", ref],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"Timeout listing files from {ref}") from exc
+
+    src_files = [
+        file_path
+        for file_path in result.stdout.splitlines()
+        if _get_extractor(file_path) is not None and _validate_git_path(file_path)
+    ]
+    for src_file in src_files:
+        dest_path = dest / src_file
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            file_result = subprocess.run(
+                ["git", "show", f"{ref}:{src_file}"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            print(f"  Warning: Timeout extracting {src_file} from {ref}")
+            continue
+        if file_result.returncode == 0 and file_result.stdout:
+            dest_path.write_text(file_result.stdout)
+
+    return _extract_by_language(
+        [str(file_path) for file_path in dest.rglob("*") if file_path.is_file()]
+    )
+
+
+def _categorize_changelog_changes(
+    comparison: dict[str, list[str]],
+) -> tuple[list[str], list[str], list[str], list[str]]:
+    """Group signature diff entries into changelog sections."""
+    added: list[str] = []
+    removed: list[str] = []
+    changed_breaking: list[str] = []
+    changed_nonbreaking: list[str] = []
+
+    for item in comparison.get("nonbreaking", []):
+        if item.startswith("ADDED: "):
+            added.append(item.replace("ADDED: ", ""))
+        elif item.startswith("OPTIONAL POSITIONAL ADDED: "):
+            changed_nonbreaking.append(item.replace("OPTIONAL POSITIONAL ADDED: ", ""))
+        elif item.startswith("OPTIONAL KWONLY ADDED: "):
+            changed_nonbreaking.append(item.replace("OPTIONAL KWONLY ADDED: ", ""))
+
+    for item in comparison.get("breaking", []):
+        if item.startswith("REMOVED: "):
+            removed.append(item.replace("REMOVED: ", ""))
+        elif "POSITIONAL" in item or "KWONLY" in item or "REQUIRED" in item:
+            changed_breaking.append(item)
+
+    return added, removed, changed_breaking, changed_nonbreaking
+
+
+def _build_changelog_text(comparison: dict[str, list[str]]) -> str:
+    """Build markdown changelog text from comparison output."""
+    lines = ["## [Unreleased]\n"]
+    added, removed, changed_breaking, changed_nonbreaking = (
+        _categorize_changelog_changes(comparison)
+    )
+
+    if added:
+        lines.append("### Added")
+        for item in added:
+            func_name = item.split(":")[-1] if ":" in item else item
+            lines.append(f"- `{func_name}` - New function/method added")
+        lines.append("")
+
+    if changed_nonbreaking:
+        lines.append("### Changed")
+        for item in changed_nonbreaking:
+            func_name = item.split(":")[-1] if ":" in item else item
+            lines.append(f"- `{func_name}` - Signature modified (non-breaking)")
+        lines.append("")
+
+    if removed:
+        lines.append("### Removed")
+        for item in removed:
+            func_name = item.split(":")[-1] if ":" in item else item
+            lines.append(f"- `{func_name}` - Function/method removed")
+        lines.append("")
+
+    if changed_breaking:
+        lines.append("### Breaking Changes")
+        for item in changed_breaking:
+            lines.append(f"- {item}")
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 def generate_changelog(
@@ -440,10 +1325,7 @@ def generate_changelog(
 
     # Get signatures
     if old_ref and new_ref:
-        import subprocess
         import tempfile
-
-        from .languages.lib.registry import get_extractor as _get_extractor
 
         # Validate git refs
         for ref in [old_ref, new_ref]:
@@ -456,45 +1338,8 @@ def generate_changelog(
             old_dir.mkdir()
             new_dir.mkdir()
 
-            # Extract files from git
-            for ref, dest in [(old_ref, old_dir), (new_ref, new_dir)]:
-                try:
-                    result = subprocess.run(
-                        ["git", "ls-tree", "-r", "--name-only", ref],
-                        capture_output=True,
-                        text=True,
-                        timeout=30,
-                    )
-                except subprocess.TimeoutExpired:
-                    raise RuntimeError(f"Timeout listing files from {ref}")
-
-                src_files = [
-                    f
-                    for f in result.stdout.splitlines()
-                    if _get_extractor(f) is not None and _validate_git_path(f)
-                ]
-                for src_file in src_files:
-                    dest_path = dest / src_file
-                    dest_path.parent.mkdir(parents=True, exist_ok=True)
-                    try:
-                        r = subprocess.run(
-                            ["git", "show", f"{ref}:{src_file}"],
-                            capture_output=True,
-                            text=True,
-                            timeout=30,
-                        )
-                    except subprocess.TimeoutExpired:
-                        print(f"  Warning: Timeout extracting {src_file} from {ref}")
-                        continue
-                    if r.returncode == 0 and r.stdout:
-                        dest_path.write_text(r.stdout)
-
-            old_sigs = _extract_by_language(
-                [str(f) for f in old_dir.rglob("*") if f.is_file()]
-            )
-            new_sigs = _extract_by_language(
-                [str(f) for f in new_dir.rglob("*") if f.is_file()]
-            )
+            old_sigs = _extract_git_ref_signatures(old_ref, old_dir)
+            new_sigs = _extract_git_ref_signatures(new_ref, new_dir)
     elif old_files and new_files:
         old_sigs = _extract_by_language(old_files)
         new_sigs = _extract_by_language(new_files)
@@ -513,58 +1358,7 @@ def generate_changelog(
 
         comparison = compare(str(old_path), str(new_path))
 
-    # Generate changelog
-    lines = ["## [Unreleased]\n"]
-
-    # Group changes by type
-    added = []
-    removed = []
-    changed_breaking = []
-    changed_nonbreaking = []
-
-    for item in comparison.get("nonbreaking", []):
-        if item.startswith("ADDED: "):
-            added.append(item.replace("ADDED: ", ""))
-        elif item.startswith("OPTIONAL POSITIONAL ADDED: "):
-            changed_nonbreaking.append(item.replace("OPTIONAL POSITIONAL ADDED: ", ""))
-        elif item.startswith("OPTIONAL KWONLY ADDED: "):
-            changed_nonbreaking.append(item.replace("OPTIONAL KWONLY ADDED: ", ""))
-
-    for item in comparison.get("breaking", []):
-        if item.startswith("REMOVED: "):
-            removed.append(item.replace("REMOVED: ", ""))
-        elif "POSITIONAL" in item or "KWONLY" in item or "REQUIRED" in item:
-            changed_breaking.append(item)
-
-    if added:
-        lines.append("### Added")
-        for item in added:
-            # Extract function name from fqname
-            func_name = item.split(":")[-1] if ":" in item else item
-            lines.append(f"- `{func_name}` - New function/method added")
-        lines.append("")
-
-    if changed_nonbreaking:
-        lines.append("### Changed")
-        for item in changed_nonbreaking:
-            func_name = item.split(":")[-1] if ":" in item else item
-            lines.append(f"- `{func_name}` - Signature modified (non-breaking)")
-        lines.append("")
-
-    if removed:
-        lines.append("### Removed")
-        for item in removed:
-            func_name = item.split(":")[-1] if ":" in item else item
-            lines.append(f"- `{func_name}` - Function/method removed")
-        lines.append("")
-
-    if changed_breaking:
-        lines.append("### Breaking Changes")
-        for item in changed_breaking:
-            lines.append(f"- {item}")
-        lines.append("")
-
-    changelog = "\n".join(lines)
+    changelog = _build_changelog_text(comparison)
 
     if output_path:
         Path(output_path).write_text(changelog)
@@ -581,6 +1375,15 @@ def run_pipeline_git(
     config: dict[str, Any] | None = None,
     suggest_patch: bool = False,
     show_patch: bool = False,
+    generate_fixes: bool = True,
+    apply_safe_fixes: bool = False,
+    strict_extraction: bool = False,
+    max_parse_failures: int = 0,
+    max_skipped_files: int = 0,
+    max_call_extraction_failures: int = 0,
+    max_runtime_data_issues: int = 0,
+    block_unknown: bool = False,
+    require_runtime: bool = False,
 ) -> dict[str, Any]:
     """Run pipeline comparing two git commits.
 
@@ -681,6 +1484,17 @@ def run_pipeline_git(
             config=config,
             suggest_patch=suggest_patch,
             show_patch=show_patch,
+            generate_fixes=generate_fixes,
+            apply_safe_fixes=apply_safe_fixes,
+            strict_extraction=strict_extraction,
+            old_base_path=str(Path(old_dir).resolve()),
+            new_base_path=str(Path(new_dir).resolve()),
+            max_parse_failures=max_parse_failures,
+            max_skipped_files=max_skipped_files,
+            max_call_extraction_failures=max_call_extraction_failures,
+            max_runtime_data_issues=max_runtime_data_issues,
+            block_unknown=block_unknown,
+            require_runtime=require_runtime,
         )
 
 
@@ -706,7 +1520,7 @@ def _parse_unified_diff(diff_text: str) -> dict[str, tuple[str, str]]:
     def _save_current() -> None:
         # For renamed files, prefer new_name as the canonical key.
         name = new_name if new_name is not None else old_name
-        if name and _get_extractor(name) is not None:
+        if name and _get_extractor(name) is not None and is_safe_path(name):
             files[name] = ("\n".join(old_lines), "\n".join(new_lines))
 
     for line in diff_text.splitlines():
@@ -748,6 +1562,15 @@ def run_pipeline_diff_content(
     config: dict[str, Any] | None = None,
     suggest_patch: bool = False,
     show_patch: bool = False,
+    generate_fixes: bool = True,
+    apply_safe_fixes: bool = False,
+    strict_extraction: bool = False,
+    max_parse_failures: int = 0,
+    max_skipped_files: int = 0,
+    max_call_extraction_failures: int = 0,
+    max_runtime_data_issues: int = 0,
+    block_unknown: bool = False,
+    require_runtime: bool = False,
 ) -> dict[str, Any]:
     """Run the full ImpactGuard pipeline on unified diff content (as a string).
 
@@ -808,6 +1631,17 @@ def run_pipeline_diff_content(
             config=config,
             suggest_patch=suggest_patch,
             show_patch=show_patch,
+            generate_fixes=generate_fixes,
+            apply_safe_fixes=apply_safe_fixes,
+            strict_extraction=strict_extraction,
+            old_base_path=str(old_dir.resolve()),
+            new_base_path=str(new_dir.resolve()),
+            max_parse_failures=max_parse_failures,
+            max_skipped_files=max_skipped_files,
+            max_call_extraction_failures=max_call_extraction_failures,
+            max_runtime_data_issues=max_runtime_data_issues,
+            block_unknown=block_unknown,
+            require_runtime=require_runtime,
         )
 
 
@@ -818,6 +1652,15 @@ def run_pipeline_diff(
     config: dict[str, Any] | None = None,
     suggest_patch: bool = False,
     show_patch: bool = False,
+    generate_fixes: bool = True,
+    apply_safe_fixes: bool = False,
+    strict_extraction: bool = False,
+    max_parse_failures: int = 0,
+    max_skipped_files: int = 0,
+    max_call_extraction_failures: int = 0,
+    max_runtime_data_issues: int = 0,
+    block_unknown: bool = False,
+    require_runtime: bool = False,
 ) -> dict[str, Any]:
     """Run the full ImpactGuard pipeline on a unified diff / patch file.
 
@@ -850,6 +1693,15 @@ def run_pipeline_diff(
             config=config,
             suggest_patch=suggest_patch,
             show_patch=show_patch,
+            generate_fixes=generate_fixes,
+            apply_safe_fixes=apply_safe_fixes,
+            strict_extraction=strict_extraction,
+            max_parse_failures=max_parse_failures,
+            max_skipped_files=max_skipped_files,
+            max_call_extraction_failures=max_call_extraction_failures,
+            max_runtime_data_issues=max_runtime_data_issues,
+            block_unknown=block_unknown,
+            require_runtime=require_runtime,
         )
     except ValueError as exc:
         # Re-raise with the file path included in the error message.
@@ -864,6 +1716,15 @@ def run_pipeline_commit(
     config: dict[str, Any] | None = None,
     suggest_patch: bool = False,
     show_patch: bool = False,
+    generate_fixes: bool = True,
+    apply_safe_fixes: bool = False,
+    strict_extraction: bool = False,
+    max_parse_failures: int = 0,
+    max_skipped_files: int = 0,
+    max_call_extraction_failures: int = 0,
+    max_runtime_data_issues: int = 0,
+    block_unknown: bool = False,
+    require_runtime: bool = False,
 ) -> dict[str, Any]:
     """Run the full ImpactGuard pipeline on a single git commit.
 
@@ -907,16 +1768,30 @@ def run_pipeline_commit(
             "Initial commits have no parent."
         ) from exc
 
-    return run_pipeline_git(
-        old_ref=parent_ref,
-        new_ref=commit_ref,
-        files=files,
-        runtime_path=runtime_path,
-        output_path=output_path,
-        config=config,
-        suggest_patch=suggest_patch,
-        show_patch=show_patch,
-    )
+    kwargs: dict[str, Any] = {
+        "old_ref": parent_ref,
+        "new_ref": commit_ref,
+        "files": files,
+        "runtime_path": runtime_path,
+        "output_path": output_path,
+        "config": config,
+        "suggest_patch": suggest_patch,
+        "show_patch": show_patch,
+        "strict_extraction": strict_extraction,
+        "max_parse_failures": max_parse_failures,
+        "max_skipped_files": max_skipped_files,
+        "max_call_extraction_failures": max_call_extraction_failures,
+        "max_runtime_data_issues": max_runtime_data_issues,
+        "block_unknown": block_unknown,
+        "require_runtime": require_runtime,
+    }
+    # Keep delegation kwargs minimal by forwarding new options only when they
+    # deviate from defaults.
+    if not generate_fixes:
+        kwargs["generate_fixes"] = generate_fixes
+    if apply_safe_fixes:
+        kwargs["apply_safe_fixes"] = apply_safe_fixes
+    return run_pipeline_git(**kwargs)
 
 
 class ImpactGuard:
@@ -937,6 +1812,8 @@ class ImpactGuard:
         runtime_path: str | None = None,
         suggest_patch: bool = False,
         show_patch: bool = False,
+        generate_fixes: bool = True,
+        apply_safe_fixes: bool = False,
     ) -> dict[str, Any]:
         """Analyze impact between two versions.
 
@@ -956,6 +1833,8 @@ class ImpactGuard:
             runtime_path,
             suggest_patch=suggest_patch,
             show_patch=show_patch,
+            generate_fixes=generate_fixes,
+            apply_safe_fixes=apply_safe_fixes,
         )
 
     def extract(self, files: list[str]) -> list[dict[str, Any]]:

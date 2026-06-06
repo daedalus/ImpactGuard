@@ -25,14 +25,15 @@ from pathlib import Path
 from typing import Any
 
 from .lib.shared import (
-    _TREE_SITTER_AVAILABLE,
     child_of_type,
+    dedupe_signatures_by_fqname,
     extract_calls_with_tree_sitter,
     has_ignore_comment,
     has_ignore_comment_fallback,
     make_parser,
     node_text,
     register_extractor,
+    split_pipe_union_members,
     warn_if_no_tree_sitter,
 )
 
@@ -203,14 +204,19 @@ def _extract_with_tree_sitter(
         fq_file = path.name
         funcs: list[dict[str, Any]] = []
 
-        def visit(node: Any) -> None:
+        def visit(
+            node: Any,
+            _source: bytes = source,
+            _fq_file: str = fq_file,
+            _funcs: list[dict[str, Any]] = funcs,
+        ) -> None:
             if node.type in (
                 "function_declaration",
                 "method_definition",
                 "function",
                 "arrow_function",
             ):
-                _process_function(node, source, fq_file, funcs)
+                _process_function(node, _source, _fq_file, _funcs)
             for child in node.children:
                 visit(child)
 
@@ -223,10 +229,14 @@ def _extract_with_tree_sitter(
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
     return extract_calls_with_tree_sitter(
-        path, "javascript", _JS_LANGUAGE,
+        path,
+        "javascript",
+        _JS_LANGUAGE,
         args_type="arguments",
         member_map={"member_expression": "property_identifier"},
     )
+
+
 # ── Regex fallback ────────────────────────────────────────────────────────────
 
 _FUNC_RE = re.compile(
@@ -344,15 +354,7 @@ def _extract_with_regex(
                 }
             )
 
-    seen: set[str] = set()
-    unique: list[dict[str, Any]] = []
-    for sig in all_funcs:
-        if sig["fqname"] not in seen:
-            seen.add(sig["fqname"])
-            unique.append(sig)
-
-    unique.sort(key=lambda x: x["fqname"])
-    return unique
+    return dedupe_signatures_by_fqname(all_funcs)
 
 
 def _extract_calls_with_regex(path: Path) -> list[dict[str, Any]]:
@@ -424,10 +426,7 @@ class JavaScriptExtractor:
 
         Splits on ``|`` for union types.
         """
-        s = type_str.strip()
-        if "|" in s:
-            return frozenset(p.strip() for p in s.split("|"))
-        return frozenset({s})
+        return split_pipe_union_members(type_str)
 
 
 # ── Self-registration ─────────────────────────

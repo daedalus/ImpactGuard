@@ -24,14 +24,15 @@ from pathlib import Path
 from typing import Any
 
 from .lib.shared import (
-    _TREE_SITTER_AVAILABLE,
     child_of_type,
+    dedupe_signatures_by_fqname,
     extract_calls_with_tree_sitter,
     has_ignore_comment,
     has_ignore_comment_fallback,
     make_parser,
     node_text,
     register_extractor,
+    split_pipe_union_members,
     warn_if_no_tree_sitter,
 )
 
@@ -175,18 +176,24 @@ def _extract_with_tree_sitter(
         fq_file = path.name
         funcs: list[dict[str, Any]] = []
 
-        def visit(node: Any, class_name: str | None = None) -> None:
+        def visit(
+            node: Any,
+            class_name: str | None = None,
+            _source: bytes = source,
+            _fq_file: str = fq_file,
+            _funcs: list[dict[str, Any]] = funcs,
+        ) -> None:
             t = node.type
             if t == "function_item":
-                _process_function(node, source, fq_file, class_name, funcs)
+                _process_function(node, _source, _fq_file, class_name, _funcs)
             elif t == "function_signature_item":
-                _process_function(node, source, fq_file, class_name, funcs)
+                _process_function(node, _source, _fq_file, class_name, _funcs)
             elif t in ("impl_item", "trait_item"):
                 # Determine the type name for impl/trait
                 type_name: str | None = None
                 for child in node.children:
                     if child.type in ("type_identifier",) and type_name is None:
-                        type_name = node_text(child, source)
+                        type_name = node_text(child, _source)
                 decl_list = child_of_type(node, "declaration_list")
                 if decl_list is not None:
                     for child in decl_list.children:
@@ -204,13 +211,17 @@ def _extract_with_tree_sitter(
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
     return extract_calls_with_tree_sitter(
-        path, "rust", _RUST_LANGUAGE,
+        path,
+        "rust",
+        _RUST_LANGUAGE,
         args_type="arguments",
         member_map={
             "field_expression": "field_identifier",
             "scoped_identifier": None,
         },
     )
+
+
 # ── Regex fallback ────────────────────────────────────────────────────────────
 
 _FUNC_RE = re.compile(
@@ -301,15 +312,7 @@ def _extract_with_regex(
                 }
             )
 
-    seen: set[str] = set()
-    unique: list[dict[str, Any]] = []
-    for sig in all_funcs:
-        if sig["fqname"] not in seen:
-            seen.add(sig["fqname"])
-            unique.append(sig)
-
-    unique.sort(key=lambda x: x["fqname"])
-    return unique
+    return dedupe_signatures_by_fqname(all_funcs)
 
 
 def _extract_calls_with_regex(path: Path) -> list[dict[str, Any]]:
@@ -383,10 +386,7 @@ class RustExtractor:
         singleton frozenset.  If ``|`` appears (e.g. in pattern matching
         contexts), each branch is returned as a separate member.
         """
-        s = type_str.strip()
-        if "|" in s:
-            return frozenset(p.strip() for p in s.split("|"))
-        return frozenset({s})
+        return split_pipe_union_members(type_str)
 
 
 # ── Self-registration ─────────────────────────

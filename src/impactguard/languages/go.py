@@ -24,14 +24,14 @@ from pathlib import Path
 from typing import Any
 
 from .lib.shared import (
-    _TREE_SITTER_AVAILABLE,
-    child_of_type,
+    dedupe_signatures_by_fqname,
     extract_calls_with_tree_sitter,
     has_ignore_comment,
     has_ignore_comment_fallback,
     make_parser,
     node_text,
     register_extractor,
+    split_pipe_union_members,
     warn_if_no_tree_sitter,
 )
 
@@ -162,6 +162,32 @@ def _process_function(
     )
 
 
+def _classify_method_child(child: Any, source: bytes, state: dict[str, Any]) -> None:
+    ct = child.type
+    if ct == "parameter_list":
+        if state["receiver_node"] is None and state["name"] is None:
+            state["receiver_node"] = child
+        elif len(state["params_nodes"]) == 0:
+            state["params_nodes"].append(child)
+        else:
+            state["result_node"] = child
+    elif ct == "field_identifier" and state["name"] is None:
+        state["name"] = node_text(child, source)
+    elif (
+        ct
+        in (
+            "type_identifier",
+            "pointer_type",
+            "map_type",
+            "slice_type",
+            "qualified_type",
+        )
+        and state["result_node"] is None
+    ):
+        if state["params_nodes"]:
+            state["result_node"] = child
+
+
 def _process_method(
     node: Any,
     source: bytes,
@@ -169,44 +195,29 @@ def _process_method(
     funcs: list[dict[str, Any]],
 ) -> None:
     """Extract a signature from a ``method_declaration`` node."""
-    receiver_node = None
-    name: str | None = None
-    params_nodes: list[Any] = []
-    result_node = None
-
+    state: dict[str, Any] = {
+        "receiver_node": None,
+        "name": None,
+        "params_nodes": [],
+        "result_node": None,
+    }
     for child in node.children:
-        if child.type == "parameter_list":
-            if receiver_node is None and name is None:
-                receiver_node = child
-            elif len(params_nodes) == 0:
-                params_nodes.append(child)
-            else:
-                result_node = child
-        elif child.type == "field_identifier" and name is None:
-            name = node_text(child, source)
-        elif (
-            child.type
-            in (
-                "type_identifier",
-                "pointer_type",
-                "map_type",
-                "slice_type",
-                "qualified_type",
-            )
-            and result_node is None
-        ):
-            if params_nodes:
-                result_node = child
+        _classify_method_child(child, source, state)
 
+    name = state["name"]
     if name is None:
         return
+
+    receiver_node = state["receiver_node"]
+    params_nodes = state["params_nodes"]
+    result_node = state["result_node"]
 
     receiver_type = _receiver_type(receiver_node, source) if receiver_node else None
     params_node = params_nodes[0] if params_nodes else None
     positional, has_vararg = _parse_parameter_list(params_node, source)
-    return_type: str | None = None
-    if result_node is not None:
-        return_type = node_text(result_node, source).strip()
+    return_type = (
+        node_text(result_node, source).strip() if result_node is not None else None
+    )
 
     if receiver_type:
         fqname = f"{fq_file}:{receiver_type}.{name}"
@@ -269,9 +280,13 @@ def _extract_with_tree_sitter(
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
     return extract_calls_with_tree_sitter(
-        path, "Go", _GO_LANGUAGE,
+        path,
+        "Go",
+        _GO_LANGUAGE,
         member_map={"selector_expression": "field_identifier"},
     )
+
+
 # ── Regex fallback ────────────────────────────────────────────────────────────
 
 _FUNC_RE = re.compile(
@@ -353,15 +368,7 @@ def _extract_with_regex(
                 }
             )
 
-    seen: set[str] = set()
-    unique: list[dict[str, Any]] = []
-    for sig in all_funcs:
-        if sig["fqname"] not in seen:
-            seen.add(sig["fqname"])
-            unique.append(sig)
-
-    unique.sort(key=lambda x: x["fqname"])
-    return unique
+    return dedupe_signatures_by_fqname(all_funcs)
 
 
 def _extract_calls_with_regex(path: Path) -> list[dict[str, Any]]:
@@ -435,10 +442,7 @@ class GoExtractor:
         Interface unions (``A | B``) introduced in Go 1.18 generics are handled
         by splitting on ``|``.
         """
-        s = type_str.strip()
-        if "|" in s:
-            return frozenset(p.strip() for p in s.split("|"))
-        return frozenset({s})
+        return split_pipe_union_members(type_str)
 
 
 # ── Self-registration ─────────────────────────────────

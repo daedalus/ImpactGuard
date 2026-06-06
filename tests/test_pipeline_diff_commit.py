@@ -201,6 +201,61 @@ class TestParseUnifiedDiff:
         result = _parse_unified_diff("")
         assert result == {}
 
+    def test_windows_absolute_path_in_diff_excluded(self):
+        from impactguard.pipeline import _parse_unified_diff
+
+        diff = textwrap.dedent(r"""\
+            --- a/C:\temp\evil.py
+            +++ b/C:\temp\evil.py
+            @@ -1 +1 @@
+            -def foo(): pass
+            +def foo(x): pass
+        """)
+        result = _parse_unified_diff(diff)
+        assert result == {}
+
+    def test_backslash_traversal_path_in_diff_excluded(self):
+        from impactguard.pipeline import _parse_unified_diff
+
+        diff = textwrap.dedent(r"""\
+            --- a/..\secrets.py
+            +++ b/..\secrets.py
+            @@ -1 +1 @@
+            -def foo(): pass
+            +def foo(x): pass
+        """)
+        result = _parse_unified_diff(diff)
+        assert result == {}
+
+    def test_unc_path_in_diff_excluded(self):
+        from impactguard.pipeline import _parse_unified_diff
+
+        diff = textwrap.dedent(r"""\
+            --- a/\\server\share\evil.py
+            +++ b/\\server\share\evil.py
+            @@ -1 +1 @@
+            -def foo(): pass
+            +def foo(x): pass
+        """)
+        result = _parse_unified_diff(diff)
+        assert result == {}
+
+    def test_null_byte_path_in_diff_excluded(self):
+        from impactguard.pipeline import _parse_unified_diff
+
+        bad_name = "foo\x00bar.py"
+        diff = textwrap.dedent(
+            f"""\
+            --- a/{bad_name}
+            +++ b/{bad_name}
+            @@ -1 +1 @@
+            -def foo(): pass
+            +def foo(x): pass
+        """
+        )
+        result = _parse_unified_diff(diff)
+        assert result == {}
+
 
 # ---------------------------------------------------------------------------
 # run_pipeline_diff
@@ -347,6 +402,13 @@ class TestRunPipelineCommit:
                     config=None,
                     suggest_patch=False,
                     show_patch=False,
+                    strict_extraction=False,
+                    max_parse_failures=0,
+                    max_skipped_files=0,
+                    max_call_extraction_failures=0,
+                    max_runtime_data_issues=0,
+                    block_unknown=False,
+                    require_runtime=False,
                 )
                 assert result == expected
 
@@ -415,6 +477,164 @@ class TestCliCheckCommit:
 
 
 # ---------------------------------------------------------------------------
+# Multi-hunk diff regression
+# ---------------------------------------------------------------------------
+
+
+class TestMultiHunkRegression:
+    """Multi-hunk diffs produce incomplete files — regression tests."""
+
+    def test_multi_hunk_reconstruction_incomplete(self):
+        """Default-context diff reconstruction drops lines between hunks."""
+        from impactguard.pipeline import _parse_unified_diff
+
+        old_lines = [f"x = {i}" for i in range(40)]
+        new_lines = [
+            f"x = {i + 100}" if i in (3, 25) else f"x = {i}" for i in range(40)
+        ]
+        old_src = "\n".join(old_lines) + "\n"
+        new_src = "\n".join(new_lines) + "\n"
+
+        diff = _make_unified_diff(old_src, new_src)
+
+        result = _parse_unified_diff(diff)
+        assert "module.py" in result
+        old_reconstructed, new_reconstructed = result["module.py"]
+
+        old_lines_reconstructed = old_reconstructed.splitlines()
+        new_lines_reconstructed = new_reconstructed.splitlines()
+
+        assert len(old_lines_reconstructed) < 40, (
+            f"Expected < 40 lines, got {len(old_lines_reconstructed)}"
+        )
+        assert len(new_lines_reconstructed) < 40, (
+            f"Expected < 40 lines, got {len(new_lines_reconstructed)}"
+        )
+
+        # Verify specific lines between hunks are missing
+        context = 3
+        hunk1_end = context + context  # first change at index 3 + 3 ctx = 6
+        hunk2_start = 25 - context  # second change at index 25 - 3 ctx = 22
+        for i in range(hunk1_end + 1, hunk2_start):
+            expected = f"x = {i}"
+            assert expected not in old_lines_reconstructed, (
+                f"Line {i} should be missing from reconstructed old content"
+            )
+            assert expected not in new_lines_reconstructed, (
+                f"Line {i} should be missing from reconstructed new content"
+            )
+
+    def test_run_pipeline_diff_content_reconstructed_differs_from_original(self):
+        """Reconstructed files differ from originals for multi-hunk diffs.
+
+        This is the root cause: the diff-pipe approach produces files that
+        do NOT match the original source, leading to incorrect API analysis.
+        """
+        from impactguard.pipeline import run_pipeline_diff_content
+
+        old_lines = [f"x = {i}" for i in range(40)]
+        new_lines = [
+            f"x = {i + 100}" if i in (3, 25) else f"x = {i}" for i in range(40)
+        ]
+        old_src = "\n".join(old_lines) + "\n"
+        new_src = "\n".join(new_lines) + "\n"
+
+        diff = _make_unified_diff(old_src, new_src)
+
+        result = run_pipeline_diff_content(diff)
+
+        # The pipeline should still have run (risk/comparison may be empty
+        # because the reconstructed files are syntactically valid for this
+        # simple case, just semantically wrong).
+        assert isinstance(result, dict)
+        assert "comparison" in result or "signatures" in result
+
+        # Verify the reconstructed files differ from originals by checking
+        # that at least one signature is reported — but the key regression
+        # is that reconstruction from multi-hunk diffs is lossy.
+        sigs = result.get("signatures", {})
+        assert sigs, (
+            "Expected signatures to be extracted; if parse errors occurred "
+            "they indicate the reconstruction produced broken files."
+        )
+
+    def test_multi_hunk_with_parse_breaking_content(self, caplog):
+        """Multi-hunk diff can produce unparseable files when structure is lost."""
+        from impactguard.pipeline import run_pipeline_diff_content
+
+        caplog.set_level(0)  # capture all log levels
+
+        # File with a change inside a multi-line dict literal and another
+        # change far away — missing intervening lines breaks the `{`..`}`.
+        old = textwrap.dedent("""\
+            DATA = {
+                \"key1\": \"old\",
+                \"key2\": \"v2\",
+                \"key3\": \"v3\",
+                \"key4\": \"v4\",
+                \"key5\": \"v5\",
+                \"key6\": \"v6\",
+                \"key7\": \"v7\",
+                \"key8\": \"v8\",
+                \"key9\": \"v9\",
+                \"key10\": \"v10\",
+            }
+
+            def process():
+                return DATA
+
+            def unused():
+                return \"old\"
+        """)
+        new = textwrap.dedent("""\
+            DATA = {
+                \"key1\": \"new\",
+                \"key2\": \"v2\",
+                \"key3\": \"v3\",
+                \"key4\": \"v4\",
+                \"key5\": \"v5\",
+                \"key6\": \"v6\",
+                \"key7\": \"v7\",
+                \"key8\": \"v8\",
+                \"key9\": \"v9\",
+                \"key10\": \"v10\",
+            }
+
+            def process():
+                return DATA
+
+            def unused():
+                return \"new\"
+        """)
+
+        diff = _make_unified_diff(old, new)
+
+        result = run_pipeline_diff_content(diff)
+
+        # Pipeline gracefully completes but the reconstructed files are
+        # unparseable — verify via log messages since the parse_failures
+        # counter is only incremented for whole-batch extraction failures.
+        assert "due to parse error" in caplog.text, (
+            "Expected 'due to parse error' in logs when reconstructed files "
+            "lose structural content across hunks"
+        )
+
+        # Both old and new reconstructions should fail to parse.
+        assert caplog.text.count("due to parse error") >= 2
+
+        # No signatures should be extracted from unparseable files.
+        sigs = result.get("signatures", {})
+        old_sigs = (sigs or {}).get("old", [])
+        new_sigs = (sigs or {}).get("new", [])
+        assert len(old_sigs) == 0, (
+            "Expected 0 old signatures (file is unparseable after reconstruction)"
+        )
+        assert len(new_sigs) == 0, (
+            "Expected 0 new signatures (file is unparseable after reconstruction)"
+        )
+
+
+# ---------------------------------------------------------------------------
 # run_pipeline_diff_content (new in-memory / pipe variant)
 # ---------------------------------------------------------------------------
 
@@ -462,6 +682,16 @@ class TestRunPipelineDiffContent:
 
         with pytest.raises(ValueError, match="No supported file changes found"):
             run_pipeline_diff_content("")
+
+    def test_strict_extraction_raises_on_parse_error(self):
+        from impactguard.pipeline import run_pipeline_diff_content
+
+        old_src = "def foo(x):\n    return x\n"
+        new_src = "def foo(\n    return 1\n"
+        diff_text = _make_unified_diff(old_src, new_src)
+
+        with pytest.raises(RuntimeError):
+            run_pipeline_diff_content(diff_text, strict_extraction=True)
 
     def test_output_dir_is_respected(self, tmp_path):
         from impactguard.pipeline import run_pipeline_diff_content
@@ -629,6 +859,35 @@ class TestMultiLanguageDiff:
 
         sigs = _extract_by_language([str(md_file), str(make_file)])
         assert sigs == []
+
+    def test_extract_by_language_reports_skips(self, tmp_path):
+        """_extract_by_language can emit structured skip counters/events."""
+        from impactguard.pipeline import _extract_by_language
+
+        md_file = tmp_path / "README.md"
+        md_file.write_text("# title\n")
+        stats: dict[str, int] = {"skipped_files": 0}
+        events: list[dict[str, str]] = []
+
+        sigs = _extract_by_language([str(md_file)], stats=stats, events=events)
+        assert sigs == []
+        assert stats["skipped_files"] == 1
+        assert events
+        assert events[0]["kind"] == "unsupported_file"
+
+    def test_summarize_files_no_truncation(self):
+        from impactguard.pipeline import _summarize_files
+
+        files = [f"f{i}.py" for i in range(3)]
+        assert _summarize_files(files) == "f0.py,f1.py,f2.py"
+
+    def test_summarize_files_truncation(self):
+        from impactguard.pipeline import _summarize_files
+
+        files = [f"f{i}.py" for i in range(7)]
+        summary = _summarize_files(files)
+        assert summary.startswith("f0.py,f1.py,f2.py,f3.py,f4.py")
+        assert "(+2 more)" in summary
 
 
 # ---------------------------------------------------------------------------

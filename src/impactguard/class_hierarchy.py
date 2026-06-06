@@ -10,6 +10,8 @@ import ast
 from pathlib import Path
 from typing import Any
 
+from ._ast_cache import cached_ast_parse, cached_read_text
+
 # ── Data structures ───────────────────────────────────────────────────────────
 
 # {class_name: {"bases": [str, ...], "file": str,
@@ -28,7 +30,7 @@ def _base_names(bases: list[ast.expr]) -> list[str]:
     for base in bases:
         try:
             names.append(ast.unparse(base))
-        except Exception:
+        except (RecursionError, ValueError):
             pass
     return names
 
@@ -65,8 +67,8 @@ def extract_class_hierarchy(files: list[str]) -> Hierarchy:
     for file_path in files:
         path = Path(file_path)
         try:
-            tree = ast.parse(path.read_text())
-        except Exception:
+            tree = cached_ast_parse(cached_read_text(path))
+        except (SyntaxError, OSError, UnicodeDecodeError):
             continue
 
         for node in ast.walk(tree):

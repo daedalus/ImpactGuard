@@ -25,13 +25,14 @@ from pathlib import Path
 from typing import Any
 
 from .lib.shared import (
-    _TREE_SITTER_AVAILABLE,
     child_of_type,
+    dedupe_signatures_by_fqname,
     extract_calls_with_tree_sitter,
     has_ignore_comment_fallback,
     make_parser,
     node_text,
     register_extractor,
+    split_pipe_union_members,
     warn_if_no_tree_sitter,
 )
 
@@ -531,10 +532,14 @@ def _extract_with_tree_sitter(
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
     return extract_calls_with_tree_sitter(
-        path, "typescript", _TS_LANGUAGE,
+        path,
+        "typescript",
+        _TS_LANGUAGE,
         args_type="arguments",
         member_map={"member_expression": "property_identifier"},
     )
+
+
 # ── Regex fallback ────────────────────────────────────────────────────────────
 
 # Matches: (export )? (async )? function name<...>?(params): returntype
@@ -605,35 +610,27 @@ def _parse_ts_params_regex(params_str: str) -> tuple[list[dict[str, Any]], bool]
     return positional, has_vararg
 
 
+_OPEN_BRACKETS = frozenset({"<", "(", "["})
+_CLOSE_BRACKETS = {">": "<", ")": "(", "]": "["}
+
+
 def _top_level_split(s: str) -> list[str]:
     """Split *s* on commas that are not inside ``<>``, ``()``, or ``[]``.
 
     Tracks each bracket type independently so that ``>`` in ``=>`` is never
     mistaken for a closing angle-bracket when no ``<`` is open.
     """
+    stack: list[str] = []
     parts: list[str] = []
-    angle = paren = square = 0
     current: list[str] = []
     for ch in s:
-        if ch == "<":
-            angle += 1
+        if ch in _OPEN_BRACKETS:
+            stack.append(ch)
             current.append(ch)
-        elif ch == ">" and angle > 0:
-            angle -= 1
+        elif ch in _CLOSE_BRACKETS and stack and stack[-1] == _CLOSE_BRACKETS[ch]:
+            stack.pop()
             current.append(ch)
-        elif ch == "(":
-            paren += 1
-            current.append(ch)
-        elif ch == ")" and paren > 0:
-            paren -= 1
-            current.append(ch)
-        elif ch == "[":
-            square += 1
-            current.append(ch)
-        elif ch == "]" and square > 0:
-            square -= 1
-            current.append(ch)
-        elif ch == "," and angle == 0 and paren == 0 and square == 0:
+        elif ch == "," and not stack:
             parts.append("".join(current))
             current = []
         else:
@@ -700,15 +697,7 @@ def _extract_with_regex(
                 )
 
     # De-duplicate by fqname (regex patterns may overlap for some forms)
-    seen: set[str] = set()
-    unique: list[dict[str, Any]] = []
-    for sig in all_funcs:
-        if sig["fqname"] not in seen:
-            seen.add(sig["fqname"])
-            unique.append(sig)
-
-    unique.sort(key=lambda x: x["fqname"])
-    return unique
+    return dedupe_signatures_by_fqname(all_funcs)
 
 
 def _extract_calls_with_regex(path: Path) -> list[dict[str, Any]]:
@@ -781,10 +770,7 @@ class TypeScriptExtractor:
         Handles ``X | Y | null | undefined`` syntax.  Each member is
         returned as-is (whitespace-stripped).
         """
-        s = type_str.strip()
-        if "|" in s:
-            return frozenset(p.strip() for p in s.split("|"))
-        return frozenset({s})
+        return split_pipe_union_members(type_str)
 
 
 # ── Self-registration ─────────────────────────

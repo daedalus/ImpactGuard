@@ -6,7 +6,9 @@ ImpactGuard - Lightweight API impact analyzer for Python projects.
 Track function signatures, detect breaking changes, and analyze call-site impact
 using static and runtime techniques.
 """
+from ._logging import configure_logging, get_logger
 from .analyze_module import analyze as analyze_module
+from .cache import BloomFilter, Cache, get_cache, get_cache_metrics_snapshot, reset_cache_metrics
 from .analyze_module import analyze_calls
 from .baseline import (
     baseline_exists,
@@ -27,6 +29,7 @@ from .class_hierarchy import (
 from .compare_signatures import compare, load
 from .config import get as get_config_value
 from .config import get_config, load_config, reload_config, validate_config
+from .constraint_check import check_subsumption, classify_type_change
 from .cst_patch import patch_call, patch_function
 from .enforce_gate import enforce, enforce_report
 from .extract_signatures import extract, extract_reexports, serialize_function
@@ -38,6 +41,12 @@ from .feedback import (
 )
 from .feedback import (
     get_stats as get_feedback_stats,
+)
+from .fix_generation import (
+    apply_safe_fixes,
+    build_change_events,
+    enrich_risk_with_fix_candidates,
+    generate_fix_candidates,
 )
 from .generate_report import (
     generate_html,
@@ -88,6 +97,15 @@ from .risk_model import (
     exposure,
     get_severity,
 )
+from .runtime_intelligence import (
+    canonical_runtime_name,
+    load_runtime_observations,
+    normalize_runtime_payload,
+)
+from .sarif import (
+    generate_sarif,
+    generate_sarif_from_file,
+)
 from .schema import (
     validate,
     validate_risk_report,
@@ -98,6 +116,11 @@ from .schema import (
 )
 from .schema import (
     validate_signatures as validate_signatures_data,
+)
+from .semantic_analysis import (
+    SEMANTIC_SEVERITY,
+    analyze_behavior,
+    compare_behavior,
 )
 from .semver import format_semver_recommendation, suggest_semver
 from .suggest_fixes import enrich_with_fixes, get_line, suggest
@@ -124,7 +147,6 @@ def extract_signatures(files: list[str]) -> list[dict[str, Any]]:
     return extract(files)
 
 
-
 def analyze_impact(
     sigs_path: str, calls_path: str, runtime_path: str | None = None
 ) -> list[dict[str, Any]]:
@@ -141,7 +163,7 @@ def analyze_impact(
     return analyze(sigs_path, calls_path, runtime_path)
 
 
-__version__ = "0.1.3"
+__version__ = "0.1.16"
 
 __all__ = [
     # Signature extraction
@@ -164,6 +186,9 @@ __all__ = [
     "confidence",
     "classify",
     "compute_risk",
+    "canonical_runtime_name",
+    "normalize_runtime_payload",
+    "load_runtime_observations",
     # Patch confidence
     "compute_confidence",
     "classify_patch",
@@ -177,6 +202,8 @@ __all__ = [
     "generate_html_from_file",
     "generate_markdown",
     "generate_markdown_from_file",
+    "generate_sarif",
+    "generate_sarif_from_file",
     "enforce",
     "enforce_report",
     # CST patches
@@ -201,10 +228,14 @@ __all__ = [
     "run_pipeline_diff_content",
     "run_pipeline_commit",
     "ImpactGuard",
+    # Formal / constraint checking
+    "check_subsumption",
+    "classify_type_change",
     # Config
     "get_config",
     "load_config",
     "reload_config",
+    "validate_config",
     "get_config_value",
     # Semver
     "suggest_semver",
@@ -236,6 +267,11 @@ __all__ = [
     "get_feedback_stats",
     "compute_calibrated_weights",
     "apply_weights_to_config",
+    # Fix generation
+    "build_change_events",
+    "generate_fix_candidates",
+    "enrich_risk_with_fix_candidates",
+    "apply_safe_fixes",
     # KPI dashboard
     "compute_kpis",
     "format_kpi_text",
@@ -251,4 +287,17 @@ __all__ = [
     "extract_calls",
     "analyze_module",
     "analyze_impact",
+    # Semantic behavior analysis
+    "analyze_behavior",
+    "compare_behavior",
+    "SEMANTIC_SEVERITY",
+    # Cache
+    "Cache",
+    "BloomFilter",
+    "get_cache",
+    "get_cache_metrics_snapshot",
+    "reset_cache_metrics",
+    # Logging
+    "get_logger",
+    "configure_logging",
 ]

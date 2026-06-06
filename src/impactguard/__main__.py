@@ -16,11 +16,12 @@ def cmd_extract(args: argparse.Namespace) -> int:
     Supports all registered languages (Python, TypeScript, …).  Language is
     detected from the file extension unless ``--language`` is specified.
     """
-    files = (
-        args.files
-        if args.files
-        else [f for f in sys.stdin.read().splitlines() if f.strip()]
-    )
+    if args.files:
+        files = args.files
+    elif not sys.stdin.isatty():
+        files = [f for f in sys.stdin.read().splitlines() if f.strip()]
+    else:
+        files = []
 
     if not files:
         print("Error: No input files provided", file=sys.stderr)
@@ -92,7 +93,11 @@ def cmd_compare(args: argparse.Namespace) -> int:
 
     if use_json:
         # JSON mode: compare two JSON files directly (original behavior)
-        result = compare(args.old, args.new)
+        try:
+            result = compare(args.old, args.new)
+        except (OSError, ValueError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
     else:
         # Source mode: extract signatures from source files, then compare
         from .languages.lib.registry import get_extractor
@@ -135,6 +140,8 @@ def cmd_compare(args: argparse.Namespace) -> int:
 
     print(f"Breaking changes: {len(result['breaking'])}")
     print(f"Non-breaking changes: {len(result['nonbreaking'])}")
+    for item in result.get("breaking", []):
+        print(f"  \u26a0 {item}")
 
     if args.output:
         with open(args.output, "w") as f:
@@ -147,7 +154,11 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     """Analyze impact of signature changes on call sites."""
     from .impact_analysis import analyze
 
-    result = analyze(args.signatures, args.calls, args.runtime)
+    try:
+        result = analyze(args.signatures, args.calls, args.runtime)
+    except (OSError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
     print(json.dumps(result, indent=2))
     return 0
 
@@ -165,7 +176,14 @@ def cmd_risk(args: argparse.Namespace) -> "int | list[dict[str, Any]]":
 
     if pipe:
         if not sys.stdin.isatty():
-            diff_text = sys.stdin.read()
+            try:
+                diff_text = sys.stdin.read()
+            except UnicodeDecodeError:
+                print(
+                    "Error: --pipe received binary data; expected text diff.",
+                    file=sys.stderr,
+                )
+                return 1
         else:
             print("Error: --pipe requires data on stdin", file=sys.stderr)
             return 1
@@ -182,7 +200,7 @@ def cmd_risk(args: argparse.Namespace) -> "int | list[dict[str, Any]]":
 
     try:
         return risk_main(
-            diff_path, args.runtime, args.output, lambda_=getattr(args, "lam", 1.0)
+            diff_path, args.runtime, args.output, lambda_=getattr(args, "lambda_factor", 1.0)
         )
     finally:
         if _tmp_path is not None:
@@ -196,7 +214,11 @@ def cmd_report(args: argparse.Namespace) -> int:
     """Generate HTML report from risk JSON."""
     from .generate_report import generate_main as report_main
 
-    report_main(args.report, args.output)
+    try:
+        report_main(args.report, args.output)
+    except (OSError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
     return 0
 
 
@@ -213,7 +235,14 @@ def cmd_enforce(args: argparse.Namespace) -> int:
 
     if pipe:
         if not sys.stdin.isatty():
-            diff_text = sys.stdin.read()
+            try:
+                diff_text = sys.stdin.read()
+            except UnicodeDecodeError:
+                print(
+                    "Error: --pipe received binary data; expected text diff.",
+                    file=sys.stderr,
+                )
+                return 1
         else:
             print("Error: --pipe requires data on stdin", file=sys.stderr)
             return 1
@@ -230,14 +259,14 @@ def cmd_enforce(args: argparse.Namespace) -> int:
         return 1
 
     block_unknown: bool | None = getattr(args, "block_unknown", None) or None
-    lam: float = getattr(args, "lam", 1.0)
+    lambda_factor: float = getattr(args, "lambda_factor", 1.0)
     try:
         return enforce(
             diff_path,
             args.runtime,
             getattr(args, "output", None),
             block_unknown=block_unknown,
-            lambda_=lam,
+            lambda_=lambda_factor,
         )
     finally:
         if _tmp_path is not None:
@@ -253,11 +282,12 @@ def cmd_extract_calls(args: argparse.Namespace) -> int:
     Supports all registered languages (Python, TypeScript, …).  Language is
     detected from the file extension unless ``--language`` is specified.
     """
-    files = (
-        args.files
-        if args.files
-        else [f for f in sys.stdin.read().splitlines() if f.strip()]
-    )
+    if args.files:
+        files = args.files
+    elif not sys.stdin.isatty():
+        files = [f for f in sys.stdin.read().splitlines() if f.strip()]
+    else:
+        files = []
 
     if not files:
         print("Error: No input files provided", file=sys.stderr)
@@ -286,7 +316,6 @@ def cmd_extract_calls(args: argparse.Namespace) -> int:
 
     print(json.dumps(all_calls, indent=2))
     return 0
-
 
 
 # Whitelist of allowed modules for tracing - used by cmd_trace
@@ -353,6 +382,8 @@ def cmd_check(args: argparse.Namespace) -> int:
     watch: bool = getattr(args, "watch", False)
     suggest_patch: bool = getattr(args, "suggest_patch", False)
     show_patch: bool = getattr(args, "show_patch", False)
+    generate_fixes: bool = not bool(getattr(args, "no_generate_fixes", False))
+    apply_safe_fixes: bool = bool(getattr(args, "apply_safe_fixes", False))
 
     def _run_once() -> int:
         print(f"Checking impact: {args.old} → {args.new}")
@@ -363,27 +394,19 @@ def cmd_check(args: argparse.Namespace) -> int:
                 args.runtime,
                 suggest_patch=suggest_patch,
                 show_patch=show_patch,
+                generate_fixes=generate_fixes,
+                apply_safe_fixes=apply_safe_fixes,
             )
+            comparison = result.get("comparison", {})
             print("\n=== Comparison ===")
-            print(
-                f"Breaking changes: {len(result.get('comparison', {}).get('breaking', []))}"
-            )
-            print(
-                f"Non-breaking changes: {len(result.get('comparison', {}).get('nonbreaking', []))}"
-            )
+            print(f"Breaking changes: {len(comparison.get('breaking', []))}")
+            print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
+            _print_breaking_details(comparison)
 
             if "semver" in result:
-                sv = result["semver"]
-                print("\n=== Semver Recommendation ===")
-                print(
-                    f"Bump: {sv.get('bump', 'patch').upper()}  — {sv.get('reason', '')}"
-                )
+                _print_semver(result["semver"])
 
-            if "risk" in result:
-                risk_items = result["risk"]
-                high = sum(1 for r in risk_items if r.get("risk") == "HIGH")
-                print("\n=== Risk Analysis ===")
-                print(f"HIGH risk: {high}")
+            _print_risk_analysis(result)
 
             if "report_html" in result:
                 output = args.output or "impact_report.html"
@@ -391,22 +414,14 @@ def cmd_check(args: argparse.Namespace) -> int:
                     f.write(result["report_html"])
                 print(f"\nReport written to {output}")
 
-            if "fixes" in result:
-                fixes = result["fixes"]
-                if fixes:
-                    print(f"\n=== Suggested Fixes ({len(fixes)}) ===")
-                    for fix in fixes[:5]:
-                        print(f"  - {fix}")
+            sarif_path = getattr(args, "report_sarif", None)
+            if sarif_path:
+                _write_sarif_output(result, sarif_path)
 
-            if suggest_patch and "patches" in result:
-                patches = result["patches"]
-                if patches:
-                    print(f"\n=== Generated Patches ({len(patches)}) ===")
-                    for func_name, patch_info in patches.items():
-                        print(
-                            f"  - {func_name}: {patch_info.get('type', 'unknown')} patch"
-                        )
-                        print(f"    File: {patch_info.get('file', '')}")
+            _print_fixes(result)
+
+            if suggest_patch:
+                _print_patches(result)
 
             return 0
         except Exception as e:
@@ -456,12 +471,162 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def _write_sarif_output(result: dict[str, Any], sarif_path: str) -> None:
+    """Write SARIF report from pipeline result if risk data is available."""
+    risk_data = result.get("risk")
+    if not risk_data:
+        return
+    import json
+
+    from .sarif import generate_sarif
+
+    sarif = generate_sarif(risk_data)
+    with open(sarif_path, "w") as f:
+        json.dump(sarif, f, indent=2)
+    print(f"SARIF report written to {sarif_path}")
+
+
+def _print_breaking_details(comparison: dict[str, Any]) -> None:
+    """Print breaking and non-breaking change items with clear separation."""
+    breaking = comparison.get("breaking", [])
+    nonbreaking = comparison.get("nonbreaking", [])
+    if breaking:
+        print("  Breaking:")
+        for item in breaking:
+            print(f"    \u26a0 {item}")
+    if nonbreaking:
+        print("  Non-breaking:")
+        for item in nonbreaking:
+            print(f"    \u2795 {item}")
+
+
+def _print_semver(semver: dict[str, Any]) -> None:
+    bump = semver.get("bump", "patch").upper()
+    reason = semver.get("reason", "")
+    print("\n=== Semver Recommendation ===")
+    print(f"Bump: {bump}  — {reason}")
+
+
+def _print_risk_analysis(result: dict[str, Any]) -> None:
+    risk_items = result.get("risk")
+    if not risk_items:
+        return
+    high = sum(1 for r in risk_items if r.get("risk") == "HIGH")
+    med = sum(1 for r in risk_items if r.get("risk") == "MEDIUM")
+    low = sum(1 for r in risk_items if r.get("risk") == "LOW")
+    unk = sum(1 for r in risk_items if r.get("risk") == "UNKNOWN")
+    print("\n=== Risk Analysis ===")
+    print(f"HIGH: {high}   MEDIUM: {med}   LOW: {low}   UNKNOWN: {unk}")
+    for item in risk_items:
+        if item.get("risk") in ("HIGH", "UNKNOWN"):
+            func = item.get("function", "?")
+            change = item.get("raw_change") or item.get("change", "?")
+            print(f"  \u26a0 [{item['risk']}] {func} — {change}")
+
+
+def _print_fixes(result: dict[str, Any]) -> None:
+    fixes = result.get("fixes")
+    if not fixes:
+        return
+    print(f"\n=== Suggested Fixes ({len(fixes)}) ===")
+    for fix in fixes[:5]:
+        print(f"  - {fix}")
+
+
+def _print_patches(result: dict[str, Any]) -> None:
+    patches = result.get("patches")
+    if not patches:
+        return
+    print(f"\n=== Generated Patches ({len(patches)}) ===")
+    for func_name, patch_info in patches.items():
+        print(f"  - {func_name}: {patch_info.get('type', 'unknown')} patch")
+        print(f"    File: {patch_info.get('file', '')}")
+
+
+def _print_analysis_status(result: dict[str, Any]) -> None:
+    status = result.get("analysis_status")
+    if not status:
+        return
+    counters = status.get("counters", {})
+    print("\n=== Analysis Status ===")
+    print(f"Status: {status.get('status', 'unknown').upper()}")
+    print(
+        "Counters: "
+        f"parse_failures={counters.get('parse_failures', 0)}, "
+        f"skipped_files={counters.get('skipped_files', 0)}, "
+        f"fallback_used={counters.get('fallback_used', 0)}, "
+        f"call_extraction_failures={counters.get('call_extraction_failures', 0)}, "
+        f"runtime_data_issues={counters.get('runtime_data_issues', 0)}"
+    )
+    runtime = status.get("runtime", {})
+    if runtime:
+        print(f"Runtime state: {runtime.get('state', 'unknown')}")
+
+
+def _print_gate_summary(result: dict[str, Any]) -> None:
+    gate = result.get("gate")
+    if not gate:
+        return
+    print("\n=== Gate Summary ===")
+    print(f"Blocked: {str(gate.get('blocked', False)).lower()}")
+    reasons = gate.get("reasons", [])
+    if not reasons:
+        return
+    print("Reasons:")
+    for reason in reasons:
+        print(f"  - {reason}")
+
+
+def _print_check_result(
+    result: dict[str, Any], args: argparse.Namespace, suggest_patch: bool
+) -> None:
+    comparison = result.get("comparison", {})
+    print("\n=== Comparison ===")
+    print(f"Breaking changes: {len(comparison.get('breaking', []))}")
+    print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
+    _print_breaking_details(comparison)
+
+    _print_risk_analysis(result)
+    _print_analysis_status(result)
+    _print_gate_summary(result)
+
+    if "report_html" in result and args.output:
+        print(f"\nReport written to {args.output}")
+
+    sarif_path = getattr(args, "report_sarif", None)
+    if sarif_path:
+        _write_sarif_output(result, sarif_path)
+
+    if suggest_patch:
+        _print_patches(result)
+
+
 def cmd_check_commits(args: argparse.Namespace) -> int:
     """Run ImpactGuard pipeline comparing two git commits."""
     from .pipeline import run_pipeline_git
 
     suggest_patch: bool = getattr(args, "suggest_patch", False)
-    print(f"Checking impact: {args.old_ref} → {args.new_ref}")
+    strict_extraction: bool = getattr(args, "strict_extraction", False)
+    enforce_gate: bool = getattr(args, "enforce_gate", False)
+    block_unknown: bool = getattr(args, "block_unknown", False)
+    require_runtime: bool = getattr(args, "require_runtime", False)
+    generate_fixes: bool = not bool(getattr(args, "no_generate_fixes", False))
+    apply_safe_fixes: bool = bool(getattr(args, "apply_safe_fixes", False))
+
+    max_parse_failures: int = getattr(args, "max_parse_failures", 0)
+    max_skipped_files: int = getattr(args, "max_skipped_files", 0)
+    max_call_extraction_failures: int = getattr(args, "max_call_extraction_failures", 0)
+    max_runtime_data_issues: int = getattr(args, "max_runtime_data_issues", 0)
+
+    if getattr(args, "strict_analysis", False):
+        strict_extraction = True
+        enforce_gate = True
+        max_parse_failures = 0
+        max_skipped_files = 0
+        max_call_extraction_failures = 0
+        max_runtime_data_issues = 0
+
+    print(f"Checking impact: {args.old_ref} \u2192 {args.new_ref}")
 
     try:
         result = run_pipeline_git(
@@ -471,94 +636,119 @@ def cmd_check_commits(args: argparse.Namespace) -> int:
             runtime_path=args.runtime,
             output_path=args.output,
             suggest_patch=suggest_patch,
+            generate_fixes=generate_fixes,
+            apply_safe_fixes=apply_safe_fixes,
+            strict_extraction=strict_extraction,
+            max_parse_failures=max_parse_failures,
+            max_skipped_files=max_skipped_files,
+            max_call_extraction_failures=max_call_extraction_failures,
+            max_runtime_data_issues=max_runtime_data_issues,
+            block_unknown=block_unknown,
+            require_runtime=require_runtime,
         )
 
-        print("\n=== Comparison ===")
-        comparison = result.get("comparison", {})
-        print(f"Breaking changes: {len(comparison.get('breaking', []))}")
-        print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
+        _print_check_result(result, args, suggest_patch)
 
-        if "risk" in result:
-            risk_items = result["risk"]
-            high = sum(1 for r in risk_items if r.get("risk") == "HIGH")
-            print("\n=== Risk Analysis ===")
-            print(f"HIGH risk: {high}")
+        sarif_path = getattr(args, "report_sarif", None)
+        if sarif_path:
+            _write_sarif_output(result, sarif_path)
 
-        if "report_html" in result and args.output:
-            print(f"\nReport written to {args.output}")
-
-        if suggest_patch and "patches" in result:
-            patches = result["patches"]
-            if patches:
-                print(f"\n=== Generated Patches ({len(patches)}) ===")
-                for func_name, patch_info in patches.items():
-                    print(f"  - {func_name}: {patch_info.get('type', 'unknown')} patch")
-                    print(f"    File: {patch_info.get('file', '')}")
-
+        if enforce_gate:
+            gate = result.get("gate", {})
+            return 1 if gate.get("blocked", False) else 0
         return 0
     except Exception as e:
         print(f"Error: {e}")
         return 1
 
 
-def cmd_check_diff(args: argparse.Namespace) -> int:
-    """Run ImpactGuard pipeline on a unified diff / patch file."""
-    from .pipeline import run_pipeline_diff, run_pipeline_diff_content
+def _run_diff_pipe(
+    args: argparse.Namespace,
+    suggest_patch: bool,
+    show_patch: bool,
+    strict_extraction: bool,
+) -> dict[str, Any] | None:
+    from .pipeline import run_pipeline_diff_content
 
-    pipe: bool = getattr(args, "pipe", False)
-    diff_path: str | None = getattr(args, "diff", None)
-    suggest_patch: bool = getattr(args, "suggest_patch", False)
-    show_patch: bool = getattr(args, "show_patch", False)
+    if sys.stdin.isatty():
+        print("Error: --pipe requires data on stdin", file=sys.stderr)
+        return None
+    try:
+        diff_text = sys.stdin.read()
+    except UnicodeDecodeError:
+        print(
+            "Error: --pipe received binary data; expected text diff.", file=sys.stderr
+        )
+        return None
+    print("Analyzing diff from stdin")
+    try:
+        return run_pipeline_diff_content(
+            diff_text=diff_text,
+            runtime_path=getattr(args, "runtime", None),
+            output_dir=getattr(args, "output", None),
+            suggest_patch=suggest_patch,
+            show_patch=show_patch,
+            generate_fixes=not bool(getattr(args, "no_generate_fixes", False)),
+            apply_safe_fixes=bool(getattr(args, "apply_safe_fixes", False)),
+            strict_extraction=strict_extraction,
+        )
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return None
 
-    if pipe:
-        if not sys.stdin.isatty():
-            diff_text = sys.stdin.read()
-        else:
-            print("Error: --pipe requires data on stdin", file=sys.stderr)
-            return 1
-        print("Analyzing diff from stdin")
-        try:
-            result = run_pipeline_diff_content(
-                diff_text=diff_text,
-                runtime_path=getattr(args, "runtime", None),
-                output_dir=getattr(args, "output", None),
-                suggest_patch=suggest_patch,
-                show_patch=show_patch,
-            )
-        except ValueError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            return 1
-    else:
-        if not diff_path:
-            print("Error: provide a diff path or use --pipe", file=sys.stderr)
-            return 1
-        print(f"Analyzing diff: {diff_path}")
-        try:
-            result = run_pipeline_diff(
-                diff_path=diff_path,
-                runtime_path=getattr(args, "runtime", None),
-                output_dir=getattr(args, "output", None),
-                suggest_patch=suggest_patch,
-            )
-        except (FileNotFoundError, ValueError) as e:
-            print(f"Error: {e}", file=sys.stderr)
-            return 1
 
-    print("\n=== Comparison ===")
+def _run_diff_file(
+    args: argparse.Namespace, strict_extraction: bool
+) -> dict[str, Any] | None:
+    from .pipeline import run_pipeline_diff
+
+    diff_path = getattr(args, "diff", None)
+    if not diff_path:
+        print("Error: provide a diff path or use --pipe", file=sys.stderr)
+        return None
+    print(f"Analyzing diff: {diff_path}")
+    try:
+        return run_pipeline_diff(
+            diff_path=diff_path,
+            runtime_path=getattr(args, "runtime", None),
+            output_dir=getattr(args, "output", None),
+            suggest_patch=getattr(args, "suggest_patch", False),
+            generate_fixes=not bool(getattr(args, "no_generate_fixes", False)),
+            apply_safe_fixes=bool(getattr(args, "apply_safe_fixes", False)),
+            strict_extraction=strict_extraction,
+        )
+    except (FileNotFoundError, ValueError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return None
+
+
+def _print_diff_result(
+    result: dict[str, Any], args: argparse.Namespace, suggest_patch: bool
+) -> None:
     comparison = result.get("comparison", {})
+    print("\n=== Comparison ===")
     print(f"Breaking changes: {len(comparison.get('breaking', []))}")
     print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
+    _print_breaking_details(comparison)
 
     if "semver" in result:
         sv = result["semver"]
         print("\n=== Semver Recommendation ===")
-        print(f"Bump: {sv.get('bump', 'patch').upper()}  — {sv.get('reason', '')}")
+        print(f"Bump: {sv.get('bump', 'patch').upper()}  \u2014 {sv.get('reason', '')}")
 
-    if "risk" in result:
-        risk_items = result["risk"]
-        high = sum(1 for r in risk_items if r.get("risk") == "HIGH")
-        print("\n=== Risk Analysis ===")
-        print(f"HIGH risk: {high}")
+    _print_risk_analysis(result)
+
+    if "analysis_status" in result:
+        status = result["analysis_status"]
+        counters = status.get("counters", {})
+        print("\n=== Analysis Status ===")
+        print(f"Status: {status.get('status', 'unknown').upper()}")
+        print(
+            "Counters: "
+            f"parse_failures={counters.get('parse_failures', 0)}, "
+            f"skipped_files={counters.get('skipped_files', 0)}, "
+            f"fallback_used={counters.get('fallback_used', 0)}"
+        )
 
     output = getattr(args, "output", None)
     if output and "report_html" in result:
@@ -572,6 +762,10 @@ def cmd_check_diff(args: argparse.Namespace) -> int:
             f.write(result["report_html"])
         print(f"\nReport written to {report_path}")
 
+    sarif_path = getattr(args, "report_sarif", None)
+    if sarif_path:
+        _write_sarif_output(result, sarif_path)
+
     if suggest_patch and "patches" in result:
         patches = result["patches"]
         if patches:
@@ -580,6 +774,23 @@ def cmd_check_diff(args: argparse.Namespace) -> int:
                 print(f"  - {func_name}: {patch_info.get('type', 'unknown')} patch")
                 print(f"    File: {patch_info.get('file', '')}")
 
+
+def cmd_check_diff(args: argparse.Namespace) -> int:
+    """Run ImpactGuard pipeline on a unified diff / patch file."""
+    suggest_patch: bool = getattr(args, "suggest_patch", False)
+    show_patch: bool = getattr(args, "show_patch", False)
+    strict_extraction: bool = getattr(args, "strict_extraction", False)
+
+    if getattr(args, "pipe", False):
+        result = _run_diff_pipe(args, suggest_patch, show_patch, strict_extraction)
+    else:
+        result = _run_diff_file(args, strict_extraction)
+
+    if result is None:
+        return 1
+
+    _print_diff_result(result, args, suggest_patch)
+    comparison = result.get("comparison", {})
     return 1 if comparison.get("breaking") else 0
 
 
@@ -588,6 +799,9 @@ def cmd_check_commit(args: argparse.Namespace) -> int:
     from .pipeline import run_pipeline_commit
 
     suggest_patch: bool = getattr(args, "suggest_patch", False)
+    generate_fixes: bool = not bool(getattr(args, "no_generate_fixes", False))
+    apply_safe_fixes: bool = bool(getattr(args, "apply_safe_fixes", False))
+    strict_extraction: bool = getattr(args, "strict_extraction", False)
     print(f"Analyzing commit: {args.commit_ref}")
 
     try:
@@ -597,6 +811,9 @@ def cmd_check_commit(args: argparse.Namespace) -> int:
             runtime_path=getattr(args, "runtime", None),
             output_path=getattr(args, "output", None),
             suggest_patch=suggest_patch,
+            generate_fixes=generate_fixes,
+            apply_safe_fixes=apply_safe_fixes,
+            strict_extraction=strict_extraction,
         )
     except (ValueError, RuntimeError) as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -606,20 +823,33 @@ def cmd_check_commit(args: argparse.Namespace) -> int:
     comparison = result.get("comparison", {})
     print(f"Breaking changes: {len(comparison.get('breaking', []))}")
     print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
+    _print_breaking_details(comparison)
 
     if "semver" in result:
         sv = result["semver"]
         print("\n=== Semver Recommendation ===")
         print(f"Bump: {sv.get('bump', 'patch').upper()}  — {sv.get('reason', '')}")
 
-    if "risk" in result:
-        risk_items = result["risk"]
-        high = sum(1 for r in risk_items if r.get("risk") == "HIGH")
-        print("\n=== Risk Analysis ===")
-        print(f"HIGH risk: {high}")
+    _print_risk_analysis(result)
+
+    if "analysis_status" in result:
+        status = result["analysis_status"]
+        counters = status.get("counters", {})
+        print("\n=== Analysis Status ===")
+        print(f"Status: {status.get('status', 'unknown').upper()}")
+        print(
+            "Counters: "
+            f"parse_failures={counters.get('parse_failures', 0)}, "
+            f"skipped_files={counters.get('skipped_files', 0)}, "
+            f"fallback_used={counters.get('fallback_used', 0)}"
+        )
 
     if "report_html" in result and args.output:
         print(f"\nReport written to {args.output}")
+
+    sarif_path = getattr(args, "report_sarif", None)
+    if sarif_path:
+        _write_sarif_output(result, sarif_path)
 
     if suggest_patch and "patches" in result:
         patches = result["patches"]
@@ -632,9 +862,163 @@ def cmd_check_commit(args: argparse.Namespace) -> int:
     return 1 if comparison.get("breaking") else 0
 
 
+def _hook_install_flags(args: argparse.Namespace) -> tuple[bool, bool, bool]:
+    """Return booleans for pre/post/workflow installation."""
+    install_pre = (
+        args.pre or args.both or (not args.pre and not args.post and not args.both)
+    )
+    install_post = (
+        args.post or args.both or (not args.pre and not args.post and not args.both)
+    )
+    install_workflow = getattr(args, "install_github_workflow", False)
+    return install_pre, install_post, install_workflow
+
+
+def _load_precommit_config(config_path: Path, yaml: Any) -> dict[str, Any]:
+    """Load existing pre-commit YAML, or initialize an empty config."""
+    if not config_path.exists():
+        return {}
+    with open(config_path) as f:
+        return yaml.safe_load(f) or {}
+
+
+def _ensure_local_repo_entry(config: dict[str, Any]) -> dict[str, Any]:
+    """Ensure the pre-commit config has a local repo entry."""
+    repos = config.setdefault("repos", [])
+    for repo in repos:
+        if repo.get("repo") == "local":
+            return repo
+    local_repo: dict[str, Any] = {"repo": "local", "hooks": []}
+    repos.append(local_repo)
+    return local_repo
+
+
+def _write_precommit_yaml(
+    config_path: Path, impactguard_hooks: list[dict[str, Any]], yaml: Any
+) -> None:
+    """Update the YAML pre-commit config with ImpactGuard hooks."""
+    config = _load_precommit_config(config_path, yaml)
+    local_repo = _ensure_local_repo_entry(config)
+    existing_hooks = local_repo.get("hooks", [])
+    local_repo["hooks"] = [
+        hook
+        for hook in existing_hooks
+        if hook.get("id") not in ["impactguard-check", "impactguard-post-commit"]
+    ]
+    local_repo["hooks"].extend(impactguard_hooks)
+    with open(config_path, "w") as f:
+        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+    print(f"Updated .pre-commit-config.yaml: {config_path}")
+
+
+def _write_precommit_text(
+    config_path: Path, impactguard_hooks: list[dict[str, Any]]
+) -> None:
+    """Write a minimal text fallback pre-commit config."""
+    lines = ["repos:", "  - repo: local", "    hooks:"]
+    for hook in impactguard_hooks:
+        lines.append(f"      - id: {hook['id']}")
+        lines.append(f'        name: "{hook["name"]}"')
+        lines.append(f"        entry: {hook['entry']}")
+        lines.append(f"        language: {hook['language']}")
+        if "files" in hook:
+            lines.append(f"        files: '{hook['files']}'")
+        if "always_run" in hook:
+            lines.append(f"        always_run: {hook['always_run']}")
+        lines.append(f"        stages: {hook['stages']}")
+    config_path.write_text("\n".join(lines) + "\n")
+    print(f"Created .pre-commit-config.yaml: {config_path}")
+
+
+def _install_precommit_hooks(
+    repo_path: Path, install_pre: bool, install_post: bool
+) -> int:
+    """Install pre-commit hooks into the target repository."""
+    import subprocess
+
+    try:
+        commands = []
+        if install_pre:
+            commands.append(
+                (
+                    ["pre-commit", "install"],
+                    "Installed pre-commit hook via pre-commit package",
+                    "Warning: pre-commit install failed",
+                )
+            )
+        if install_post:
+            commands.append(
+                (
+                    ["pre-commit", "install", "--hook-type", "post-commit"],
+                    "Installed post-commit hook via pre-commit package",
+                    "Warning: pre-commit install --hook-type post-commit failed",
+                )
+            )
+
+        for command, success_msg, failure_prefix in commands:
+            result = subprocess.run(
+                command,
+                cwd=str(repo_path),
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0:
+                print(success_msg)
+            else:
+                print(f"{failure_prefix}: {result.stderr}")
+    except FileNotFoundError:
+        print(
+            "Error: pre-commit package not found. Install it with: pip install pre-commit"
+        )
+        return 1
+    except Exception as e:
+        print(f"Error installing hooks: {e}")
+        return 1
+    return 0
+
+
+def _maybe_install_workflow(repo_path: Path, install_workflow: bool) -> None:
+    """Create the optional GitHub Actions workflow file."""
+    if not install_workflow:
+        return
+
+    workflow_dir = repo_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True, exist_ok=True)
+    workflow_path = workflow_dir / "impactguard.yml"
+    workflow_content = """name: ImpactGuard
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  impactguard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install ImpactGuard
+        run: pip install impactguard[all]
+      - name: Run ImpactGuard
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            impactguard check-commits "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
+          else
+            impactguard check-commit HEAD
+          fi
+"""
+    workflow_path.write_text(workflow_content)
+    print(f"Created GitHub workflow: {workflow_path}")
+
+
 def cmd_install_hooks(args: argparse.Namespace) -> int:
     """Install git hooks for ImpactGuard using pre-commit package."""
-    import subprocess
     from pathlib import Path
 
     repo_path = Path(args.repo_path).resolve()
@@ -644,14 +1028,7 @@ def cmd_install_hooks(args: argparse.Namespace) -> int:
         print(f"Error: Not a git repository: {repo_path}")
         return 1
 
-    # Determine which hooks to install
-    install_pre = (
-        args.pre or args.both or (not args.pre and not args.post and not args.both)
-    )
-    install_post = (
-        args.post or args.both or (not args.pre and not args.post and not args.both)
-    )
-    install_workflow = getattr(args, "install_github_workflow", False)
+    install_pre, install_post, install_workflow = _hook_install_flags(args)
 
     # Ensure .pre-commit-config.yaml exists with full pipeline (use YAML formatter)
     config_path = repo_path / ".pre-commit-config.yaml"
@@ -688,132 +1065,16 @@ def cmd_install_hooks(args: argparse.Namespace) -> int:
         )
 
     if yaml_available:
-        # Read existing config
-        if config_path.exists():
-            with open(config_path) as f:
-                config = yaml.safe_load(f) or {}
-        else:
-            config = {}
-
-        # Ensure repos key exists
-        if "repos" not in config:
-            config["repos"] = []
-
-        # Find or create local repo entry
-        local_repo = None
-        for repo in config.get("repos", []):
-            if repo.get("repo") == "local":
-                local_repo = repo
-                break
-
-        if local_repo is None:
-            local_repo = {"repo": "local", "hooks": []}
-            config["repos"].append(local_repo)
-
-        # Remove existing impactguard hooks
-        existing_hooks = local_repo.get("hooks", [])
-        local_repo["hooks"] = [
-            h
-            for h in existing_hooks
-            if h.get("id") not in ["impactguard-check", "impactguard-post-commit"]
-        ]
-
-        # Add new impactguard hooks
-        local_repo["hooks"].extend(impactguard_hooks)
-
-        # Write back with proper YAML formatting
-        with open(config_path, "w") as f:
-            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-        print(f"Updated .pre-commit-config.yaml: {config_path}")
+        _write_precommit_yaml(config_path, impactguard_hooks, yaml)
     else:
-        # Fallback to text mode (original behavior)
-        config_content = "repos:\n  - repo: local\n    hooks:\n"
-        for hook in impactguard_hooks:
-            config_content += f"      - id: {hook['id']}\n"
-            config_content += f'        name: "{hook["name"]}"\n'
-            config_content += f"        entry: {hook['entry']}\n"
-            config_content += f"        language: {hook['language']}\n"
-            if "files" in hook:
-                config_content += f"        files: '{hook['files']}'\n"
-            if "always_run" in hook:
-                config_content += f"        always_run: {hook['always_run']}\n"
-            config_content += f"        stages: {hook['stages']}\n"
-        config_path.write_text(config_content)
-        print(f"Created .pre-commit-config.yaml: {config_path}")
+        _write_precommit_text(config_path, impactguard_hooks)
 
     # Install hooks using pre-commit package
-    try:
-        if install_pre:
-            result = subprocess.run(
-                ["pre-commit", "install"],
-                cwd=str(repo_path),
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode == 0:
-                print("Installed pre-commit hook via pre-commit package")
-            else:
-                print(f"Warning: pre-commit install failed: {result.stderr}")
+    install_result = _install_precommit_hooks(repo_path, install_pre, install_post)
+    if install_result != 0:
+        return install_result
 
-        if install_post:
-            result = subprocess.run(
-                ["pre-commit", "install", "--hook-type", "post-commit"],
-                cwd=str(repo_path),
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode == 0:
-                print("Installed post-commit hook via pre-commit package")
-            else:
-                print(
-                    f"Warning: pre-commit install --hook-type post-commit failed: {result.stderr}"
-                )
-
-    except FileNotFoundError:
-        print(
-            "Error: pre-commit package not found. Install it with: pip install pre-commit"
-        )
-        return 1
-    except Exception as e:
-        print(f"Error installing hooks: {e}")
-        return 1
-
-    # Install GitHub workflow if requested
-    if install_workflow:
-        workflow_dir = repo_path / ".github" / "workflows"
-        workflow_dir.mkdir(parents=True, exist_ok=True)
-        workflow_path = workflow_dir / "impactguard.yml"
-
-        workflow_content = """name: ImpactGuard
-
-on:
-  push:
-    branches: [main, master]
-  pull_request:
-    branches: [main, master]
-
-jobs:
-  impactguard:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install ImpactGuard
-        run: pip install impactguard[all]
-      - name: Run ImpactGuard
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            impactguard check-commits ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }}
-          else
-            impactguard check-commit HEAD
-          fi
-"""
-        workflow_path.write_text(workflow_content)
-        print(f"Created GitHub workflow: {workflow_path}")
+    _maybe_install_workflow(repo_path, install_workflow)
 
     print("\nHooks installed successfully using pre-commit package")
     return 0
@@ -845,13 +1106,23 @@ def cmd_suggest(args: argparse.Namespace) -> int:
     from .suggest_fixes import suggest
 
     try:
-        report = json.load(open(args.report))
-    except Exception as e:
+        with open(args.report) as f:
+            report = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
         print(f"Error reading report: {e}", file=sys.stderr)
+        return 1
+
+    if not isinstance(report, list):
+        print(
+            f"Error: report file must contain a JSON array, got {type(report).__name__}",
+            file=sys.stderr,
+        )
         return 1
 
     all_suggestions: list[str] = []
     for item in report:
+        if not isinstance(item, dict):
+            continue
         sug = suggest(item, [item])
         all_suggestions.extend(sug)
 
@@ -898,94 +1169,104 @@ def cmd_patch(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_baseline(args: argparse.Namespace) -> int:
-    """Manage ImpactGuard baselines."""
-    from .baseline import (
-        DEFAULT_BASELINE_PATH,
-        baseline_exists,
-        compare_with_baseline,
-        load_baseline,
-        save_baseline,
+def _baseline_save(args: argparse.Namespace, baseline_path: str | None) -> int:
+    from .baseline import save_baseline
+
+    files = getattr(args, "files", None) or []
+    if not files:
+        import glob as _glob
+
+        files = list(_glob.glob("**/*.py", recursive=True))
+        if not files:
+            print("Error: No Python files found", file=sys.stderr)
+            return 1
+
+    import datetime
+
+    metadata = {
+        "saved_at": datetime.datetime.now(datetime.UTC).isoformat(),
+        "files_count": len(files),
+    }
+    saved = save_baseline(files, baseline_path, metadata)
+    print(f"Baseline saved: {saved} ({len(files)} file(s))")
+    return 0
+
+
+def _baseline_status(_args: argparse.Namespace, baseline_path: str | None) -> int:
+    from .baseline import DEFAULT_BASELINE_PATH, baseline_exists, load_baseline
+
+    effective = baseline_path or DEFAULT_BASELINE_PATH
+    if baseline_exists(effective):
+        data = load_baseline(effective)
+        meta = data.get("metadata", {})
+        sigs = data.get("signatures", [])
+        print(f"Baseline: {effective}")
+        print(f"  Functions: {len(sigs)}")
+        if meta.get("saved_at"):
+            print(f"  Saved at:  {meta['saved_at']}")
+    else:
+        print(f"No baseline found at: {effective}")
+        print("Run `impactguard baseline save` to create one.")
+    return 0
+
+
+def _baseline_compare(args: argparse.Namespace, baseline_path: str | None) -> int:
+    from .baseline import compare_with_baseline
+
+    files = getattr(args, "files", None) or []
+    if not files:
+        import glob as _glob
+
+        files = list(_glob.glob("**/*.py", recursive=True))
+        if not files:
+            print("Error: No Python files found", file=sys.stderr)
+            return 1
+
+    try:
+        result = compare_with_baseline(files, baseline_path)
+    except FileNotFoundError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    comparison = result["comparison"]
+    semver = result["semver"]
+    print(f"Breaking changes:     {len(comparison.get('breaking', []))}")
+    print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
+    print(
+        f"Semver recommendation: {semver.get('bump', 'patch').upper()} \u2014 {semver.get('reason', '')}"
     )
 
+    for item in comparison.get("breaking", []):
+        print(f"  \u26a0 {item}")
+
+    output = getattr(args, "output", None)
+    if output:
+        import json
+
+        with open(output, "w") as f:
+            json.dump(result, f, indent=2)
+        print(f"\nResult written to {output}")
+
+    return 1 if comparison.get("breaking") else 0
+
+
+_SUBCOMMANDS = {
+    "save": _baseline_save,
+    "status": _baseline_status,
+    "compare": _baseline_compare,
+}
+
+
+def cmd_baseline(args: argparse.Namespace) -> int:
+    """Manage ImpactGuard baselines."""
     subcommand: str = args.baseline_cmd or "status"
     baseline_path: str | None = getattr(args, "baseline_path", None)
 
-    if subcommand == "save":
-        files = getattr(args, "files", None) or []
-        if not files:
-            # Collect all tracked Python files
-            import glob as _glob
-
-            files = list(_glob.glob("**/*.py", recursive=True))
-            if not files:
-                print("Error: No Python files found", file=sys.stderr)
-                return 1
-
-        import datetime
-
-        metadata = {
-            "saved_at": datetime.datetime.now(datetime.UTC).isoformat(),
-            "files_count": len(files),
-        }
-        saved = save_baseline(files, baseline_path, metadata)
-        print(f"Baseline saved: {saved} ({len(files)} file(s))")
-        return 0
-
-    elif subcommand == "status":
-        effective = baseline_path or DEFAULT_BASELINE_PATH
-        if baseline_exists(effective):
-            data = load_baseline(effective)
-            meta = data.get("metadata", {})
-            sigs = data.get("signatures", [])
-            print(f"Baseline: {effective}")
-            print(f"  Functions: {len(sigs)}")
-            if meta.get("saved_at"):
-                print(f"  Saved at:  {meta['saved_at']}")
-        else:
-            print(f"No baseline found at: {effective}")
-            print("Run `impactguard baseline save` to create one.")
-        return 0
-
-    elif subcommand == "compare":
-        files = getattr(args, "files", None) or []
-        if not files:
-            import glob as _glob
-
-            files = list(_glob.glob("**/*.py", recursive=True))
-            if not files:
-                print("Error: No Python files found", file=sys.stderr)
-                return 1
-
-        try:
-            result = compare_with_baseline(files, baseline_path)
-        except FileNotFoundError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            return 1
-
-        comparison = result["comparison"]
-        semver = result["semver"]
-        print(f"Breaking changes:     {len(comparison.get('breaking', []))}")
-        print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
-        print(
-            f"Semver recommendation: {semver.get('bump', 'patch').upper()} — {semver.get('reason', '')}"
-        )
-
-        for item in comparison.get("breaking", []):
-            print(f"  ⚠ {item}")
-
-        output = getattr(args, "output", None)
-        if output:
-            import json
-
-            with open(output, "w") as f:
-                json.dump(result, f, indent=2)
-            print(f"\nResult written to {output}")
-
-        return 1 if comparison.get("breaking") else 0
-
-    print(f"Unknown baseline subcommand: {subcommand}", file=sys.stderr)
-    return 1
+    handler = _SUBCOMMANDS.get(subcommand)
+    if handler is None:
+        print(f"Unknown baseline subcommand: {subcommand}", file=sys.stderr)
+        return 1
+    return handler(args, baseline_path)
 
 
 def cmd_semver(args: argparse.Namespace) -> int:
@@ -998,7 +1279,11 @@ def cmd_semver(args: argparse.Namespace) -> int:
 
     if use_json:
         # JSON mode: compare two JSON files directly
-        result = compare(args.old, args.new)
+        try:
+            result = compare(args.old, args.new)
+        except (OSError, ValueError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
     else:
         # Source mode: extract signatures from source files, then compare
         from .languages.lib.registry import get_extractor
@@ -1058,12 +1343,33 @@ def cmd_semver(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_report_sarif(args: argparse.Namespace) -> int:
+    """Generate a SARIF v2.1.0 log from a risk report JSON."""
+    from .sarif import generate_sarif_from_file
+
+    output: str | None = getattr(args, "output", None)
+    try:
+        sarif = generate_sarif_from_file(args.report, output_path=output)
+    except (OSError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    if not output:
+        print(json.dumps(sarif, indent=2))
+    else:
+        print(f"SARIF log written to {output}")
+    return 0
+
+
 def cmd_report_markdown(args: argparse.Namespace) -> int:
     """Generate a markdown PR-comment summary from a risk report JSON."""
     from .generate_report import generate_markdown_from_file
 
     output: str | None = getattr(args, "output", None)
-    md = generate_markdown_from_file(args.report, output_path=output)
+    try:
+        md = generate_markdown_from_file(args.report, output_path=output)
+    except (OSError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
     if not output:
         print(md)
     else:
@@ -1129,6 +1435,105 @@ def cmd_feedback(args: argparse.Namespace) -> int:
     return 1
 
 
+def _collect_python_files() -> list[str]:
+    """Collect Python source files from the current working tree."""
+    import glob as _glob
+
+    return list(_glob.glob("**/*.py", recursive=True))
+
+
+def _require_python_files(files: list[str] | None) -> list[str]:
+    """Return provided files or discover Python files, exiting on empty input."""
+    discovered = files or _collect_python_files()
+    if discovered:
+        return discovered
+    print("Error: No Python files found", file=sys.stderr)
+    return []
+
+
+def _baseline_metadata(files: list[str]) -> dict[str, Any]:
+    """Build baseline metadata for save operations."""
+    import datetime
+
+    return {
+        "saved_at": datetime.datetime.now(datetime.UTC).isoformat(),
+        "files_count": len(files),
+    }
+
+
+def _write_json_output(path: str | None, payload: Any) -> None:
+    """Write optional JSON output for CLI commands."""
+    if not path:
+        return
+    with open(path, "w") as f:
+        json.dump(payload, f, indent=2)
+    print(f"\nResult written to {path}")
+
+
+def _list_tagged_baselines(history_path: str | None, list_baselines: Any) -> int:
+    """Handle the tagged baseline list subcommand."""
+    entries = list_baselines(history_path)
+    if not entries:
+        print("No tagged baselines stored yet.")
+    for entry in entries:
+        meta = entry.get("metadata") or {}
+        saved_at = meta.get("saved_at", "")
+        print(
+            f"  {entry['tag']:20s}  {entry['signature_count']:4d} signatures  {saved_at}"
+        )
+    return 0
+
+
+def _save_tagged_baseline_cmd(
+    args: argparse.Namespace,
+    history_path: str | None,
+    save_tagged_baseline: Any,
+) -> int:
+    """Handle the tagged baseline save subcommand."""
+    files = _require_python_files(getattr(args, "files", None) or [])
+    if not files:
+        return 1
+
+    try:
+        saved = save_tagged_baseline(
+            args.tag, files, history_path, _baseline_metadata(files)
+        )
+        print(f"Tagged baseline '{args.tag}' saved to {saved} ({len(files)} file(s))")
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def _compare_tagged_baseline_cmd(
+    args: argparse.Namespace,
+    history_path: str | None,
+    compare_with_tagged_baseline: Any,
+) -> int:
+    """Handle the tagged baseline compare subcommand."""
+    files = _require_python_files(getattr(args, "files", None) or [])
+    if not files:
+        return 1
+
+    try:
+        result = compare_with_tagged_baseline(args.tag_from, files, history_path)
+    except (FileNotFoundError, KeyError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    comparison = result["comparison"]
+    semver = result["semver"]
+    print(f"Comparing against baseline tag '{args.tag_from}':")
+    print(f"  Breaking changes:     {len(comparison.get('breaking', []))}")
+    print(f"  Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
+    print(f"  Semver recommendation: {semver.get('bump', 'patch').upper()}")
+    for item in comparison.get("breaking", []):
+        print(f"  ⚠ {item}")
+
+    _write_json_output(getattr(args, "output", None), result)
+    return 1 if comparison.get("breaking") else 0
+
+
 def cmd_baseline_tagged(args: argparse.Namespace) -> int:
     """Handle tagged baseline sub-subcommands: save --tag, list, compare --from."""
     from .baseline import (
@@ -1142,71 +1547,15 @@ def cmd_baseline_tagged(args: argparse.Namespace) -> int:
     history_path: str | None = getattr(args, "history_path", None)
 
     if subcmd == "list":
-        entries = list_baselines(history_path)
-        if not entries:
-            print("No tagged baselines stored yet.")
-        for e in entries:
-            meta = e.get("metadata") or {}
-            saved_at = meta.get("saved_at", "")
-            print(f"  {e['tag']:20s}  {e['signature_count']:4d} signatures  {saved_at}")
-        return 0
+        return _list_tagged_baselines(history_path, list_baselines)
 
     if subcmd == "save":
-        import datetime
-        import glob as _glob
-
-        tag: str = args.tag
-        files = getattr(args, "files", None) or []
-        if not files:
-            files = list(_glob.glob("**/*.py", recursive=True))
-            if not files:
-                print("Error: No Python files found", file=sys.stderr)
-                return 1
-
-        metadata = {
-            "saved_at": datetime.datetime.now(datetime.UTC).isoformat(),
-            "files_count": len(files),
-        }
-        try:
-            saved = save_tagged_baseline(tag, files, history_path, metadata)
-            print(f"Tagged baseline '{tag}' saved to {saved} ({len(files)} file(s))")
-        except ValueError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            return 1
-        return 0
+        return _save_tagged_baseline_cmd(args, history_path, save_tagged_baseline)
 
     if subcmd == "compare":
-        import glob as _glob
-
-        tag_from: str = args.tag_from
-        files = getattr(args, "files", None) or []
-        if not files:
-            files = list(_glob.glob("**/*.py", recursive=True))
-            if not files:
-                print("Error: No Python files found", file=sys.stderr)
-                return 1
-        try:
-            result = compare_with_tagged_baseline(tag_from, files, history_path)
-        except (FileNotFoundError, KeyError) as e:
-            print(f"Error: {e}", file=sys.stderr)
-            return 1
-
-        comparison = result["comparison"]
-        semver = result["semver"]
-        print(f"Comparing against baseline tag '{tag_from}':")
-        print(f"  Breaking changes:     {len(comparison.get('breaking', []))}")
-        print(f"  Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
-        print(f"  Semver recommendation: {semver.get('bump', 'patch').upper()}")
-        for item in comparison.get("breaking", []):
-            print(f"  ⚠ {item}")
-
-        output = getattr(args, "output", None)
-        if output:
-            with open(output, "w") as f:
-                json.dump(result, f, indent=2)
-            print(f"\nResult written to {output}")
-
-        return 1 if comparison.get("breaking") else 0
+        return _compare_tagged_baseline_cmd(
+            args, history_path, compare_with_tagged_baseline
+        )
 
     if subcmd == "delete":
         tag_del: str = args.tag
@@ -1237,6 +1586,13 @@ def cmd_kpi(args: argparse.Namespace) -> int:
         print(f"Error parsing report JSON: {exc}", file=sys.stderr)
         return 1
 
+    if not isinstance(report_data, list):
+        print(
+            f"Error: report file must contain a JSON array, got {type(report_data).__name__}",
+            file=sys.stderr,
+        )
+        return 1
+
     feedback_outcomes = None
     feedback_path: str | None = getattr(args, "feedback_path", None)
     if feedback_path:
@@ -1253,6 +1609,49 @@ def cmd_kpi(args: argparse.Namespace) -> int:
         print(format_kpi_text(kpis))
 
     return 0
+
+
+def cmd_analyze_behavior(args: argparse.Namespace) -> int:
+    """Detect semantic/behavioral changes between two Python source files.
+
+    Compares function bodies to surface behavioral shifts that are invisible
+    to signature-level diffing: async/sync transitions, generator changes,
+    exception contract changes, side-effect additions/removals, return-value
+    semantics, and docstring contract changes.
+    """
+    from .semantic_analysis import analyze_behavior, compare_behavior
+
+    base_path: str | None = getattr(args, "base_path", None)
+    old_files = [args.old] if isinstance(args.old, str) else list(args.old)
+    new_files = [args.new] if isinstance(args.new, str) else list(args.new)
+
+    try:
+        old_traits = analyze_behavior(old_files, base_path=base_path)
+        new_traits = analyze_behavior(new_files, base_path=base_path)
+    except Exception as exc:
+        print(f"Error during behavior analysis: {exc}", file=sys.stderr)
+        return 1
+
+    result = compare_behavior(old_traits, new_traits)
+
+    breaking = result.get("semantic_breaking", [])
+    nonbreaking = result.get("semantic_nonbreaking", [])
+
+    print(f"Semantic breaking changes:     {len(breaking)}")
+    print(f"Semantic non-breaking changes: {len(nonbreaking)}")
+
+    for item in breaking:
+        print(f"  ⚠ {item}")
+    for item in nonbreaking:
+        print(f"  ℹ {item}")
+
+    output = getattr(args, "output", None)
+    if output:
+        with open(output, "w") as f:
+            json.dump(result, f, indent=2)
+        print(f"\nSemantic diff written to {output}")
+
+    return 1 if breaking else 0
 
 
 def cmd_validate_config(args: argparse.Namespace) -> int:
@@ -1295,9 +1694,20 @@ def main() -> int:
         "--version", action="version", version=f"%(prog)s {__version__}"
     )
     parser.add_argument(
+        "--log-level",
+        default=None,
+        metavar="LEVEL",
+        help=(
+            "Logging level for the impactguard logger "
+            "(DEBUG, INFO, WARNING, ERROR, CRITICAL). "
+            "Defaults to the value in impactguard.toml [impactguard.logging] level, "
+            "or WARNING when no config is found."
+        ),
+    )
+    parser.add_argument(
         "--log-file",
-        default="/tmp/impactguard.log",
-        help="Log file path (default: /tmp/impactguard.log, appended)",
+        default=None,
+        help="Optional log file path (appended). Defaults to stderr only.",
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -1368,11 +1778,11 @@ def main() -> int:
         help="Read diff from stdin instead of a file (e.g. diff A B | impactguard risk --pipe ...)",
     )
     risk_parser.add_argument(
-        "--lambda",
-        dest="lam",
+        "--lambda-factor",
+        dest="lambda_factor",
         type=float,
         default=1.0,
-        metavar="LAMBDA",
+        metavar="FACTOR",
         help="Sensitivity multiplier (default: 1.0). >1 increases sensitivity; <1 decreases it.",
     )
     risk_parser.set_defaults(func=cmd_risk)
@@ -1405,11 +1815,11 @@ def main() -> int:
         help="Read diff from stdin instead of a file (e.g. diff A B | impactguard enforce --pipe ...)",
     )
     enforce_parser.add_argument(
-        "--lambda",
-        dest="lam",
+        "--lambda-factor",
+        dest="lambda_factor",
         type=float,
         default=1.0,
-        metavar="LAMBDA",
+        metavar="FACTOR",
         help="Sensitivity multiplier (default: 1.0). >1 increases sensitivity; <1 decreases it.",
     )
     enforce_parser.set_defaults(func=cmd_enforce)
@@ -1485,6 +1895,13 @@ def main() -> int:
         "output", nargs="?", default="impact_report.html", help="Output HTML report"
     )
     check_parser.add_argument(
+        "--report-sarif",
+        nargs="?",
+        const="impact_report.sarif",
+        metavar="FILE",
+        help="Generate SARIF v2.1.0 log (default: impact_report.sarif)",
+    )
+    check_parser.add_argument(
         "--watch",
         action="store_true",
         help="Re-run automatically when source files change",
@@ -1500,6 +1917,18 @@ def main() -> int:
         action="store_true",
         dest="show_patch",
         help="Show how old file would look if patched",
+    )
+    check_parser.add_argument(
+        "--no-generate-fixes",
+        action="store_true",
+        default=False,
+        help="Disable internal fix-candidate generation in pipeline output.",
+    )
+    check_parser.add_argument(
+        "--apply-safe-fixes",
+        action="store_true",
+        default=False,
+        help="Apply high-confidence CST fixes automatically (conservative mode).",
     )
     check_parser.set_defaults(func=cmd_check)
 
@@ -1531,6 +1960,29 @@ def main() -> int:
         dest="show_patch",
         help="Show how old file would look if patched",
     )
+    check_diff_parser.add_argument(
+        "--no-generate-fixes",
+        action="store_true",
+        default=False,
+        help="Disable internal fix-candidate generation in pipeline output.",
+    )
+    check_diff_parser.add_argument(
+        "--apply-safe-fixes",
+        action="store_true",
+        default=False,
+        help="Apply high-confidence CST fixes automatically (conservative mode).",
+    )
+    check_diff_parser.add_argument(
+        "--strict-extraction",
+        action="store_true",
+        default=False,
+        help="Treat signature extraction failures as fatal when supported by the extractor.",
+    )
+    check_diff_parser.add_argument(
+        "--report-sarif",
+        metavar="PATH",
+        help="Write SARIF v2.1.0 report to PATH",
+    )
     check_diff_parser.set_defaults(func=cmd_check_diff)
 
     # check-commit subcommand (single commit vs its parent)
@@ -1558,6 +2010,29 @@ def main() -> int:
         action="store_true",
         dest="show_patch",
         help="Show how old file would look if patched",
+    )
+    check_commit_parser.add_argument(
+        "--no-generate-fixes",
+        action="store_true",
+        default=False,
+        help="Disable internal fix-candidate generation in pipeline output.",
+    )
+    check_commit_parser.add_argument(
+        "--apply-safe-fixes",
+        action="store_true",
+        default=False,
+        help="Apply high-confidence CST fixes automatically (conservative mode).",
+    )
+    check_commit_parser.add_argument(
+        "--strict-extraction",
+        action="store_true",
+        default=False,
+        help="Treat signature extraction failures as fatal when supported by the extractor.",
+    )
+    check_commit_parser.add_argument(
+        "--report-sarif",
+        metavar="PATH",
+        help="Write SARIF v2.1.0 report to PATH",
     )
     check_commit_parser.set_defaults(func=cmd_check_commit)
 
@@ -1590,6 +2065,81 @@ def main() -> int:
         dest="show_patch",
         help="Show how old file would look if patched",
     )
+    check_commits_parser.add_argument(
+        "--no-generate-fixes",
+        action="store_true",
+        default=False,
+        help="Disable internal fix-candidate generation in pipeline output.",
+    )
+    check_commits_parser.add_argument(
+        "--apply-safe-fixes",
+        action="store_true",
+        default=False,
+        help="Apply high-confidence CST fixes automatically (conservative mode).",
+    )
+    check_commits_parser.add_argument(
+        "--strict-extraction",
+        action="store_true",
+        default=False,
+        help="Treat signature extraction failures as fatal when supported by the extractor.",
+    )
+    check_commits_parser.add_argument(
+        "--enforce-gate",
+        action="store_true",
+        default=False,
+        help="Return non-zero when gate status is blocked (single authoritative CI outcome).",
+    )
+    check_commits_parser.add_argument(
+        "--strict-analysis",
+        action="store_true",
+        default=False,
+        help=(
+            "Enable strict CI policy: enforce gate, strict extraction, and zero-tolerance "
+            "thresholds for parse/skipped/call/runtime analysis failures."
+        ),
+    )
+    check_commits_parser.add_argument(
+        "--block-unknown",
+        action="store_true",
+        default=False,
+        help="Block on UNKNOWN-risk items in addition to HIGH-risk items.",
+    )
+    check_commits_parser.add_argument(
+        "--require-runtime",
+        action="store_true",
+        default=False,
+        help="Require valid runtime data; missing/invalid runtime blocks the gate.",
+    )
+    check_commits_parser.add_argument(
+        "--max-parse-failures",
+        type=int,
+        default=0,
+        help="Maximum allowed parse/signature extraction failures before gate blocks.",
+    )
+    check_commits_parser.add_argument(
+        "--max-skipped-files",
+        type=int,
+        default=0,
+        help="Maximum allowed skipped/unsupported files before gate blocks.",
+    )
+    check_commits_parser.add_argument(
+        "--max-call-extraction-failures",
+        type=int,
+        default=0,
+        help="Maximum allowed call extraction failures before gate blocks.",
+    )
+    check_commits_parser.add_argument(
+        "--max-runtime-data-issues",
+        type=int,
+        default=0,
+        help="Maximum allowed runtime data load/parse issues before gate blocks.",
+    )
+    check_commits_parser.add_argument(
+        "--report-sarif",
+        metavar="PATH",
+        help="Write SARIF v2.1.0 report to PATH",
+    )
+
     check_commits_parser.set_defaults(func=cmd_check_commits)
 
     # install-hooks subcommand
@@ -1703,6 +2253,16 @@ def main() -> int:
         "-o", "--output", help="Output JSON file for recommendation"
     )
     semver_parser.set_defaults(func=cmd_semver)
+
+    # report-sarif subcommand
+    report_sarif_parser = subparsers.add_parser(
+        "report-sarif", help="Generate SARIF v2.1.0 log from risk report JSON"
+    )
+    report_sarif_parser.add_argument("report", help="Risk report JSON file")
+    report_sarif_parser.add_argument(
+        "-o", "--output", help="Output SARIF JSON file (default: stdout)"
+    )
+    report_sarif_parser.set_defaults(func=cmd_report_sarif)
 
     # report-markdown subcommand
     report_md_parser = subparsers.add_parser(
@@ -1824,6 +2384,35 @@ def main() -> int:
     )
     kpi_parser.set_defaults(func=cmd_kpi)
 
+    # analyze-behavior subcommand
+    behavior_parser = subparsers.add_parser(
+        "analyze-behavior",
+        help="Detect semantic/behavioral changes between two Python source files",
+        description=(
+            "Compare two Python source files to surface behavioral changes beyond "
+            "signature-level diffing: async/sync transitions, generator changes, "
+            "exception contracts, side effects, return semantics, and docstring "
+            "contract changes."
+        ),
+    )
+    behavior_parser.add_argument("old", help="Old Python source file to analyse")
+    behavior_parser.add_argument("new", help="New Python source file to analyse")
+    behavior_parser.add_argument(
+        "--base-path",
+        dest="base_path",
+        metavar="PATH",
+        help=(
+            "Root directory used to make fqnames relative "
+            "(same semantics as the 'extract' subcommand's base_path)"
+        ),
+    )
+    behavior_parser.add_argument(
+        "-o",
+        "--output",
+        help="Write semantic diff as JSON to this file (default: text to stdout)",
+    )
+    behavior_parser.set_defaults(func=cmd_analyze_behavior)
+
     if (
         len(sys.argv) > 1
         and sys.argv[1]
@@ -1833,6 +2422,7 @@ def main() -> int:
             "analyze",
             "risk",
             "report",
+            "report-sarif",
             "report-markdown",
             "trace",
             "check",
@@ -1842,7 +2432,7 @@ def main() -> int:
             "install-hooks",
             "enforce",
             "extract-calls",
-"generate-changelog",
+            "generate-changelog",
             "suggest",
             "patch",
             "baseline",
@@ -1851,6 +2441,7 @@ def main() -> int:
             "history",
             "validate-config",
             "kpi",
+            "analyze-behavior",
         ]
         and not sys.argv[1].startswith("-")
     ):
@@ -1859,26 +2450,22 @@ def main() -> int:
 
     args = parser.parse_args()
 
-    # Configure logging to append to specified file
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
+    # Configure the impactguard logger hierarchy using our centralised helper.
+    # Precedence: CLI > config file > built-in defaults.
+    from ._logging import _logging_config_from_config, configure_logging, get_logger
 
-    # Remove existing file handlers to avoid duplicates
-    for handler in logger.handlers[:]:
-        if isinstance(handler, logging.FileHandler):
-            logger.removeHandler(handler)
+    _log_cfg = _logging_config_from_config()
+    log_level: str = args.log_level or _log_cfg["level"]
+    log_format: str = _log_cfg["format"]
+    log_file: str | None = args.log_file or _log_cfg["log_file"] or None
 
-    # Add file handler in append mode
-    file_handler = logging.FileHandler(args.log_file, mode="a")
-    file_handler.setLevel(logging.INFO)
-    formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
+    try:
+        configure_logging(level=log_level, fmt=log_format, log_file=log_file)
+    except ValueError as e:
+        parser.error(str(e))
 
-    _logger = logging.getLogger(__name__)
-    _logger.info(f"ImpactGuard started with command: {args.command}")
+    _logger = get_logger(__name__)
+    _logger.info("ImpactGuard started with command: %s", args.command)
 
     if not args.command:
         parser.print_help()
@@ -1891,6 +2478,171 @@ def main() -> int:
         parser.print_help()
         return 1
 
+
+def _extract_staged_files(
+    py_files: list[str],
+) -> tuple[list[str], list[str], str, str] | None:
+    """Extract old (HEAD) and new (staged/index) file content to temp dirs.
+
+    Returns (old_paths, new_paths, old_base, new_base) or None on failure.
+    """
+    import subprocess
+    import tempfile
+    from pathlib import Path
+
+    tmpdir = tempfile.mkdtemp(prefix="impactguard_staged_")
+    old_dir = Path(tmpdir) / "old"
+    new_dir = Path(tmpdir) / "new"
+    old_dir.mkdir()
+    new_dir.mkdir()
+
+    old_paths: list[str] = []
+    new_paths: list[str] = []
+
+    for src_file in py_files:
+        old_dest = old_dir / src_file
+        old_dest.parent.mkdir(parents=True, exist_ok=True)
+        old_result = subprocess.run(
+            ["git", "show", f"HEAD:{src_file}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if old_result.returncode == 0 and old_result.stdout:
+            old_dest.write_text(old_result.stdout)
+            old_paths.append(str(old_dest))
+
+        new_dest = new_dir / src_file
+        new_dest.parent.mkdir(parents=True, exist_ok=True)
+        new_result = subprocess.run(
+            ["git", "show", f":{src_file}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if new_result.returncode == 0 and new_result.stdout:
+            new_dest.write_text(new_result.stdout)
+            new_paths.append(str(new_dest))
+
+    if not new_paths:
+        return None
+    return old_paths, new_paths, str(old_dir.resolve()), str(new_dir.resolve())
+
+
+def _print_pipeline_summary(result: dict) -> None:
+    """Print pipeline result summary to stdout."""
+    comparison = result.get("comparison", {})
+    print("\n=== Comparison ===")
+    print(f"Breaking changes: {len(comparison.get('breaking', []))}")
+    print(f"Non-breaking changes: {len(comparison.get('nonbreaking', []))}")
+    _print_breaking_details(comparison)
+
+    _print_risk_analysis(result)
+
+    if "analysis_status" in result:
+        status = result["analysis_status"]
+        counters = status.get("counters", {})
+        print("\n=== Analysis Status ===")
+        print(f"Status: {status.get('status', 'unknown').upper()}")
+        print(
+            f"Counters: parse_failures={counters.get('parse_failures', 0)}, "
+            f"skipped_files={counters.get('skipped_files', 0)}, "
+            f"fallback_used={counters.get('fallback_used', 0)}"
+        )
+        runtime = status.get("runtime", {})
+        if runtime:
+            print(f"Runtime state: {runtime.get('state', 'unknown')}")
+
+    if "gate" in result:
+        gate = result["gate"]
+        print("\n=== Gate Summary ===")
+        print(f"Blocked: {str(gate.get('blocked', False)).lower()}")
+
+
+def check_staged() -> int:
+    """Pre-commit hook: run full pipeline on staged changes.
+
+    Extracts full file content from git (HEAD for old, index for new)
+    instead of relying on the lossy _parse_unified_diff reconstruction
+    from a diff with default context length.
+    """
+    import os
+    import subprocess
+
+    if os.environ.get("SKIP_SIGNATURE_HOOK"):
+        return 0
+
+    changed = subprocess.run(
+        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"],
+        capture_output=True,
+        text=True,
+    )
+    if not changed.stdout.strip():
+        return 0
+
+    py_files = [f for f in changed.stdout.splitlines() if f.endswith(".py")]
+    if not py_files:
+        return 0
+
+    extracted = _extract_staged_files(py_files)
+    if extracted is None:
+        return 0
+
+    old_paths, new_paths, old_base, new_base = extracted
+
+    from .pipeline import run_pipeline
+
+    result = run_pipeline(
+        old_files=old_paths or None,
+        new_files=new_paths,
+        old_base_path=old_base,
+        new_base_path=new_base,
+    )
+
+    _print_pipeline_summary(result)
+    gate = result.get("gate", {})
+    return 1 if gate.get("blocked", False) else 0
+
+
+def post_commit_hook() -> int:
+    """Post-commit hook: silently extract signatures from tracked .py files."""
+    import os
+    import subprocess
+    import sys
+    import tempfile
+
+    if os.environ.get("SKIP_SIGNATURE_HOOK"):
+        return 0
+
+    os.environ["SKIP_SIGNATURE_HOOK"] = "1"
+    try:
+        files = subprocess.run(
+            ["git", "ls-files", "*.py"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.splitlines()
+    except subprocess.CalledProcessError:
+        return 0
+
+    if not files:
+        return 0
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "impactguard", "extract", *files],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            sigs_path = os.path.join(tempfile.gettempdir(), "impactguard_sigs.json")
+            with open(sigs_path, "w") as f:
+                f.write(result.stdout)
+    except (OSError, subprocess.SubprocessError):
+        return 0
+    finally:
+        os.environ.pop("SKIP_SIGNATURE_HOOK", None)
+    return 0
 
 
 if __name__ == "__main__":

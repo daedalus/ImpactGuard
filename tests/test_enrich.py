@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
-import os  
+import os
 import sys
-import tempfile  
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
 
 def test_enrich_with_fixes_basic(tmp_path):
     """Test enrich_with_fixes basic functionality."""
@@ -20,6 +21,7 @@ def test_enrich_with_fixes_basic(tmp_path):
 
     result = enrich_with_fixes(risk_item, [risk_item])
     assert isinstance(result, list)
+
 
 def test_enrich_variants():
     """Test enrich_with_fixes with various inputs."""
@@ -41,7 +43,9 @@ def test_enrich_variants():
     result = enrich_with_fixes(item2, [item2])
     assert isinstance(result, list)
 
+
 # =======================================
+
 
 def test_enrich_with_fixes_all_branches():
     """Test enrich_with_fixes() with many inputs."""
@@ -70,6 +74,7 @@ def test_enrich_with_fixes_all_branches():
     result = enrich_with_fixes(item3, [item3])
     assert isinstance(result, list)
 
+
 def test_enrich_with_fixes_variants(tmp_path):
     """Test enrich_with_fixes with various inputs."""
     from impactguard.suggest_fixes import enrich_with_fixes
@@ -89,4 +94,3 @@ def test_enrich_with_fixes_variants(tmp_path):
     }
     enriched = enrich_with_fixes(item_with_calls, [item_with_calls])
     assert isinstance(enriched, list)
-

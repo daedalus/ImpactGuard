@@ -399,7 +399,7 @@ class TestFeedbackCalibration:
 class TestRiskModelConfig:
     def test_effective_severity_scores_no_overrides(self):
         from impactguard.risk_model import SEVERITY_SCORES, _effective_severity_scores
-        
+
         scores = _effective_severity_scores()
         # Default: should return SEVERITY_SCORES unchanged
         # Note: DECORATOR_ADDED is now 0.1 (non-breaking) instead of 0.4
@@ -480,7 +480,6 @@ class TestSuggestFixesCST:
 
 class TestTraceCallsProdFlushTrigger:
     def test_trace_triggers_flush_when_interval_exceeded(self, tmp_path, monkeypatch):
-
         import impactguard.trace_calls_prod as tcp
 
         # Force flush by setting LAST_FLUSH to a very old time

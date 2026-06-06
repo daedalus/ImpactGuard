@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "impactguard"
-version = "0.1.3"
+version = "0.1.16"
 description = "Lightweight API impact analyzer for Python projects"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -40,22 +40,23 @@ lint = [
     "vulture",
 ]
 languages = [
-    "tree-sitter>=0.23",
-    "tree-sitter-typescript>=0.23",
-    "tree-sitter-java>=0.23",
-    "tree-sitter-go>=0.23",
-    "tree-sitter-rust>=0.23",
-    "tree-sitter-c>=0.23",
-    "tree-sitter-cpp>=0.23",
-    "tree-sitter-ruby>=0.23",
-    "tree-sitter-javascript>=0.23",
-    "tree-sitter-kotlin>=0.23",
-    "tree-sitter-swift>=0.7.2",
-    "tree-sitter-zig>=0.23",
-    "tree-sitter-c-sharp>=0.23",
-    "tree-sitter-haskell>=0.23",
+    "tree-sitter>=0.23,<0.26",
+    "tree-sitter-typescript>=0.23,<0.26",
+    "tree-sitter-java>=0.23,<0.26",
+    "tree-sitter-go>=0.23,<0.26",
+    "tree-sitter-rust>=0.23,<0.26",
+    "tree-sitter-c>=0.23,<0.26",
+    "tree-sitter-cpp>=0.23,<0.26",
+    "tree-sitter-ruby>=0.23,<0.26",
+    "tree-sitter-javascript>=0.23,<0.26",
+    "tree-sitter-kotlin>=0.23,<2",
+    "tree-sitter-swift>=0.7.2,<0.8",
+    "tree-sitter-zig>=0.23,<2",
+    "tree-sitter-c-sharp>=0.23,<0.26",
+    "tree-sitter-haskell>=0.23,<0.26",
 ]
-all = ["impactguard[dev,test,lint,languages]"]
+formal = ["z3-solver>=4.13.0"]
+all = ["impactguard[dev,test,lint,languages,formal]"]
 
 [project.scripts]
 impactguard = "impactguard.__main__:main"
@@ -91,7 +92,10 @@ ignore = ["E501", "ANN401"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401", "E402"]
-"tests/*" = ["ANN", "TCH", "N806", "E712", "F401", "ARG001", "ARG002", "ARG005", "UP038", "F841", "C416"]
+"tests/*" = ["ANN", "TCH", "N806", "E712", "F401", "F402", "ARG001", "ARG002", "ARG005", "UP038", "F841", "C416"]
+"tests/test_consolidated.py" = ["E402"]
+"tests/test_coverage_consolidated.py" = ["E402"]
+"tests/test_coverage_misc.py" = ["E402"]
 "src/impactguard/cli.py" = ["E402"]
 "src/impactguard/trace_calls.py" = ["ANN401"]
 "src/impactguard/trace_calls_prod.py" = ["ANN401", "E402"]
@@ -156,4 +160,9 @@ exclude_lines = [
     "raise NotImplementedError",
     "if __name__ == .__main__.:",
     "if TYPE_CHECKING:",
+]
+
+[dependency-groups]
+dev = [
+    "build>=1.5.0",
 ]

@@ -6,6 +6,7 @@ language extractor files in the languages/ directory.
 
 import re
 import warnings
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -55,9 +56,11 @@ _COMMON_KEYWORDS: frozenset[str] = frozenset()
 # ── Tree-sitter parser factory ─────────────────────────────────────────────
 
 _TREE_SITTER_AVAILABLE = False
+_TreeSitterParser: Any | None = None
 try:
-    from tree_sitter import Language, Parser
+    import tree_sitter
 
+    _TreeSitterParser = tree_sitter.Parser
     _TREE_SITTER_AVAILABLE = True
 except ImportError:
     pass
@@ -73,12 +76,10 @@ def make_parser(language_name: str, language_object: Any) -> Any:
     Returns:
         Configured Parser instance, or None if tree-sitter is not available
     """
-    if not _TREE_SITTER_AVAILABLE:
+    if not _TREE_SITTER_AVAILABLE or _TreeSitterParser is None:
         return None
     try:
-        from tree_sitter import Parser
-
-        parser = Parser(language_object)
+        parser = _TreeSitterParser(language_object)
         return parser
     except Exception as e:
         warnings.warn(f"Failed to create {language_name} parser: {e}", stacklevel=2)
@@ -99,11 +100,58 @@ def register_extractor(extractor_instance: Any) -> None:
     register(extractor_instance)
 
 
-# ── Warning helpers ────────────────────────────────────────────────────────
+# ── Regex fallback — known failure modes per language ─────────────────────
+#
+# When tree-sitter is absent, each language falls back to regex-based
+# extraction.  These patterns are the most common constructs that regex
+# cannot reliably handle, listed so users can judge the risk for their
+# codebase without installing tree-sitter first.
+
+_REGEX_WEAKNESSES: dict[str, str] = {
+    "C": "function pointers, typedef aliases, K&R-style declarations, "
+    "nested macros expanding to function-like constructs",
+    "C#": "generic methods (Foo<T>), lambda expressions, extension methods, "
+    "ref/out/in parameter modifiers, nested partial classes",
+    "C++": "templates (including variadic), function-style macros, operator "
+    "overloads, lambda expressions, constexpr/consteval specifiers, "
+    "SFINAE and enable_if constructs",
+    "Go": "generic functions (func Foo[T any]), method receivers on generic "
+    "types, embedded interfaces, multiline parameter lists",
+    "Haskell": "typeclass constraints in signatures, GADTs, pattern synonym "
+    "type signatures, multiline type annotations, fixity declarations",
+    "Java": "generic type parameters (<T>), wildcard bounds, annotation-heavy "
+    "declarations, default methods in interfaces, varargs combined with "
+    "generics, multiline throws clauses",
+    "JavaScript": "arrow-function-as-type annotations (JSDoc), `@type` "
+    "imports, TS-in-JS typedefs, callable-object signatures, destructured "
+    "parameter patterns, variadic catch bindings",
+    "Kotlin": "inline/reified type parameters, extension functions with "
+    "receiver types, multiline lambda signatures, context receivers, "
+    "suspend/operator/infix modifiers, default-parameter expressions",
+    "Ruby": "keyword-argument destructuring, block parameters with shadowed "
+    "outer variables, multiline parameter spans across `do...end`, method "
+    "names with non-alphanumeric characters (!, ?, =), singleton-method "
+    "definitions on literals",
+    "Rust": "generic type parameters with trait bounds, impl Trait in "
+    "argument/return position, lifetime annotations, async fn within impl "
+    "blocks, macro-generated functions, const generics, where clauses",
+    "Swift": "generic where clauses, opaque result types (some), protocol "
+    "associatedtype requirements, multiline parameter labels, inout "
+    "parameters, async/await specifiers, closure parameter shorthand",
+    "TypeScript": "generic constraints (extends keyof), conditional types, "
+    "mapped types, template literal types, overloaded function signatures, "
+    "decorators with complex arguments, multiline type annotations",
+    "Zig": "comptime parameters, generic function declarations, multiline "
+    "parameter lists, function returning error union types, inline/export/"
+    "extern calling convention specifiers",
+}
 
 
 def warn_if_no_tree_sitter(self: Any, language_name: str, package_name: str) -> None:
     """Warn if tree-sitter is not available (calls warn only once).
+
+    Includes language-specific known regex failure modes so users can judge
+    how incomplete their results might be.
 
     Note: The caller should check the language-specific availability flag
     before calling this function.
@@ -114,11 +162,14 @@ def warn_if_no_tree_sitter(self: Any, language_name: str, package_name: str) -> 
         package_name: PyPI package name (e.g., "tree-sitter-java")
     """
     if not getattr(self, "_warned", False):
+        weaknesses = _REGEX_WEAKNESSES.get(language_name, "complex function signatures")
         warnings.warn(
             f"tree-sitter and {package_name} are not installed; "
-            f"{language_name} extraction will use a regex-based fallback which "
-            "may miss some function signatures.  Install the 'languages' "
-            "extra for full support:  pip install 'impactguard[languages]'",
+            f"{language_name} extraction will use a regex-based fallback.\n\n"
+            f"Known patterns the regex fallback misses or misparses:\n"
+            f"  {weaknesses}\n\n"
+            "Install the 'languages' extra for full support:\n"
+            "  pip install 'impactguard[languages]'",
             UserWarning,
             stacklevel=3,
         )
@@ -191,6 +242,30 @@ def make_call_dict(
     }
 
 
+def dedupe_signatures_by_fqname(
+    signatures: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Deduplicate signature dicts by ``fqname`` and return sorted output."""
+    seen: set[str] = set()
+    unique: list[dict[str, Any]] = []
+    for sig in signatures:
+        fqname = sig["fqname"]
+        if fqname not in seen:
+            seen.add(fqname)
+            unique.append(sig)
+
+    unique.sort(key=lambda x: x["fqname"])
+    return unique
+
+
+def split_pipe_union_members(type_str: str) -> frozenset[str]:
+    """Split ``A | B`` style unions, or return a singleton member set."""
+    s = type_str.strip()
+    if "|" in s:
+        return frozenset(p.strip() for p in s.split("|"))
+    return frozenset({s})
+
+
 def _extract_call_name(
     node: Any,
     source: bytes,
@@ -223,6 +298,70 @@ def _extract_call_name(
             node.named_children[0], source, member_map, ident_type
         )
     return None
+
+
+def _resolve_call_name_from_node(
+    node: Any,
+    source: bytes,
+    *,
+    name_on_call: bool,
+    fallback_ident: bool,
+    member_map: dict[str, str | None] | None,
+    ident_type: str | None,
+    first_ident: Callable[[Any], str | None],
+) -> str | None:
+    """Resolve a call target name from a tree-sitter call node."""
+    if name_on_call:
+        for field in ("name", "method"):
+            child = node.child_by_field_name(field)
+            if child is not None:
+                return node_text(child, source)
+        if fallback_ident:
+            return first_ident(node)
+        return None
+
+    func_node = node.child_by_field_name("function")
+    if func_node is None and node.named_children:
+        func_node = node.named_children[0]
+    if func_node is None:
+        return None
+    return _extract_call_name(func_node, source, member_map, ident_type)
+
+
+def _resolve_args_node(node: Any, args_type: str) -> Any:
+    """Resolve the argument-list node for a call expression."""
+    args_node = node.child_by_field_name("arguments")
+    if args_node is not None:
+        return args_node
+    for child in node.named_children:
+        if child.type == args_type:
+            return child
+    if node.named_children:
+        return node.named_children[-1]
+    return None
+
+
+def _count_call_args(
+    node: Any,
+    *,
+    count_args: str,
+    count_types: set[str] | None,
+    args_type: str,
+) -> int:
+    """Count arguments for a call expression according to the configured mode."""
+    if count_args == "arithmetic":
+        return max(0, len(node.named_children) - 1)
+
+    args_node = _resolve_args_node(node, args_type)
+    if args_node is None:
+        return 0
+
+    if count_args == "include":
+        types = count_types or set()
+        if types:
+            return sum(1 for child in args_node.children if child.type in types)
+
+    return sum(1 for child in args_node.named_children if child.type != ",")
 
 
 def extract_calls_with_tree_sitter(
@@ -294,52 +433,22 @@ def extract_calls_with_tree_sitter(
 
     def visit(node: Any) -> None:
         if node.type == call_type:
-            name: str | None = None
-            if name_on_call:
-                for field in ("name", "method"):
-                    n = node.child_by_field_name(field)
-                    if n is not None:
-                        name = node_text(n, source)
-                        break
-                if name is None and fallback_ident:
-                    name = _first_ident(node)
-            else:
-                func_node = node.child_by_field_name("function")
-                if func_node is None and node.named_children:
-                    func_node = node.named_children[0]
-                if func_node is not None:
-                    name = _extract_call_name(func_node, source, member_map, ident_type)
-
+            name = _resolve_call_name_from_node(
+                node,
+                source,
+                name_on_call=name_on_call,
+                fallback_ident=fallback_ident,
+                member_map=member_map,
+                ident_type=ident_type,
+                first_ident=_first_ident,
+            )
             if name is not None:
-                if count_args == "arithmetic":
-                    arg_count = max(0, len(node.named_children) - 1)
-                else:
-                    args_node = node.child_by_field_name("arguments")
-                    if args_node is None:
-                        for child in node.named_children:
-                            if child.type == args_type:
-                                args_node = child
-                                break
-                    if args_node is None and node.named_children:
-                        args_node = node.named_children[-1]
-
-                    arg_count = 0
-                    if args_node is not None:
-                        if count_args == "include":
-                            types = count_types or set()
-                            if types:
-                                for child in args_node.children:
-                                    if child.type in types:
-                                        arg_count += 1
-                            else:
-                                for child in args_node.named_children:
-                                    if child.type != ",":
-                                        arg_count += 1
-                        else:
-                            for child in args_node.named_children:
-                                if child.type != ",":
-                                    arg_count += 1
-
+                arg_count = _count_call_args(
+                    node,
+                    count_args=count_args,
+                    count_types=count_types,
+                    args_type=args_type,
+                )
                 lineno = node.start_point[0] + 1
                 calls.append(make_call_dict(name, lineno, arg_count, str(path)))
 

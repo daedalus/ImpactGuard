@@ -9,6 +9,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: cicd-sensor
+        uses: cicd-sensor/cicd-sensor-action@1935de498397aa7b9bf6ac7ca822ddb430a34843 # v0.0.31
+
       - uses: actions/checkout@v4
 
       - name: Set up Python
@@ -22,8 +25,10 @@ jobs:
       - name: Create virtual environment and install build tools
         run: uv venv && uv pip install build twine
 
-      - name: Build package
-        run: uv run python -m build
+      - name: Clean and build package
+        run: |
+          rm -rf dist/
+          uv run python -m build
 
       - name: Check package
         run: uv run python -m twine check dist/*
@@ -43,6 +48,9 @@ jobs:
     permissions:
       id-token: write
     steps:
+      - name: cicd-sensor
+        uses: cicd-sensor/cicd-sensor-action@1935de498397aa7b9bf6ac7ca822ddb430a34843 # v0.0.31
+
       - name: Download dist artifacts
         uses: actions/download-artifact@v4
         with:

@@ -5,7 +5,6 @@ import json
 import sys
 import tempfile
 from pathlib import Path
-from typing import Optional
 
 import pytest
 
@@ -29,7 +28,7 @@ _outcomes: dict = {
 }
 
 
-def _classify(nodeid: str) -> tuple[bool, Optional[str]]:
+def _classify(nodeid: str) -> tuple[bool, str | None]:
     """Return (is_adversarial, category_or_None) for a test node ID.
 
     A test is adversarial when "adversarial" appears (case-insensitive) in
@@ -49,7 +48,7 @@ def _classify(nodeid: str) -> tuple[bool, Optional[str]]:
     # (e.g. "TestBoundaryEdgeCases" → "boundaryedgecases").
     cls_key = "".join(c for c in cls_part if c.isalpha())
     if cls_key.startswith("test"):
-        cls_key = cls_key[len("test"):]
+        cls_key = cls_key[len("test") :]
     category = _TAXONOMY_CLASS_MAP.get(cls_key) if is_adv else None
 
     return is_adv, category

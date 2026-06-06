@@ -11,6 +11,10 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+from ._logging import get_logger
+
+_log = get_logger(__name__)
+
 # ── Built-in defaults ─────────────────────────────────────────────────────────
 _DEFAULTS: dict[str, Any] = {
     "impactguard": {
@@ -30,9 +34,11 @@ _DEFAULTS: dict[str, Any] = {
         },
         "risk": {
             "confidence_threshold": 0.3,
+            "confidence_samples_threshold": 100,
             "high_exposure_min": 0.1,
             "medium_exposure_min": 0.01,
-            "block_unknown": False,
+            "block_unknown": True,
+            "exposure_max_count": 0,
         },
         "patches": {
             "target_file_match": 1.0,
@@ -64,11 +70,20 @@ _DEFAULTS: dict[str, Any] = {
             "verbose": False,
             "auto_open": False,
         },
-    "analysis": {
-        "include_private": False,
-        "suppress": [],
-        "transitive_depth": 0,
-    },
+        "logging": {
+            # Logging level for the "impactguard" logger hierarchy.
+            # Recognised values: DEBUG, INFO, WARNING, ERROR, CRITICAL.
+            "level": "WARNING",
+            # Log record format string (Python logging format).
+            "format": "%(levelname)s [%(name)s] %(message)s",
+            # Optional path for a log file.  Empty string means stderr only.
+            "log_file": "",
+        },
+        "analysis": {
+            "include_private": False,
+            "suppress": [],
+            "transitive_depth": 0,
+        },
         "languages": {
             # Canonical language names to enable.  "python" is always available.
             # "typescript" requires tree-sitter-typescript (pip install impactguard[languages]).
@@ -97,12 +112,21 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
 
 
 def _find_config_file(start: Path | None = None) -> Path | None:
-    """Walk up from *start* (default: cwd) looking for ``impactguard.toml``."""
+    """Walk up from *start* (default: cwd) looking for ``impactguard.toml``.
+
+    Stops at the project root (where ``.git`` exists) or the filesystem root,
+    preventing configuration poisoning from shared writable directories
+    outside the project boundary.
+    """
     search = start or Path.cwd()
     for directory in [search, *search.parents]:
         candidate = directory / "impactguard.toml"
         if candidate.is_file():
             return candidate
+        if (directory / ".git").is_dir():
+            break
+        if directory == directory.parent:
+            break
     return None
 
 
@@ -126,12 +150,18 @@ def load_config(config_path: str | None = None) -> dict[str, Any]:
         path = _find_config_file()
 
     if path is None or not path.is_file():
+        _log.debug("No impactguard.toml found; using built-in defaults")
         return _DEFAULTS
 
     try:
         with open(path, "rb") as f:
             raw: dict[str, Any] = tomllib.load(f)
     except Exception as exc:
+        _log.warning(
+            "Could not parse config file '%s': %s; using built-in defaults.",
+            path,
+            exc,
+        )
         print(
             f"Warning: impactguard: could not parse config file '{path}': {exc}; "
             "using built-in defaults.",
@@ -139,6 +169,7 @@ def load_config(config_path: str | None = None) -> dict[str, Any]:
         )
         return _DEFAULTS
 
+    _log.debug("Loaded configuration from '%s'", path)
     return _deep_merge(_DEFAULTS, raw)
 
 
@@ -183,6 +214,110 @@ def get(section: str, key: str, default: Any = None) -> Any:
     return cfg.get("impactguard", {}).get(section, {}).get(key, default)
 
 
+def _resolve_validation_path(config_path: str | None) -> Path | None:
+    """Resolve the config path used by :func:`validate_config`."""
+    if config_path:
+        return Path(config_path)
+    return _find_config_file()
+
+
+def _load_validation_config(path: Path, issues: list[str]) -> dict[str, Any] | None:
+    """Load and type-check the raw TOML config for validation."""
+    try:
+        with open(path, "rb") as f:
+            raw: dict[str, Any] = tomllib.load(f)
+    except Exception as exc:
+        issues.append(f"TOML parse error in '{path}': {exc}")
+        return None
+    return raw
+
+
+def _append_top_level_issues(raw: dict[str, Any], issues: list[str]) -> None:
+    """Record informational issues for unused top-level keys."""
+    for top_key in raw:
+        if top_key != "impactguard":
+            issues.append(
+                f"INFO: top-level key '{top_key}' is not used by ImpactGuard "
+                "(only 'impactguard' is read)."
+            )
+
+
+def _validate_config_value(
+    section_name: str,
+    key_name: str,
+    default_val: Any,
+    value: Any,
+    issues: list[str],
+) -> None:
+    """Validate a single config value against its default's shape."""
+    key_prefix = f"[impactguard.{section_name}].{key_name}"
+    if isinstance(default_val, float) and isinstance(value, int | float):
+        if not (0.0 <= float(value) <= 10.0):
+            issues.append(
+                f"ERROR: {key_prefix} = {value!r} is outside the expected range [0.0, 10.0]."
+            )
+        return
+
+    if isinstance(default_val, bool):
+        if not isinstance(value, bool):
+            issues.append(
+                f"ERROR: {key_prefix} should be a boolean (true/false), got {type(value).__name__!r}."
+            )
+        return
+
+    if isinstance(default_val, int) and not isinstance(default_val, bool):
+        if not isinstance(value, int) or isinstance(value, bool):
+            issues.append(
+                f"ERROR: {key_prefix} should be an integer, got {type(value).__name__!r}."
+            )
+        elif value <= 0:
+            issues.append(
+                f"ERROR: {key_prefix} = {value!r} must be a positive integer."
+            )
+        return
+
+    if isinstance(default_val, list) and not isinstance(value, list):
+        issues.append(
+            f"ERROR: {key_prefix} should be a TOML array, got {type(value).__name__!r}."
+        )
+
+
+def _validate_config_section(
+    section_name: str,
+    user_section: Any,
+    known_sections: set[str],
+    issues: list[str],
+) -> None:
+    """Validate one ``[impactguard.<section>]`` table."""
+    if section_name not in known_sections:
+        issues.append(
+            f"WARN: Unknown section '[impactguard.{section_name}]' — "
+            f"known sections are: {', '.join(sorted(known_sections))}."
+        )
+        return
+
+    default_section = _DEFAULTS["impactguard"][section_name]
+    if not isinstance(user_section, dict):
+        issues.append(f"ERROR: '[impactguard.{section_name}]' must be a TOML table.")
+        return
+
+    known_keys = (
+        set(default_section.keys()) if isinstance(default_section, dict) else set()
+    )
+    for key_name, value in user_section.items():
+        if known_keys and key_name not in known_keys:
+            issues.append(
+                f"WARN: Unknown key '[impactguard.{section_name}].{key_name}' — "
+                f"known keys are: {', '.join(sorted(known_keys))}."
+            )
+            continue
+
+        default_val = (
+            default_section.get(key_name) if isinstance(default_section, dict) else None
+        )
+        _validate_config_value(section_name, key_name, default_val, value, issues)
+
+
 def validate_config(config_path: str | None = None) -> list[str]:
     """Validate an ``impactguard.toml`` configuration file.
 
@@ -205,93 +340,25 @@ def validate_config(config_path: str | None = None) -> list[str]:
         return value as warnings or fatal errors.
     """
     issues: list[str] = []
-
-    # Locate the file
-    if config_path:
-        path: Path | None = Path(config_path)
-    else:
-        path = _find_config_file()
+    path = _resolve_validation_path(config_path)
 
     if path is None or not path.is_file():
         issues.append("No impactguard.toml found; all defaults will be used.")
         return issues
 
-    # Parse TOML
-    try:
-        with open(path, "rb") as f:
-            raw: dict[str, Any] = tomllib.load(f)
-    except Exception as exc:
-        issues.append(f"TOML parse error in '{path}': {exc}")
+    raw = _load_validation_config(path, issues)
+    if raw is None:
         return issues
 
-    # Warn about extra top-level keys (not fatal — other tools may share the file)
-    for top_key in raw:
-        if top_key != "impactguard":
-            issues.append(
-                f"INFO: top-level key '{top_key}' is not used by ImpactGuard "
-                "(only 'impactguard' is read)."
-            )
+    _append_top_level_issues(raw, issues)
 
     ig_raw = raw.get("impactguard", {})
     if not isinstance(ig_raw, dict):
         issues.append("ERROR: '[impactguard]' must be a TOML table.")
         return issues
 
-    _KNOWN_SECTIONS = set(_DEFAULTS["impactguard"].keys())
-    for section_name in ig_raw:
-        if section_name not in _KNOWN_SECTIONS:
-            issues.append(
-                f"WARN: Unknown section '[impactguard.{section_name}]' — "
-                f"known sections are: {', '.join(sorted(_KNOWN_SECTIONS))}."
-            )
-            continue
-
-        default_section = _DEFAULTS["impactguard"][section_name]
-        user_section = ig_raw[section_name]
-
-        if not isinstance(user_section, dict):
-            issues.append(
-                f"ERROR: '[impactguard.{section_name}]' must be a TOML table."
-            )
-            continue
-
-        known_keys = set(default_section.keys()) if isinstance(default_section, dict) else set()
-        for key_name, value in user_section.items():
-            if known_keys and key_name not in known_keys:
-                issues.append(
-                    f"WARN: Unknown key '[impactguard.{section_name}].{key_name}' — "
-                    f"known keys are: {', '.join(sorted(known_keys))}."
-                )
-                continue
-
-            # Type / range checks
-            default_val = default_section.get(key_name) if isinstance(default_section, dict) else None
-            if isinstance(default_val, float) and isinstance(value, (int, float)):
-                if not (0.0 <= float(value) <= 10.0):
-                    issues.append(
-                        f"ERROR: [impactguard.{section_name}].{key_name} = {value!r} "
-                        "is outside the expected range [0.0, 10.0]."
-                    )
-            elif isinstance(default_val, bool) and not isinstance(value, bool):
-                issues.append(
-                    f"ERROR: [impactguard.{section_name}].{key_name} should be a "
-                    f"boolean (true/false), got {type(value).__name__!r}."
-                )
-            elif isinstance(default_val, int) and not isinstance(default_val, bool):
-                if not isinstance(value, int) or isinstance(value, bool):
-                    issues.append(
-                        f"ERROR: [impactguard.{section_name}].{key_name} should be "
-                        f"an integer, got {type(value).__name__!r}."
-                    )
-                elif value <= 0:
-                    issues.append(
-                        f"ERROR: [impactguard.{section_name}].{key_name} = {value!r} "
-                        "must be a positive integer."
-                    )
-            elif isinstance(default_val, list) and not isinstance(value, list):
-                issues.append(
-                    f"ERROR: [impactguard.{section_name}].{key_name} should be a "
-                    f"TOML array, got {type(value).__name__!r}."
-                )
+    known_sections = set(_DEFAULTS["impactguard"].keys())
+    for section_name, user_section in ig_raw.items():
+        _validate_config_section(section_name, user_section, known_sections, issues)
 
     return issues

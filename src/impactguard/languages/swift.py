@@ -25,14 +25,15 @@ from pathlib import Path
 from typing import Any
 
 from .lib.shared import (
-    _TREE_SITTER_AVAILABLE,
     child_of_type,
+    dedupe_signatures_by_fqname,
     extract_calls_with_tree_sitter,
     has_ignore_comment,
     has_ignore_comment_fallback,
     make_parser,
     node_text,
     register_extractor,
+    split_pipe_union_members,
     warn_if_no_tree_sitter,
 )
 
@@ -79,6 +80,20 @@ def _has_modifier(node: Any, source: bytes, modifier: str) -> bool:
     return False
 
 
+def _parse_parameter_child(c: Any, source: bytes, acc: dict[str, Any]) -> None:
+    ct = c.type
+    if ct in ("simple_identifier", "wildcard_pattern") and acc["name"] is None:
+        acc["name"] = node_text(c, source)
+    elif ct == ":":
+        acc["colon_seen"] = True
+    elif acc["colon_seen"] and ct not in ("=",) and acc["type_str"] is None:
+        acc["type_str"] = node_text(c, source).strip()
+    elif ct == "=":
+        acc["has_default"] = True
+    elif ct == "...":
+        acc["is_variadic"] = True
+
+
 def _parse_params(
     params_node: Any | None,
     source: bytes,
@@ -94,31 +109,53 @@ def _parse_params(
         if child.type in ("(", ")", ","):
             continue
         if child.type == "parameter":
-            # Swift params: [label] name: Type [= default]
-            name: str | None = None
-            type_str: str | None = None
-            has_default = False
-            is_variadic = False
-            colon_seen = False
+            acc: dict[str, Any] = {
+                "name": None,
+                "type_str": None,
+                "has_default": False,
+                "is_variadic": False,
+                "colon_seen": False,
+            }
             for c in child.children:
-                if c.type in ("simple_identifier", "wildcard_pattern"):
-                    if name is None:
-                        name = node_text(c, source)
-                elif c.type == ":":
-                    colon_seen = True
-                elif colon_seen and c.type not in ("=",) and type_str is None:
-                    type_str = node_text(c, source).strip()
-                elif c.type == "=":
-                    has_default = True
-                elif c.type == "...":
-                    is_variadic = True
-            if is_variadic:
+                _parse_parameter_child(c, source, acc)
+            if acc["is_variadic"]:
                 has_vararg = True
             positional.append(
-                {"name": name or "_", "has_default": has_default, "type": type_str}
+                {
+                    "name": acc["name"] or "_",
+                    "has_default": acc["has_default"],
+                    "type": acc["type_str"],
+                }
             )
 
     return positional, has_vararg
+
+
+def _arrow_return_type(node: Any, source: bytes) -> str | None:
+    arrow_seen = False
+    for child in node.children:
+        if child.type == "->":
+            arrow_seen = True
+        elif arrow_seen and child.type not in ("{", ";"):
+            return node_text(child, source).strip()
+    return None
+
+
+def _lookahead_async(node: Any, source: bytes) -> bool:
+    parent = node.parent
+    if parent is None:
+        return False
+    found_self = False
+    for child in parent.children:
+        if found_self:
+            break
+        if child == node:
+            found_self = True
+        elif child.type == "async" or (
+            child.type == "ERROR" and node_text(child, source).strip() == "async"
+        ):
+            return True
+    return False
 
 
 def _process_function(
@@ -139,35 +176,7 @@ def _process_function(
     params_node = child_of_type(node, "parameter_clause", "function_value_parameters")
     positional, has_vararg = _parse_params(params_node, source)
 
-    # Return type: after ->
-    return_type: str | None = None
-    arrow_seen = False
-    for child in node.children:
-        if child.type == "->":
-            arrow_seen = True
-        elif arrow_seen and child.type not in ("{", ";"):
-            return_type = node_text(child, source).strip()
-            break
-
-    # Check for async modifier (can be a child, or before 'func' in an ERROR node)
-    is_async = _has_modifier(node, source, "async")
-    if not is_async:
-        # Check if there's an 'async' node before this function_declaration
-        # (tree-sitter may put it in an ERROR node before the function)
-        parent = node.parent
-        if parent is not None:
-            found_self = False
-            for child in parent.children:
-                if found_self:
-                    break
-                if child == node:
-                    found_self = True
-                elif child.type == "async" or (
-                    child.type == "ERROR"
-                    and node_text(child, source).strip() == "async"
-                ):
-                    is_async = True
-                    break
+    is_async = _has_modifier(node, source, "async") or _lookahead_async(node, source)
 
     exported = _has_modifier(node, source, "public") or _has_modifier(
         node, source, "open"
@@ -193,7 +202,7 @@ def _process_function(
             "vararg": has_vararg,
             "kwarg": False,
             "class_name": class_name,
-            "return_type": return_type,
+            "return_type": _arrow_return_type(node, source),
             "decorators": [],
             "is_async": is_async,
             "ignored": has_ignore_comment(source, node.start_point[0]),
@@ -221,13 +230,18 @@ def _extract_with_tree_sitter(
         fq_file = path.name
         funcs: list[dict[str, Any]] = []
 
-        def visit(node: Any) -> None:
+        def visit(
+            node: Any,
+            _source: bytes = source,
+            _fq_file: str = fq_file,
+            _funcs: list[dict[str, Any]] = funcs,
+        ) -> None:
             if node.type in (
                 "function_declaration",
                 "protocol_function_declaration",
                 "init_declaration",
             ):
-                _process_function(node, source, fq_file, funcs)
+                _process_function(node, _source, _fq_file, _funcs)
             for child in node.children:
                 visit(child)
 
@@ -240,13 +254,17 @@ def _extract_with_tree_sitter(
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
     return extract_calls_with_tree_sitter(
-        path, "swift", _SWIFT_LANGUAGE,
+        path,
+        "swift",
+        _SWIFT_LANGUAGE,
         args_type="call_suffix",
         ident_type="simple_identifier",
         member_map={"navigation_expression": None},
         count_args="include",
         count_types={"value_argument"},
     )
+
+
 # ── Regex fallback ────────────────────────────────────────────────────────────
 
 _FUNC_RE = re.compile(
@@ -340,15 +358,7 @@ def _extract_with_regex(
                 }
             )
 
-    seen: set[str] = set()
-    unique: list[dict[str, Any]] = []
-    for sig in all_funcs:
-        if sig["fqname"] not in seen:
-            seen.add(sig["fqname"])
-            unique.append(sig)
-
-    unique.sort(key=lambda x: x["fqname"])
-    return unique
+    return dedupe_signatures_by_fqname(all_funcs)
 
 
 def _extract_calls_with_regex(path: Path) -> list[dict[str, Any]]:
@@ -420,10 +430,7 @@ class SwiftExtractor:
 
         Splits on ``|`` for union/enum types.
         """
-        s = type_str.strip()
-        if "|" in s:
-            return frozenset(p.strip() for p in s.split("|"))
-        return frozenset({s})
+        return split_pipe_union_members(type_str)
 
 
 # ── Self-registration ─────────────────────────────────

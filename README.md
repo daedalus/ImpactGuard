@@ -7,6 +7,7 @@
 [![Actions status](https://github.com/daedalus/impactguard/workflows/CI/badge.svg)](https://github.com/daedalus/impactguard/actions)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/daedalus/ImpactGuard)
+[![Website](https://img.shields.io/badge/website-impactguard.dev-blue)](http://impactguard.dev)
 
 ## Overview
 
@@ -32,9 +33,9 @@ It provides a quantitative risk framework to help developers understand the cons
 | Impact Analysis | `impact_analysis.py` | Correlates changes with call sites |
 | Risk Model | `risk_model.py` | S × E × C × λ risk scoring |
 | Risk Gate | `risk_gate.py`, `enforce_gate.py` | CI enforcement engine |
-| Runtime Tracing | `trace_calls.py`, `trace_calls_prod.py` | Development and production tracers |
+| Runtime Intelligence | `trace_calls.py`, `trace_calls_prod.py`, `runtime_intelligence.py` | Python tracers plus language-agnostic runtime normalization |
 | Patch Generation | `cst_patch.py`, `patch_generator.py` | Format-preserving automated fixes |
-| Reporting | `generate_report.py` | Static HTML report generation |
+| Reporting | `generate_report.py`, `sarif.py` | Static HTML + SARIF v2.1.0 report generation |
 | Robustness Evaluation | `tools/robustness_evaluator.py` | Composite robustness score, fragility index, diversity |
 | CLI | `cli.py` | Command-line interface |
 
@@ -42,24 +43,26 @@ It provides a quantitative risk framework to help developers understand the cons
 
 ## Language Support
 
-| Language | Extensions | Extraction Backend | Signature Extraction | Call-Site Extraction | Type Annotations | Optional Dependency | Status |
-|----------|------------|--------------------|:--------------------:|:--------------------:|:----------------:|---------------------|--------|
-| **Python** | `.py` | `ast` (stdlib) | Yes | Yes | Yes | — | Stable |
-| **TypeScript** | `.ts`, `.tsx` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
-| **JavaScript** | `.js`, `.mjs`, `.cjs` | tree-sitter (preferred) / regex fallback | Yes | Yes | No (no native annotations) | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
-| **Java** | `.java` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
-| **Kotlin** | `.kt`, `.kts` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
-| **Go** | `.go` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
-| **Rust** | `.rs` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
-| **Swift** | `.swift` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
-| **C** | `.c`, `.h` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
-| **C++** | `.cpp`, `.hpp`, `.cc`, `.cxx`, `.hxx` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
-| **C#** | `.cs` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
-| **Ruby** | `.rb` | tree-sitter (preferred) / regex fallback | Yes | Yes | No (no native annotations) | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
-| **Haskell** | `.hs`, `.lhs` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes (type signatures) | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
-| **Zig** | `.zig` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| Language | Extensions | Extraction Backend | Signature Extraction | Call-Site Extraction | Type Annotations | Runtime Tracing | CST Patching | Optional Dependency | Status |
+|----------|------------|--------------------|:--------------------:|:--------------------:|:----------------:|:---------------:|:------------:|---------------------|--------|
+| **Python** | `.py` | `ast` (stdlib) | Yes | Yes | Yes | ✅ | ✅ | — | Stable |
+| **TypeScript** | `.ts`, `.tsx` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | ❌ | ❌ | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **JavaScript** | `.js`, `.mjs`, `.cjs` | tree-sitter (preferred) / regex fallback | Yes | Yes | No (no native annotations) | ❌ | ❌ | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **Java** | `.java` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | ❌ | ❌ | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **Kotlin** | `.kt`, `.kts` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | ❌ | ❌ | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **Go** | `.go` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | ❌ | ❌ | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **Rust** | `.rs` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | ❌ | ❌ | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **Swift** | `.swift` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | ❌ | ❌ | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **C** | `.c`, `.h` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | ❌ | ❌ | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **C++** | `.cpp`, `.hpp`, `.cc`, `.cxx`, `.hxx` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | ❌ | ❌ | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **C#** | `.cs` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | ❌ | ❌ | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **Ruby** | `.rb` | tree-sitter (preferred) / regex fallback | Yes | Yes | No (no native annotations) | ❌ | ❌ | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **Haskell** | `.hs`, `.lhs` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes (type signatures) | ❌ | ❌ | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
+| **Zig** | `.zig` | tree-sitter (preferred) / regex fallback | Yes | Yes | Yes / partial | ❌ | ❌ | `pip install "impactguard[languages]"` | Stable (tree-sitter) · Best-effort (regex) |
 
-> **Note:** All tree-sitter backends require `tree-sitter>=0.23` plus the corresponding grammar package
+> **Note:** Runtime tracing and CST-based patch generation are Python-only. Non-Python languages can contribute runtime observations as JSON (see [Runtime Data JSON](#runtime-data-json) schema) and receive text-based patch suggestions.
+>
+> All tree-sitter backends require `tree-sitter>=0.23` plus the corresponding grammar package
 > (e.g. `tree-sitter-java>=0.23`), installed together via `pip install "impactguard[languages]"`.
 > When those packages are absent, ImpactGuard automatically falls back to regex-based extraction and
 > emits a `UserWarning`.
@@ -105,7 +108,7 @@ pip install -e ".[test]"
 | `src/impactguard/` | Core package containing the analysis logic, risk model, and CLI |
 | `extract_signatures.py` | Utility for extracting function metadata into JSON/Text |
 | `extract_calls.py` | AST-based call site extractor |
-| `impact_analysis.py` | Logic for correlating signatures with call sites |
+| `impact_analysis.py` | Logic for correlating signatures with call sites — builds a call graph, detects arity mismatches, and finds **transitively** affected callers via BFS up to a configurable depth |
 | `risk_gate.py` | The CI-ready enforcement engine |
 | `trace_calls.py` | Runtime instrumentation for capturing live execution data |
 | `SPEC.md` | Technical specification and public API |
@@ -122,7 +125,9 @@ impactguard extract $(git ls-files '*.java' '*.go' '*.rs' '*.ts' '*.js' '*.kt' '
 impactguard extract-calls $(git ls-files '*.java' '*.go' '*.rs' '*.ts' '*.js' '*.kt' '*.swift' '*.cs' '*.rb' '*.hs' '*.zig') > .calls.json
 
 # 2. Capture runtime exposure (optional)
+# Python projects can emit runtime data directly:
 impactguard trace dump .runtime_calls.json
+# Other languages can write equivalent JSON (list/map/envelope) and reuse the same pipeline
 
 # 3. Compare and analyze risk
 impactguard risk diff.txt .runtime_calls.json report.json
@@ -182,9 +187,18 @@ To understand the "blast radius" of a change, ImpactGuard must find where the mo
 
 The final stage of the core pipeline, `analyze`, correlates the detected API changes with the discovered call sites. It validates whether the arguments passed at a specific call site still satisfy the requirements of the new function signature. If runtime data is available, it is integrated here to provide context on how often a specific impacted path is actually executed.
 
+**Transitive impact tracking:** Beyond direct call-site validation, the analyzer builds an inverted call graph (callee → set-of-callers) and runs a BFS to find functions that are transitively affected up to a configurable number of hops. For example, if `get_user()` removes a parameter, every function that calls `get_user()` breaks directly, but any function calling *those* callers is also at risk. The hop distance is recorded in each issue record (`hop: 1`, `hop: 2`, …) and the `transitive` flag distinguishes indirect from direct issues.
+
+Enable this by setting `transitive_depth` in `impactguard.toml`:
+
+```toml
+[impactguard.analysis]
+transitive_depth = 2   # 0 = disabled (default), 1 = direct callers only
+```
+
 - **Key Component:** `impact_analysis.py`
 - **Input:** Signature diffs, call-site data, and optional runtime traces
-- **Role:** Pinpoints exactly which lines of code are broken by a change
+- **Role:** Pinpoints exactly which lines of code are broken by a change, including transitively
 
 ---
 
@@ -221,14 +235,52 @@ The core logic resides in `risk_model.py`. It quantifies risk by evaluating thre
 | **Severity (S)** | `get_severity()` | Score (0.1 to 1.0) based on change type (e.g., `REMOVED` = 1.0, `ADDED` = 0.1) |
 | **Exposure (E)** | `exposure()` | Logarithmic scale mapping call counts to a 0.0-1.0 range |
 | **Confidence (C)** | `confidence()` | Measures data reliability based on sample size against a threshold |
-| **Lambda (λ)** | `--lambda` / `lambda_` | Sensitivity multiplier (default 1.0). Values >1 increase sensitivity; values <1 decrease it |
+| **Lambda (λ)** | `--lambda-factor` / `lambda_` | Sensitivity multiplier (default 1.0). Values >1 increase sensitivity; values <1 decrease it |
 | **Classification** | `classify()` | Uses a decision tree to assign the final risk label |
 
 **Exposure Calculation:** `min(1.0, log(1 + count) / log(1 + max_count))`
 
+> **Normalization caveat:** `max_count` defaults to the highest call count in the
+> current scan, making exposure **relative** by default. A hot function with 1M
+> calls inflates the denominator and compresses all other scores toward zero.
+> Scores are not comparable across projects or scan windows without an absolute
+> anchor.  Set `exposure_max_count` in `[impactguard.risk]` config (e.g.
+> `exposure_max_count = 100_000`) for stable cross-scan scoring.
+
 **Sensitivity Tuning:**
-- `--lambda=2` — doubles effective severity, making ImpactGuard more sensitive (more changes flagged HIGH/MEDIUM)
-- `--lambda=0.5` — halves effective severity, making ImpactGuard less sensitive (fewer changes flagged HIGH/MEDIUM)
+- `--lambda-factor=2` — doubles effective severity, making ImpactGuard more sensitive (more changes flagged HIGH/MEDIUM)
+
+- `--lambda-factor=0.5` — halves effective severity, making ImpactGuard less sensitive (fewer changes flagged HIGH/MEDIUM)
+
+> **Note:** The `--lambda-factor` CLI flag is spelled `--lambda-factor` (not `--lambda`) to avoid conflicting with Python's `lambda` keyword. The corresponding Python API parameter is named `lambda_`, following the PEP 8 trailing-underscore convention for reserved-word disambiguation.
+
+### Feedback Loop for Confidence Calibration
+
+The `feedback` command closes the loop between patch suggestions and real-world outcomes. It records whether generated patches were accepted or rejected, then calibrates the patch-confidence weights so future scoring reflects actual acceptance patterns.
+
+**Subcommands:**
+
+| Subcommand | Description |
+|------------|-------------|
+| `feedback record <patch_id> [--accepted|--rejected] [--change-type TYPE]` | Record a patch outcome |
+| `feedback stats` | Show acceptance rates (total, per category) |
+| `feedback calibrate [--config-path impactguard.toml]` | Derive weights from outcomes and write to config |
+
+**Typical workflow:**
+
+```bash
+# 1. Review a suggested patch and record the outcome
+impactguard feedback record fix_login_timeout --accepted --change-type positional
+impactguard feedback record fix_logout_call --rejected --change-type kwarg
+
+# 2. View current acceptance rates
+impactguard feedback stats
+
+# 3. Calibrate — writes calibrated weights to [impactguard.patches] in impactguard.toml
+impactguard feedback calibrate
+```
+
+Calibration uses heuristic name matching (e.g. `"positional"` → `structural_positional`). A minimum of 5 outcomes per category is required before a weight is updated.
 
 ### CI Enforcement
 
@@ -237,7 +289,13 @@ The risk assessment is operationalized through `risk_gate.py` and `enforce_gate.
 1. **Risk Gate Execution**: `risk_gate.py` contains the `run()` function which parses the diff and runtime data to generate a comprehensive `report.json`
 2. **Gate Enforcement**: `enforce_gate.py` consumes this report:
    - If any item is flagged as `HIGH` risk → exits with code `1` (blocks build)
-   - If `UNKNOWN` risks are detected → issues a warning but allows build (exit code `0`)
+   - If `UNKNOWN` risks are detected → by default **blocks the build** (exit code `1`). Can be relaxed to warn-only via `block_unknown = false` in config.
+
+> **⚠️ UNKNOWN risk footgun:** UNKNOWN means runtime data is absent or confidence
+> is too low to classify. A team that never sets up runtime tracing will always
+> see UNKNOWN on every change. The default (`block_unknown = true`) blocks the
+> build to force proper instrumentation, but if you set `block_unknown = false`
+> the **only signal is a console warning** — easy to miss in CI logs.
 
 ---
 
@@ -254,10 +312,16 @@ Designed for test suites and local execution where performance is less critical 
 
 ### Production Sampler (`trace_calls_prod.py`)
 
-Optimized for minimal overhead in live environments. It employs a probabilistic sampling strategy (default 1%) to capture a representative subset of traffic.
+Optimized for light-weight optional use in live environments. It employs a probabilistic sampling strategy (default 1%) to capture a representative subset of traffic.
+
+> **Note:** The production sampler is a **best-effort** tool, not a production-grade APM solution. It is suitable for low-overhead visibility but should not be relied upon as the sole tracing infrastructure in critical deployments.
 
 - **Sampling Logic:** Only records data if `random.random() < SAMPLE_RATE`
 - **Background Flushing:** Periodically flushes captured counts to disk (default every 10 seconds)
+
+### Language-Agnostic Runtime Inputs (`runtime_intelligence.py`)
+
+ImpactGuard's risk and impact stages accept runtime observations from any language as long as they can be serialized to JSON. Supported shapes include the existing Python tracer list format, single observation objects, map-style payloads such as `{"pkg::fn": 12}`, and envelope objects like `{"runtime": [...]}`. Names are normalized across separators such as `:`, `::`, `/`, and `#`, so non-Python collectors can contribute exposure/confidence data without using the Python decorators.
 
 | Feature | Development Tracer | Production Sampler |
 |---------|-------------------|-------------------|
@@ -305,18 +369,19 @@ The `impactguard` command-line tool is the primary entry point for developers an
 
 ```
 impactguard [-h] [--version]
-            {extract,compare,analyze,risk,report,enforce,suggest,patch,extract-calls,trace,check,check-diff,check-commit,check-commits,install-hooks,generate-changelog,baseline,semver,report-markdown,feedback,history} ...
+             {extract,compare,analyze,risk,report,report-sarif,enforce,suggest,patch,extract-calls,trace,check,check-diff,check-commit,check-commits,install-hooks,generate-changelog,baseline,semver,report-markdown,feedback,history} ...
 
 ImpactGuard - API impact analyzer for Python
 
 positional arguments:
-  {extract,compare,analyze,risk,report,enforce,suggest,patch,extract-calls,trace,check,check-diff,check-commit,check-commits,install-hooks,generate-changelog,baseline,semver,report-markdown,feedback,history}
+  {extract,compare,analyze,risk,report,report-sarif,enforce,suggest,patch,extract-calls,trace,check,check-diff,check-commit,check-commits,install-hooks,generate-changelog,baseline,semver,report-markdown,feedback,history}
                         Available commands
     extract             Extract function signatures from source files
     compare             Compare signature snapshots or source files directly
     analyze             Analyze impact on call sites
     risk                Run risk analysis
     report              Generate HTML report
+    report-sarif        Generate SARIF v2.1.0 report from risk report JSON
     enforce             Enforce gate - block on HIGH risk
     suggest             Generate fix suggestions from risk report
     patch               Generate CST-based patches
@@ -356,6 +421,24 @@ impactguard check --suggest-patch old.py new.py
 
 # Show how old file would look if patched (requires --suggest-patch)
 impactguard check --suggest-patch --show-patch old.py new.py
+```
+
+**Patch Generation Flags:**
+- `--suggest-patch`: Generate and save patch files to `patches/` directory
+- `--show-patch`: Display patched content inline (depends on `--suggest-patch`)
+
+**SARIF Output:**
+All check subcommands accept `--report-sarif PATH` to write a SARIF v2.1.0 report alongside the regular output:
+```bash
+impactguard check old/ new/ --report-sarif results.sarif
+impactguard check-diff --pipe --runtime runtime.json --report-sarif results.sarif
+impactguard check-commit HEAD --report-sarif results.sarif
+impactguard check-commits HEAD~1 HEAD --report-sarif results.sarif
+```
+
+A standalone subcommand converts an existing risk report JSON to SARIF:
+```bash
+impactguard report-sarif report.json -o results.sarif
 ```
 
 **Patch Generation Flags:**
@@ -483,13 +566,17 @@ Runs the complete ImpactGuard pipeline on staged changes before allowing a commi
 impactguard check-diff --pipe --runtime .runtime_calls.json
 ```
 
+**Performance:** The pre-commit hook is intentionally incremental — it only processes **staged files** (those modified in the current commit), using ``git diff --cached --diff-filter=ACMR``. On a codebase of 500k+ lines, a typical commit touches only a handful of files, so extraction completes in milliseconds. This avoids the startup cost of re-scanning every file on every commit.
+
 This catches breaking changes early, before they enter the commit history.
 
 ### Post-Commit Hook (Signature Tracking)
 
 After each commit, the post-commit hook:
 1. Runs `check-commit HEAD` to analyze the committed changes
-2. Updates `.signatures.txt` with current function signatures
+2. Re-scans **all tracked Python files** (via ``git ls-files '*.py'``) and updates `.signatures.txt` with the full snapshot
+
+The post-commit hook is intentionally **not** incremental — it replaces the entire baseline on every commit so that the stored snapshot always reflects the full codebase. This guarantees that ``check-diff`` (used by the pre-commit hook on the *next* commit) has a complete picture to diff against, at the cost of a full scan after each commit. For a 500k-line codebase this may take several seconds; the hook runs asynchronously and does not block the developer.
 
 ### GitHub Actions Workflow
 
@@ -582,7 +669,8 @@ The pipeline relies on standardized JSON schemas to pass data between filters:
 | `.signatures.json` | `extract_signatures.py` | `compare_signatures.py`, `impact_analysis.py` | Function metadata including arguments, defaults, and line numbers |
 | `.calls.json` | `extract_calls.py` | `impact_analysis.py` | Static call sites mapped by caller and callee |
 | `.runtime_calls.json` | `trace_calls.py` | `impact_analysis.py`, `risk_gate.py` | Frequency and argument data from execution |
-| `report.json` | `risk_gate.py` | `generate_report.py`, `suggest_fixes.py` | Final risk classifications (HIGH/MEDIUM/LOW) |
+| `report.json` | `risk_gate.py` | `generate_report.py`, `suggest_fixes.py`, `sarif.py` | Final risk classifications (HIGH/MEDIUM/LOW) |
+| `*.sarif` | `sarif.py` | SARIF-compatible SAST tools | SARIF v2.1.0 output for IDE/CI integration |
 
 ---
 
@@ -635,7 +723,7 @@ ImpactGuard follows strict quality gates:
 - **Severity (S)**: The technical impact of the change type (0.1 to 1.0)
 - **Exposure (E)**: How often the function is called, calculated logarithmically
 - **Confidence (C)**: The reliability of runtime data based on sample size
-- **Lambda (λ)**: Sensitivity multiplier (default 1.0); tune via `--lambda`
+- **Lambda (λ)**: Sensitivity multiplier (default 1.0); tune via `--lambda-factor`
 
 ### Patching
 
@@ -667,6 +755,7 @@ The table below compares ImpactGuard against the tools most commonly used for Py
 | Config file (TOML) | ✅ `impactguard.toml` | ✅ | ✅ | ✅ | ✅ |
 | Watch mode (live re-run) | ✅ `--watch` | ❌ | ❌ | ❌ | ✅ |
 | No network required | ✅ | ✅ | ❌ (PyPI / git) | ❌ (git) | ✅ |
+| SARIF v2.1.0 report | ✅ `report-sarif`, `--report-sarif` | ❌ | ❌ | ❌ | ❌ |
 
 ### Ecosystem-adjacent tools
 

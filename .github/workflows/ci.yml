@@ -5,6 +5,11 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+  schedule:
+    - cron: "17 4 * * 1"
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -14,6 +19,9 @@ jobs:
         python-version: ["3.11", "3.12", "3.13"]
 
     steps:
+      - name: cicd-sensor
+        uses: cicd-sensor/cicd-sensor-action@1935de498397aa7b9bf6ac7ca822ddb430a34843 # v0.0.31
+
       - uses: actions/checkout@v4
 
       - name: Set up Python ${{ matrix.python-version }}
@@ -25,10 +33,10 @@ jobs:
         uses: astral-sh/setup-uv@v5
 
       - name: Install dependencies
-        run: uv pip install --system -e ".[test]"
+        run: uv sync --locked --extra test
 
       - name: Run tests with coverage
-        run: pytest --cov --cov-report=xml --cov-report=term-missing
+        run: uv run pytest --cov --cov-report=xml --cov-report=term-missing
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
@@ -40,6 +48,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: cicd-sensor
+        uses: cicd-sensor/cicd-sensor-action@1935de498397aa7b9bf6ac7ca822ddb430a34843 # v0.0.31
+
       - uses: actions/checkout@v4
 
       - name: Set up Python
@@ -51,22 +62,57 @@ jobs:
         uses: astral-sh/setup-uv@v5
 
       - name: Install dependencies
-        run: uv pip install --system -e ".[lint]"
+        run: uv sync --locked --extra lint
 
       - name: Run ruff format
-        run: ruff format --check src/ tests/
+        run: uv run ruff format --check src/ tests/
 
       - name: Run ruff
-        run: ruff check src/ tests/
+        run: uv run ruff check src/ tests/
 
       - name: Run prospector
-        run: prospector src/
+        run: uv run prospector src/
 
       - name: Run semgrep
-        run: semgrep --config=auto --severity=ERROR src/
+        run: uv run semgrep --config=auto --severity=ERROR src/
 
       - name: Run mypy
-        run: mypy src/
+        run: uv run mypy src/
+
+      - name: Run vulture
+        run: uv run vulture --min-confidence 90 .
+
+  test-languages:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - name: cicd-sensor
+        uses: cicd-sensor/cicd-sensor-action@1935de498397aa7b9bf6ac7ca822ddb430a34843 # v0.0.31
+
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies (with language support)
+        run: uv sync --locked --extra test --extra languages
+
+      - name: Run tests with coverage
+        run: uv run pytest --cov --cov-report=xml --cov-report=term-missing
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
 
       - name: Run vulture
         run: vulture --min-confidence 90 .
@@ -104,6 +150,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: cicd-sensor
+        uses: cicd-sensor/cicd-sensor-action@1935de498397aa7b9bf6ac7ca822ddb430a34843 # v0.0.31
+
       - uses: actions/checkout@v4
 
       - name: Set up Python
@@ -113,17 +162,126 @@ jobs:
 
       - name: Build package
         run: |
-          pip install build
-          python -m build
+          uv sync --locked
+          uv run python -m pip install build
+          uv run python -m build
 
       - name: Check package
-        run: pip install twine && python -m twine check dist/*
+        run: uv run python -m pip install twine && uv run python -m twine check dist/*
+
+  smoke:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: cicd-sensor
+        uses: cicd-sensor/cicd-sensor-action@1935de498397aa7b9bf6ac7ca822ddb430a34843 # v0.0.31
+
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --locked --extra test
+
+      - name: Run smoke tests (no skips allowed)
+        run: |
+          uv run pytest tests/test_reliability_smoke.py -q -rs --junitxml=smoke.xml
+          uv run python - <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          root = ET.parse("smoke.xml").getroot()
+          skipped = sum(int(s.attrib.get("skipped", "0")) for s in root.iter("testsuite"))
+          if skipped:
+              print(f"Smoke suite contains skipped tests ({skipped}), failing.")
+              sys.exit(1)
+          PY
+
+  robustness:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: cicd-sensor
+        uses: cicd-sensor/cicd-sensor-action@1935de498397aa7b9bf6ac7ca822ddb430a34843 # v0.0.31
+
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --locked --extra test --extra languages
+
+      - name: Run tests with JUnit output
+        run: uv run pytest --junitxml=test-results.xml --cov --cov-report=xml
+
+      - name: Compute robustness metrics
+        run: |
+          uv run python - <<'PY'
+          import json, sys, subprocess, xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          tree = ET.parse("test-results.xml")
+          total = 0; adv_total = 0; adv_passed = 0; norm_passed = 0
+          for suite in tree.iter("testsuite"):
+              name = suite.get("name","")
+              tests = int(suite.get("tests",0))
+              failures = int(suite.get("failures",0))
+              errors = int(suite.get("errors",0))
+              passed = tests - failures - errors
+              total += tests
+              if "adversarial" in name.lower():
+                  adv_total += tests; adv_passed += passed
+              else:
+                  norm_passed += passed
+
+          cov = 0.0
+          cov_path = Path("coverage.xml")
+          if cov_path.exists():
+              line_rate = float(ET.parse(str(cov_path)).getroot().get("line-rate",0))
+              cov = round(line_rate * 100, 1)
+
+          print(f"Total: {total} | Adversarial: {adv_total}/{adv_passed} passed | Normal: {norm_passed} passed | Coverage: {cov}%")
+
+          result = subprocess.run(
+              [sys.executable, "tools/robustness_evaluator.py",
+               "--n-total", str(total), "--n-adversarial", str(adv_total),
+               "--passing-adv", str(adv_passed), "--passing-norm", str(norm_passed),
+               "--coverage", str(cov), "--output-json"],
+              capture_output=True, text=True, check=False)
+          print(result.stdout)
+          if result.stderr:
+              print(result.stderr, file=sys.stderr)
+
+          data = json.loads(result.stdout)
+          if not data["meets_adversarial_minimum"]:
+              print("::warning::Adversarial minimum not met (below 25%)")
+          print(f"R={data['robustness_score']:.4f} [{data['robustness_label']}] | F={data['fragility_index']:.4f} [{data['fragility_label']}]")
+          PY
 
   impactguard:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
 
     steps:
+      - name: cicd-sensor
+        uses: cicd-sensor/cicd-sensor-action@1935de498397aa7b9bf6ac7ca822ddb430a34843 # v0.0.31
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Need full history for git comparisons
@@ -137,34 +295,83 @@ jobs:
         uses: astral-sh/setup-uv@v5
 
       - name: Install dependencies
-        run: uv pip install --system -e ".[test]"
+        run: uv sync --locked --extra test
 
       - name: Run ImpactGuard analysis
         id: impactguard
         run: |
           # Run ImpactGuard on the PR diff
-          python -m impactguard check-commits \
-            --old-ref ${{ github.event.pull_request.base.sha }} \
-            --new-ref ${{ github.event.pull_request.head.sha }} \
-            --output-dir impactguard-output \
-            || true  # Don't fail yet, we'll check the report
+          uv run python -m impactguard check-commits \
+            ${{ github.event.pull_request.base.sha }} \
+            ${{ github.event.pull_request.head.sha }} \
+            --enforce-gate \
+            --strict-analysis \
+            --block-unknown \
+            -o impactguard-output
 
       - name: Generate changelog from signature diffs
         if: always()
         run: |
-          python -m impactguard generate-changelog \
-            --old-ref ${{ github.event.pull_request.base.sha }} \
-            --new-ref ${{ github.event.pull_request.head.sha }} \
-            --output CHANGELOG_PR.md
+          uv run python -m impactguard generate-changelog \
+            ${{ github.event.pull_request.base.sha }} \
+            ${{ github.event.pull_request.head.sha }} \
+            CHANGELOG_PR.md
 
-      - name: Check risk gate
+      - name: Verify ImpactGuard artifacts exist
         if: always()
         run: |
-          if [ -f impactguard-output/risk_report.json ]; then
-            python -m impactguard enforce \
-              impactguard-output/risk_report.json \
-              --fail-on HIGH
-          fi
+          test -f impactguard-output/risk_report.json
+          test -f impactguard-output/analysis_summary.json
+          test -f impactguard-output/gate_summary.json
+
+      - name: Append analysis summary
+        if: always()
+        run: |
+          {
+            echo "## ImpactGuard analysis summary"
+            if [ -f impactguard-output/analysis_summary.json ]; then
+              uv run python - <<'PY'
+              import json
+              from pathlib import Path
+              summary = json.loads(Path("impactguard-output/analysis_summary.json").read_text())
+              counters = summary.get("counters", {})
+              print(f"- status: {summary.get('status')}")
+              print(f"- parse_failures: {counters.get('parse_failures', 0)}")
+              print(f"- skipped_files: {counters.get('skipped_files', 0)}")
+              print(f"- unsupported_files: {counters.get('unsupported_files', 0)}")
+              print(f"- call_extraction_failures: {counters.get('call_extraction_failures', 0)}")
+              print(f"- runtime_data_issues: {counters.get('runtime_data_issues', 0)}")
+              print(f"- fqname_collision_risk: {counters.get('fqname_collision_risk', 0)}")
+              runtime = summary.get("runtime", {})
+              print(f"- runtime_state: {runtime.get('state', 'unknown')}")
+              policy = summary.get("policy", {})
+              violations = policy.get("violations", {})
+              print(f"- policy_violations: {len(violations)}")
+              if violations:
+                  for key, detail in violations.items():
+                      print(f"  - {key}: {detail.get('value')} > {detail.get('max_allowed')}")
+              PY
+            else
+              echo "analysis_summary.json missing"
+            fi
+            if [ -f impactguard-output/gate_summary.json ]; then
+              echo ""
+              echo "### Gate"
+              uv run python - <<'PY'
+              import json
+              from pathlib import Path
+              gate = json.loads(Path("impactguard-output/gate_summary.json").read_text())
+              print(f"- blocked: {gate.get('blocked', False)}")
+              print(f"- high: {gate.get('risk', {}).get('high', 0)}")
+              print(f"- unknown: {gate.get('risk', {}).get('unknown', 0)}")
+              reasons = gate.get("reasons", [])
+              if reasons:
+                  print("- reasons:")
+                  for reason in reasons:
+                      print(f"  - {reason}")
+              PY
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload ImpactGuard report
         if: always()
@@ -189,13 +396,32 @@ jobs:
               comment += '### Risk Summary\n';
               comment += `- Total items: ${report.length}\n`;
 
-              const high = report.filter(i => i.risk_level === 'HIGH').length;
-              const medium = report.filter(i => i.risk_level === 'MEDIUM').length;
-              const low = report.filter(i => i.risk_level === 'LOW').length;
+              const high = report.filter(i => i.risk === 'HIGH').length;
+              const medium = report.filter(i => i.risk === 'MEDIUM').length;
+              const low = report.filter(i => i.risk === 'LOW').length;
 
               comment += `- HIGH risk: ${high}\n`;
               comment += `- MEDIUM risk: ${medium}\n`;
               comment += `- LOW risk: ${low}\n`;
+            }
+            if (fs.existsSync('impactguard-output/analysis_summary.json')) {
+              const analysis = JSON.parse(fs.readFileSync('impactguard-output/analysis_summary.json', 'utf8'));
+              const counters = analysis.counters || {};
+              comment += '\n### Analysis Coverage\n';
+              comment += `- Status: ${analysis.status || 'unknown'}\n`;
+              comment += `- parse_failures: ${counters.parse_failures || 0}\n`;
+              comment += `- skipped_files: ${counters.skipped_files || 0}\n`;
+              comment += `- call_extraction_failures: ${counters.call_extraction_failures || 0}\n`;
+              comment += `- runtime_data_issues: ${counters.runtime_data_issues || 0}\n`;
+            }
+            if (fs.existsSync('impactguard-output/gate_summary.json')) {
+              const gate = JSON.parse(fs.readFileSync('impactguard-output/gate_summary.json', 'utf8'));
+              comment += '\n### Gate\n';
+              comment += `- Blocked: ${gate.blocked ? 'yes' : 'no'}\n`;
+              if (Array.isArray(gate.reasons) && gate.reasons.length > 0) {
+                comment += '- Reasons:\n';
+                for (const reason of gate.reasons) comment += `  - ${reason}\n`;
+              }
             }
 
             if (fs.existsSync('CHANGELOG_PR.md')) {

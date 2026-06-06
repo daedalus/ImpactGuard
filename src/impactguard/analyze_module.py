@@ -1,8 +1,35 @@
+"""Static analysis of Python call sites via AST.
+
+This module resolves call expressions to fully-qualified names (FQNs) using
+import tracking and scope-based type inference.  It is a **best-effort**
+static analysis with known limitations — see caveats below.
+
+Known Failure Modes / Accuracy Caveats
+--------------------------------------
+- ``from x import *`` is ignored; star imports cannot be statically resolved.
+- ``import ... as`` aliases are tracked but attribute access on aliased modules
+  (e.g. ``pd.DataFrame``) resolves to the attribute name only, not the FQN.
+- Conditional imports (``if TYPE_CHECKING``, ``try/except ImportError``) are
+  parsed but their imports are mixed with regular imports — the resolver does
+  not distinguish availability paths.
+- ``__getattr__`` on modules (PEP 562) is invisible to static analysis.
+- ``__init__.py`` re-exports are not followed; types appear as belonging to
+  the package they were imported *from*, not where they were defined.
+- Dynamic attribute access (``getattr(obj, "method")()``,
+  ``functools.partial``, ``operator.methodcaller``) is invisible.
+- Lazy / deferred imports (e.g. ``import X`` inside a function body) are
+  tracked syntactically but the conditional guard is not evaluated.
+- Class inheritance and ``super()`` calls are not resolved.
+- No accuracy metrics are computed or reported; there is no test harness for
+  false-positive / false-negative rate on FQN resolution.
+"""
+
 from __future__ import annotations
 
 import ast
-from pathlib import Path
 from typing import Any
+
+from ._ast_cache import cached_ast_parse, cached_read_text
 
 
 class Scope:
@@ -28,6 +55,7 @@ class Analyzer(ast.NodeVisitor):
         self.from_imports: dict[str, str] = {}
         self.calls: list[dict[str, Any]] = []
         self.scope = Scope()
+        self._current_func: str | None = None
 
     # --------------- imports ---------------
 
@@ -45,10 +73,11 @@ class Analyzer(ast.NodeVisitor):
     # --------------- scopes ---------------
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        prev = self.scope
-        self.scope = Scope(parent=prev)
+        prev_scope = self.scope
+        prev_func = self._current_func
+        self.scope = Scope(parent=prev_scope)
+        self._current_func = node.name
 
-        # arguments with annotations
         for arg in node.args.args:
             if arg.annotation:
                 typ = self._type_name(arg.annotation)
@@ -56,7 +85,24 @@ class Analyzer(ast.NodeVisitor):
                     self.scope.set(arg.arg, typ)
 
         self.generic_visit(node)
-        self.scope = prev
+        self.scope = prev_scope
+        self._current_func = prev_func
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        prev_scope = self.scope
+        prev_func = self._current_func
+        self.scope = Scope(parent=prev_scope)
+        self._current_func = node.name
+
+        for arg in node.args.args:
+            if arg.annotation:
+                typ = self._type_name(arg.annotation)
+                if typ is not None:
+                    self.scope.set(arg.arg, typ)
+
+        self.generic_visit(node)
+        self.scope = prev_scope
+        self._current_func = prev_func
 
     # --------------- assignments ---------------
 
@@ -102,12 +148,20 @@ class Analyzer(ast.NodeVisitor):
                     "kwargs": [kw.arg for kw in node.keywords if kw.arg],
                     "starargs": any(isinstance(a, ast.Starred) for a in node.args),
                     "kwargs_any": any(kw.arg is None for kw in node.keywords),
+                    "caller": self._current_func,
                 }
             )
 
         self.generic_visit(node)
 
     # --------------- resolution ---------------
+    #
+    # Known gaps in this resolver (beyond the module-level caveats above):
+    #   - chained calls: a.b.c() resolves to c (lossy)
+    #   - aliased-module attribute: import pandas as pd; pd.read_csv()
+    #     resolves to "pd.read_csv", not "pandas.read_csv"
+    #   - subscripts in call: obj["key"].method() is silently dropped
+    #   - nested attribute values: a.b().c() — b() return type unknown
 
     def resolve_call(self, node: ast.AST) -> str | None:
         # foo()
@@ -156,8 +210,9 @@ class Analyzer(ast.NodeVisitor):
 
 def analyze(path: str) -> dict[str, Any] | None:
     try:
-        tree = ast.parse(Path(path).read_text())
-    except Exception:
+        source_text = cached_read_text(path)
+        tree = cached_ast_parse(source_text)
+    except (SyntaxError, OSError, UnicodeDecodeError):
         return None
 
     a = Analyzer(path)

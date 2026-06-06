@@ -3,11 +3,59 @@
 from __future__ import annotations
 
 import json
-import os  
+import os
 import sys
-import tempfile  
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+
+def test_run_pipeline_with_calls_path(tmp_path):
+    """Test run_pipeline with provided calls_path."""
+    from impactguard.pipeline import run_pipeline
+
+    old_file = tmp_path / "old.py"
+    old_file.write_text("def foo(a): return a\n")
+
+    new_file = tmp_path / "new.py"
+    new_file.write_text("def foo(a, b=1): return a + b\n")
+
+    calls_data = [{"fqname": "test.py:foo", "file": "main.py", "lineno": 5}]
+    calls_path = tmp_path / "calls.json"
+    calls_path.write_text(json.dumps(calls_data))
+
+    result = run_pipeline(
+        old_files=[str(old_file)],
+        new_files=[str(new_file)],
+        calls_path=str(calls_path),
+        output_dir=str(tmp_path / "output"),
+    )
+
+    assert "impact" in result
+
+
+def test_run_pipeline_with_runtime_path(tmp_path):
+    """Test run_pipeline with runtime data."""
+    from impactguard.pipeline import run_pipeline
+
+    old_file = tmp_path / "old.py"
+    old_file.write_text("def foo(a): return a\n")
+
+    new_file = tmp_path / "new.py"
+    new_file.write_text("def foo(a, b=1): return a + b\n")
+
+    runtime_data = [{"function": "foo", "args_count": 1, "kwargs": []}]
+    runtime_path = tmp_path / "runtime.json"
+    runtime_path.write_text(json.dumps(runtime_data))
+
+    result = run_pipeline(
+        old_files=[str(old_file)],
+        new_files=[str(new_file)],
+        runtime_path=str(runtime_path),
+        output_dir=str(tmp_path / "output"),
+    )
+
+    assert "risk" in result
 
 def test_run_pipeline_with_calls_path(tmp_path):
     """Test run_pipeline with provided calls_path."""
@@ -116,6 +164,7 @@ def test_run_pipeline_no_old_sigs(tmp_path):
     assert "signatures" in result
     assert "new" in result["signatures"]
 
+
 def test_run_pipeline_with_runtime(tmp_path):
     """Test run_pipeline with runtime data."""
     from impactguard.pipeline import run_pipeline
@@ -163,4 +212,3 @@ def test_run_pipeline_git_with_files(tmp_path):
                 )
 
                 assert "comparison" in result
-

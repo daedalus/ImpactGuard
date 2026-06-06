@@ -24,14 +24,15 @@ from pathlib import Path
 from typing import Any
 
 from .lib.shared import (
-    _TREE_SITTER_AVAILABLE,
     child_of_type,
+    dedupe_signatures_by_fqname,
     extract_calls_with_tree_sitter,
     has_ignore_comment,
     has_ignore_comment_fallback,
     make_parser,
     node_text,
     register_extractor,
+    split_pipe_union_members,
     warn_if_no_tree_sitter,
 )
 
@@ -84,45 +85,30 @@ def _parse_params(
     return positional, has_vararg
 
 
-def _process_function(
-    node: Any,
-    source: bytes,
-    fq_file: str,
-    funcs: list[dict[str, Any]],
-) -> None:
-    """Extract a signature from a Zig function declaration."""
-    # Check for pub keyword in parent variable_declaration or directly
-    is_pub = False
+def _node_has_text(node: Any, source: bytes, text: str) -> bool:
+    return node_text(node, source).strip() == text
+
+
+def _is_pub(node: Any, source: bytes) -> bool:
     parent = node.parent
     if parent is not None:
         for c in parent.children:
-            if c.type == "pub" or node_text(c, source).strip() == "pub":
-                is_pub = True
-                break
-
-    # Also check direct children for pub
+            if c.type == "pub" or _node_has_text(c, source, "pub"):
+                return True
     for c in node.children:
-        if node_text(c, source).strip() == "pub":
-            is_pub = True
-            break
+        if _node_has_text(c, source, "pub"):
+            return True
+    return False
 
-    name_node = child_of_type(node, "identifier")
-    if name_node is None:
-        return
 
-    name = node_text(name_node, source)
-
-    is_async = False
+def _has_async(node: Any, source: bytes) -> bool:
     for c in node.children:
-        if node_text(c, source).strip() == "async":
-            is_async = True
-            break
+        if _node_has_text(c, source, "async"):
+            return True
+    return False
 
-    params_node = child_of_type(node, "fn_params", "param_list")
-    positional, has_vararg = _parse_params(params_node, source)
 
-    # Return type: after params
-    return_type: str | None = None
+def _return_type(node: Any, source: bytes) -> str | None:
     params_done = False
     for c in node.children:
         if c.type in ("fn_params", "param_list"):
@@ -137,8 +123,24 @@ def _process_function(
                 "inline",
                 "noinline",
             ):
-                return_type = txt
-                break
+                return txt
+    return None
+
+
+def _process_function(
+    node: Any,
+    source: bytes,
+    fq_file: str,
+    funcs: list[dict[str, Any]],
+) -> None:
+    """Extract a signature from a Zig function declaration."""
+    name_node = child_of_type(node, "identifier")
+    if name_node is None:
+        return
+
+    name = node_text(name_node, source)
+    params_node = child_of_type(node, "fn_params", "param_list")
+    positional, has_vararg = _parse_params(params_node, source)
 
     funcs.append(
         {
@@ -152,11 +154,11 @@ def _process_function(
             "vararg": has_vararg,
             "kwarg": False,
             "class_name": None,
-            "return_type": return_type,
+            "return_type": _return_type(node, source),
             "decorators": [],
-            "is_async": is_async,
+            "is_async": _has_async(node, source),
             "ignored": has_ignore_comment(source, node.start_point[0]),
-            "exported": is_pub,
+            "exported": _is_pub(node, source),
         }
     )
 
@@ -180,9 +182,14 @@ def _extract_with_tree_sitter(
         fq_file = path.name
         funcs: list[dict[str, Any]] = []
 
-        def visit(node: Any) -> None:
+        def visit(
+            node: Any,
+            _source: bytes = source,
+            _fq_file: str = fq_file,
+            _funcs: list[dict[str, Any]] = funcs,
+        ) -> None:
             if node.type in ("fn_decl", "function_declaration", "function_definition"):
-                _process_function(node, source, fq_file, funcs)
+                _process_function(node, _source, _fq_file, _funcs)
             for child in node.children:
                 visit(child)
 
@@ -195,9 +202,13 @@ def _extract_with_tree_sitter(
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
     return extract_calls_with_tree_sitter(
-        path, "zig", _ZIG_LANGUAGE,
+        path,
+        "zig",
+        _ZIG_LANGUAGE,
         member_map={"field_access": None},
     )
+
+
 # ── Regex fallback ────────────────────────────────────────────────────────────
 
 _FUNC_RE = re.compile(
@@ -285,15 +296,7 @@ def _extract_with_regex(
                 }
             )
 
-    seen: set[str] = set()
-    unique: list[dict[str, Any]] = []
-    for sig in all_funcs:
-        if sig["fqname"] not in seen:
-            seen.add(sig["fqname"])
-            unique.append(sig)
-
-    unique.sort(key=lambda x: x["fqname"])
-    return unique
+    return dedupe_signatures_by_fqname(all_funcs)
 
 
 def _extract_calls_with_regex(path: Path) -> list[dict[str, Any]]:
@@ -365,10 +368,7 @@ class ZigExtractor:
 
         Splits on `` | `` for tagged union types.
         """
-        s = type_str.strip()
-        if "|" in s:
-            return frozenset(p.strip() for p in s.split("|"))
-        return frozenset({s})
+        return split_pipe_union_members(type_str)
 
 
 # ── Self-registration ─────────────────────────────────

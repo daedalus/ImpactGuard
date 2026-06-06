@@ -24,7 +24,6 @@ from pathlib import Path
 from typing import Any
 
 from .lib.shared import (
-    _TREE_SITTER_AVAILABLE,
     child_of_type,
     extract_calls_with_tree_sitter,
     has_ignore_comment,
@@ -231,13 +230,18 @@ def _extract_with_tree_sitter(
         fq_file = path.name
         funcs: list[dict[str, Any]] = []
 
-        def visit(node: Any) -> None:
+        def visit(
+            node: Any,
+            _source: bytes = source,
+            _fq_file: str = fq_file,
+            _funcs: list[dict[str, Any]] = funcs,
+        ) -> None:
             if node.type in (
                 "method_declaration",
                 "constructor_declaration",
                 "local_function_statement",
             ):
-                _process_method(node, source, fq_file, funcs)
+                _process_method(node, _source, _fq_file, _funcs)
             for child in node.children:
                 visit(child)
 
@@ -250,12 +254,16 @@ def _extract_with_tree_sitter(
 
 def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
     return extract_calls_with_tree_sitter(
-        path, "csharp", _CSHARP_LANGUAGE,
+        path,
+        "csharp",
+        _CSHARP_LANGUAGE,
         call_type="invocation_expression",
         member_map={"member_access_expression": None},
         count_args="include",
         count_types={"argument"},
     )
+
+
 # ── Regex fallback ────────────────────────────────────────────────────────────
 
 _FUNC_RE = re.compile(

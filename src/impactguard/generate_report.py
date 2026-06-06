@@ -3,17 +3,19 @@ import json
 from typing import Any
 
 
-
 def _summary_stats(report_data: list[dict[str, Any]]) -> dict[str, int]:
     """Count items by risk level."""
     stats: dict[str, int] = {"HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0}
     for item in report_data:
+        if not isinstance(item, dict):
+            continue
         risk_level = item.get("risk", "UNKNOWN")
         stats[risk_level] = stats.get(risk_level, 0) + 1
     return stats
 
 
 def generate_html(report_data: list[dict[str, Any]]) -> str:
+    report_data = [item for item in report_data if isinstance(item, dict)]
     stats = _summary_stats(report_data)
     total = len(report_data)
 
@@ -108,7 +110,7 @@ def generate_html(report_data: list[dict[str, Any]]) -> str:
     for item in report_data:
         level = item.get("risk", "UNKNOWN")
         func = item.get("function", "unknown")
-        change = item.get("change", "")
+        change = item.get("raw_change") or item.get("change", "")
         exp = item.get("exposure", 0)
         conf = item.get("confidence", 0)
         details = item.get("details", "")
@@ -215,6 +217,7 @@ def generate_markdown(
     Returns:
         Markdown string.
     """
+    report_data = [item for item in report_data if isinstance(item, dict)]
     stats = _summary_stats(report_data)
     total = len(report_data)
 
@@ -262,7 +265,7 @@ def generate_markdown(
         for item in table_items:
             lvl = str(item.get("risk", "UNKNOWN"))
             func = str(item.get("function", ""))
-            change = str(item.get("change", ""))
+            change = str(item.get("raw_change") or item.get("change", ""))
             exp = item.get("exposure", 0)
             transitive = item.get("transitive", False)
             func_cell = f"`{func}`" + (" *(indirect)*" if transitive else "")
@@ -296,8 +299,17 @@ def generate_markdown_from_file(
     Returns:
         Markdown content as string.
     """
-    with open(risk_json_path) as f:
-        report = json.load(f)
+    try:
+        with open(risk_json_path) as f:
+            report = json.load(f)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"Invalid JSON in report file '{risk_json_path}': {exc}"
+        ) from exc
+    if not isinstance(report, list):
+        raise ValueError(
+            f"Report file '{risk_json_path}': expected a JSON array, got {type(report).__name__}"
+        )
     md = generate_markdown(report, semver_rec=semver_rec)
 
     if output_path:
@@ -317,8 +329,17 @@ def generate_html_from_file(risk_json_path: str, output_path: str | None = None)
     Returns:
         HTML content as string.
     """
-    with open(risk_json_path) as f:
-        report = json.load(f)
+    try:
+        with open(risk_json_path) as f:
+            report = json.load(f)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"Invalid JSON in report file '{risk_json_path}': {exc}"
+        ) from exc
+    if not isinstance(report, list):
+        raise ValueError(
+            f"Report file '{risk_json_path}': expected a JSON array, got {type(report).__name__}"
+        )
     html = generate_html(report)
 
     if output_path:
@@ -329,8 +350,15 @@ def generate_html_from_file(risk_json_path: str, output_path: str | None = None)
 
 
 def generate_main(report_path: str, output_path: str | None = None) -> None:
-    with open(report_path) as f:
-        report = json.load(f)
+    try:
+        with open(report_path) as f:
+            report = json.load(f)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON in report file '{report_path}': {exc}") from exc
+    if not isinstance(report, list):
+        raise ValueError(
+            f"Report file '{report_path}': expected a JSON array, got {type(report).__name__}"
+        )
     html = generate_html(report)
 
     if output_path is None:

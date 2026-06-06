@@ -473,6 +473,12 @@ class TestPathUtils:
         # '...' is not a traversal component
         assert self._safe("...") is True
 
+    def test_windows_backslash_relative_path_safe(self):
+        assert self._safe(r"subdir\file.py") is True
+
+    def test_windows_backslash_only_safe(self):
+        assert self._safe(r".\foo.py") is True
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # patch_generator
@@ -3476,7 +3482,6 @@ class TestSuggestFixesCST:
 
 class TestTraceCallsProdFlushTrigger:
     def test_trace_triggers_flush_when_interval_exceeded(self, tmp_path, monkeypatch):
-
         import impactguard.trace_calls_prod as tcp
 
         # Force flush by setting LAST_FLUSH to a very old time
@@ -5470,10 +5475,10 @@ def test_enforce_gate_full_coverage(tmp_path):
     report_path.write_text(json.dumps([{"risk": "LOW", "function": "test:foo"}]))
     assert enforce_report(str(report_path)) == 0
 
-    # Test with UNKNOWN risk - should warn but pass
+    # Test with UNKNOWN risk - should warn but pass (explicit opt-out)
     report_path = tmp_path / "unknown.json"
     report_path.write_text(json.dumps([{"risk": "UNKNOWN", "function": "test:bar"}]))
-    result = enforce_report(str(report_path))
+    result = enforce_report(str(report_path), block_unknown=False)
     assert result == 0
 
     # Test with mixed - should fail
