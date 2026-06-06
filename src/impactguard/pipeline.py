@@ -788,6 +788,22 @@ def _load_result_signatures(
     return {"old": old_signatures, "new": new_signatures}
 
 
+def _resolve_project_root(new_files: list[str] | None) -> str:
+    """Determine project root from impactguard.toml or common prefix."""
+    import os as _os
+
+    cwd = Path.cwd()
+    for p in [cwd] + list(cwd.parents):
+        if (p / "impactguard.toml").exists() or (p / ".impactguard").exists():
+            return str(p.resolve())
+    if new_files:
+        try:
+            return str(Path(_os.path.commonpath(new_files)).resolve())
+        except ValueError:
+            pass
+    return str(cwd.resolve())
+
+
 def _validate_git_ref(ref: str) -> bool:
     """Validate git ref format to prevent command injection.
 
@@ -877,6 +893,7 @@ def run_pipeline(
     max_runtime_data_issues: int = 0,
     block_unknown: bool = False,
     require_runtime: bool = False,
+    use_call_graph: bool | None = None,
 ) -> dict[str, Any]:
     """Run the full ImpactGuard pipeline.
 
@@ -1002,15 +1019,30 @@ def run_pipeline(
 
     # Step 3: Extract call sites (if not provided)
     _log.debug("Step 3: Extracting call sites")
-    calls_path = _extract_calls_to_path(
-        calls_path,
-        new_files=new_files,
-        output_dir=output_dir,
-        runtime_path=runtime_path,
-        stats=reliability_stats,
-        events=analysis_events,
-        analyze_module=analyze_module,
-    )
+    if use_call_graph or (use_call_graph is None and config and config.get("call_graph", {}).get("enabled", False)):
+        from .call_graph import CallGraphDB
+
+        project_root = _resolve_project_root(new_files)
+        cg_config = (config or {}).get("call_graph", {})
+        cg_db = CallGraphDB(project_root)
+        if cg_config.get("auto_sync", True):
+            all_files = list(set((new_files or []) + (old_files or [])))
+            cg_db.sync(all_files)
+        calls_path = str(Path(output_dir) / "calls.json")
+        cg_export = cg_db.get_call_sites()
+        with open(calls_path, "w") as f:
+            json.dump(cg_export, f)
+        _log.info("Call graph: exported %d call sites", len(cg_export))
+    else:
+        calls_path = _extract_calls_to_path(
+            calls_path,
+            new_files=new_files,
+            output_dir=output_dir,
+            runtime_path=runtime_path,
+            stats=reliability_stats,
+            events=analysis_events,
+            analyze_module=analyze_module,
+        )
     result["runtime_path"] = runtime_path
 
     # Step 4: Analyze impact
@@ -1145,6 +1177,7 @@ def quick_check(
     max_runtime_data_issues: int = 0,
     block_unknown: bool = False,
     require_runtime: bool = False,
+    use_call_graph: bool | None = None,
 ) -> dict[str, Any]:
     """Quick check between two Python files or directories.
 
@@ -1196,6 +1229,7 @@ def quick_check(
         max_runtime_data_issues=max_runtime_data_issues,
         block_unknown=block_unknown,
         require_runtime=require_runtime,
+        use_call_graph=use_call_graph,
     )
 
 
@@ -1384,6 +1418,7 @@ def run_pipeline_git(
     max_runtime_data_issues: int = 0,
     block_unknown: bool = False,
     require_runtime: bool = False,
+    use_call_graph: bool | None = None,
 ) -> dict[str, Any]:
     """Run pipeline comparing two git commits.
 
@@ -1495,6 +1530,7 @@ def run_pipeline_git(
             max_runtime_data_issues=max_runtime_data_issues,
             block_unknown=block_unknown,
             require_runtime=require_runtime,
+            use_call_graph=use_call_graph,
         )
 
 
@@ -1571,6 +1607,7 @@ def run_pipeline_diff_content(
     max_runtime_data_issues: int = 0,
     block_unknown: bool = False,
     require_runtime: bool = False,
+    use_call_graph: bool | None = None,
 ) -> dict[str, Any]:
     """Run the full ImpactGuard pipeline on unified diff content (as a string).
 
@@ -1642,6 +1679,7 @@ def run_pipeline_diff_content(
             max_runtime_data_issues=max_runtime_data_issues,
             block_unknown=block_unknown,
             require_runtime=require_runtime,
+            use_call_graph=use_call_graph,
         )
 
 
@@ -1661,6 +1699,7 @@ def run_pipeline_diff(
     max_runtime_data_issues: int = 0,
     block_unknown: bool = False,
     require_runtime: bool = False,
+    use_call_graph: bool | None = None,
 ) -> dict[str, Any]:
     """Run the full ImpactGuard pipeline on a unified diff / patch file.
 
@@ -1702,6 +1741,7 @@ def run_pipeline_diff(
             max_runtime_data_issues=max_runtime_data_issues,
             block_unknown=block_unknown,
             require_runtime=require_runtime,
+            use_call_graph=use_call_graph,
         )
     except ValueError as exc:
         # Re-raise with the file path included in the error message.
@@ -1725,6 +1765,7 @@ def run_pipeline_commit(
     max_runtime_data_issues: int = 0,
     block_unknown: bool = False,
     require_runtime: bool = False,
+    use_call_graph: bool | None = None,
 ) -> dict[str, Any]:
     """Run the full ImpactGuard pipeline on a single git commit.
 
@@ -1784,6 +1825,7 @@ def run_pipeline_commit(
         "max_runtime_data_issues": max_runtime_data_issues,
         "block_unknown": block_unknown,
         "require_runtime": require_runtime,
+        "use_call_graph": use_call_graph,
     }
     # Keep delegation kwargs minimal by forwarding new options only when they
     # deviate from defaults.

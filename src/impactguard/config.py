@@ -84,6 +84,21 @@ _DEFAULTS: dict[str, Any] = {
             "suppress": [],
             "transitive_depth": 0,
         },
+        "call_graph": {
+            # Enable persistent call graph caching (opt-in).
+            # When enabled, pre-indexed call data is re-used across runs
+            # instead of re-extracting from source files every time.
+            "enabled": False,
+            # Directory for the call graph SQLite database (relative to
+            # the project root, determined by impactguard.toml or CWD).
+            "cache_dir": ".impactguard",
+            # Automatically sync changed files before each pipeline run.
+            "auto_sync": True,
+            # Default transitive impact traversal depth.
+            "transitive_depth": 3,
+            # Default BFS depth for affected test file detection.
+            "affected_test_depth": 5,
+        },
         "languages": {
             # Canonical language names to enable.  "python" is always available.
             # "typescript" requires tree-sitter-typescript (pip install impactguard[languages]).
