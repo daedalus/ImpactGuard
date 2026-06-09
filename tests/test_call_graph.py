@@ -383,6 +383,49 @@ class TestCallGraphStaleness:
         finally:
             cg.close()
 
+    def test_is_stale_detects_size_change(self, tmp_path):
+        """Changing file size (even if mtime somehow matches) marks file stale."""
+        from impactguard.call_graph import CallGraphDB
+
+        src = tmp_path / "m.py"
+        src.write_text("def f(): pass\n")
+        cg = CallGraphDB(tmp_path)
+        try:
+            cg.build([str(src)])
+            assert cg._is_stale(str(src)) is False
+            # Overwrite with different size
+            src.write_text("def f():\n    return 1\n")
+            assert cg._is_stale(str(src)) is True
+        finally:
+            cg.close()
+
+    def test_is_stale_detects_truncated_file(self, tmp_path):
+        """File truncation changes size and marks file stale."""
+        from impactguard.call_graph import CallGraphDB
+
+        src = tmp_path / "m.py"
+        src.write_text("def f(): pass\n")
+        cg = CallGraphDB(tmp_path)
+        try:
+            cg.build([str(src)])
+            src.write_text("")
+            assert cg._is_stale(str(src)) is True
+        finally:
+            cg.close()
+
+    def test_is_stale_unchanged_file_not_stale(self, tmp_path):
+        """File that was never modified stays not-stale after build."""
+        from impactguard.call_graph import CallGraphDB
+
+        src = tmp_path / "m.py"
+        src.write_text("def f(): pass\n")
+        cg = CallGraphDB(tmp_path)
+        try:
+            cg.build([str(src)])
+            assert cg._is_stale(str(src)) is False
+        finally:
+            cg.close()
+
 
 # ---------------------------------------------------------------------------
 # Query methods

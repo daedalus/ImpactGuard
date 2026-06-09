@@ -74,7 +74,8 @@ The calibration system does nothing until 5 acceptance/rejection outcomes accumu
 **13. SQLite WAL contention from concurrent sync() calls** — Score 4 (MITIGATED)
 The single `sqlite3.Connection` is not thread-safe — concurrent `sync()`/`build()` calls from multiple threads can corrupt the connection. Mitigation: `check_same_thread=False` + `timeout=5` in `sqlite3.connect()`, `PRAGMA busy_timeout=5000`, and a `threading.Lock` (`_write_lock`) serializing all write operations (`build()`, `sync()`, `remove_stale()`, `clear()`, `close()`). Read queries (BFS, stats, call sites) remain lock-free under WAL.
 
-**14. Signature hash collision (sha256, negligible risk)** — Score 4
+**14. Signature hash collision (sha256, negligible risk)** — Score 4 (MITIGATED)
+Two different files producing the same SHA-256 hash requires ~2⁸⁷ attempts (birthday bound) — effectively impossible for this use case. The stored `content_hash` was never checked against the actual file content during staleness detection; `_is_stale()` only compared `modified_at` timestamps. Mitigation: `_is_stale()` now also compares `size` — a cheap stat field (no file read) that catches edge cases where mtime is preserved (backup restore, git checkout, truncation) while the file content changes. Collision risk remains negligible; size check adds defense-in-depth against mtime false-negatives.
 **15. Pre-commit hook removes `SKIP_SIGNATURE_HOOK` env** — Score 4
 **16. TOCTOU between file stat and read in `_is_stale`** — Score 3
 **17. `git diff` parsing misses binary file changes** — Score 3

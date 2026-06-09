@@ -454,15 +454,17 @@ class CallGraphDB:
         if not path.exists():
             return True
         try:
-            mtime = int(path.stat().st_mtime)
+            st = path.stat()
+            mtime = int(st.st_mtime)
+            size = st.st_size
             rel_path = self._relativize(file_path)
             row = self.con.execute(
-                "SELECT modified_at FROM files WHERE path = ?",
+                "SELECT modified_at, size FROM files WHERE path = ?",
                 (rel_path,),
             ).fetchone()
             if row is None:
                 return True
-            return row["modified_at"] != mtime
+            return row["modified_at"] != mtime or row["size"] != size
         except OSError:
             return True
 
