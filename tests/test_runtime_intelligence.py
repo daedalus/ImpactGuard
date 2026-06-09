@@ -114,3 +114,59 @@ def test_runtime_callsite_entries_no_shape_data():
     obs = [{"function": "foo", "canonical": "foo"}]
     result = runtime_callsite_entries(obs)
     assert result == []
+
+
+# ── Runtime data validation on ingest ───────────────────────────────────────
+
+
+def test_load_runtime_observations_valid(tmp_path):
+    """Valid runtime JSON is loaded and normalized successfully."""
+    from impactguard.runtime_intelligence import load_runtime_observations
+
+    f = tmp_path / "runtime.json"
+    f.write_text('[\n{"function": "mod:foo", "count": 5},\n{"function": "mod:bar", "count": 3}\n]')
+    result = load_runtime_observations(str(f))
+    assert len(result) == 2
+    fqnames = {r["function"] for r in result}
+    assert "mod:foo" in fqnames
+    assert "mod:bar" in fqnames
+
+
+def test_load_runtime_observations_invalid_missing_count(tmp_path):
+    """Runtime JSON missing required 'count' field returns empty list."""
+    from impactguard.runtime_intelligence import load_runtime_observations
+
+    f = tmp_path / "runtime.json"
+    f.write_text('[{"function": "mod:foo"}]')
+    result = load_runtime_observations(str(f))
+    assert result == []
+
+
+def test_load_runtime_observations_invalid_missing_function(tmp_path):
+    """Runtime JSON missing required 'function' field returns empty list."""
+    from impactguard.runtime_intelligence import load_runtime_observations
+
+    f = tmp_path / "runtime.json"
+    f.write_text('[{"count": 5}]')
+    result = load_runtime_observations(str(f))
+    assert result == []
+
+
+def test_load_runtime_observations_not_a_list(tmp_path):
+    """Runtime JSON that is not a list returns empty list."""
+    from impactguard.runtime_intelligence import load_runtime_observations
+
+    f = tmp_path / "runtime.json"
+    f.write_text('"not_a_list"')
+    result = load_runtime_observations(str(f))
+    assert result == []
+
+
+def test_load_runtime_observations_empty_list(tmp_path):
+    """Empty runtime list is valid and returns empty."""
+    from impactguard.runtime_intelligence import load_runtime_observations
+
+    f = tmp_path / "runtime.json"
+    f.write_text("[]")
+    result = load_runtime_observations(str(f))
+    assert result == []

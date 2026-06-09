@@ -4,7 +4,10 @@ import re
 from pathlib import Path
 from typing import Any
 
+from ._logging import get_logger
 from .patch_confidence import classify_with_factors
+
+_log = get_logger(__name__)
 
 _SUPPORTED_CST_CHANGES = {
     "REQUIRED_POSITIONAL_ADDED",
@@ -142,6 +145,33 @@ def generate_fix_candidates(report_item: dict[str, Any]) -> list[dict[str, Any]]
     if not source_path.exists():
         return []
 
+    # CST patching is Python-only; skip non-Python files
+    if not file_path.endswith(".py"):
+        fallback_patch = patch_add_default(
+            {
+                "file": file_path,
+                "lineno": int(report_item.get("lineno", 0) or 0),
+                "name": func_name,
+            },
+            param_name,
+        )
+        if not fallback_patch:
+            return []
+        level, factors = classify_with_factors(0.7, 0.8, 0.7, 1.0)
+        return [
+            {
+                "type": "text_patch",
+                "patch": fallback_patch,
+                "function": func_name,
+                "file": file_path,
+                "param_name": param_name,
+                "confidence": factors,
+                "confidence_level": level,
+                "auto_applicable": False,
+                "error": "CST patching is Python-only; text patch provided instead",
+            }
+        ]
+
     source = source_path.read_text()
     cst_error: str | None = None
     patched, cst_error = patch_function(
@@ -243,6 +273,11 @@ def apply_safe_fixes(risk_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     applied: list[dict[str, Any]] = []
     for file_path, fixes in grouped.items():
+        if not file_path.endswith(".py"):
+            _log.warning(
+                "Skipping CST patch for non-Python file '%s'", file_path,
+            )
+            continue
         if len(fixes) != 1:
             continue
         fix = fixes[0]

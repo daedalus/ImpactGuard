@@ -4,6 +4,10 @@ import json
 from pathlib import Path
 from typing import Any, TypeVar
 
+from ._logging import get_logger
+
+_log = get_logger(__name__)
+
 _RUNTIME_NAME_KEYS = ("function", "fqname", "symbol", "name", "callee", "target", "id")
 _RUNTIME_COUNT_KEYS = ("count", "calls", "samples", "hits", "invocations")
 _RUNTIME_ARGC_KEYS = ("args_count", "argc", "arity")
@@ -171,9 +175,29 @@ def normalize_runtime_payload(data: object) -> list[dict[str, Any]]:
 
 
 def load_runtime_observations(path: str) -> list[dict[str, Any]]:
-    """Load and normalize runtime observations from JSON."""
+    """Load and normalize runtime observations from JSON.
+
+    The inbound JSON is validated against the expected schema
+    (list of ``{function, count}`` dicts).  When validation fails, errors
+    are logged and an empty list is returned so downstream processing
+    degrades gracefully.
+    """
+    from .schema import validate_runtime as _validate_runtime
+
     with open(path) as f:
-        return normalize_runtime_payload(json.load(f))
+        raw = json.load(f)
+
+    valid, errors = _validate_runtime(raw)
+    if not valid:
+        for err in errors:
+            _log.error("Runtime data validation error: %s", err)
+        _log.warning(
+            "Runtime data from '%s' failed validation — treating as absent.",
+            path,
+        )
+        return []
+
+    return normalize_runtime_payload(raw)
 
 
 def build_runtime_index(observations: list[dict[str, Any]]) -> dict[str, int]:

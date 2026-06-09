@@ -189,6 +189,38 @@ def test_generate_fix_candidates_fallback_text_patch(tmp_path):
     assert result[0]["type"] == "text_patch"
 
 
+def test_generate_fix_candidates_non_python_file_skips_cst(tmp_path):
+    """Non-.py files skip CST patching and fall back to text patch."""
+    source = tmp_path / "mod.ts"
+    source.write_text("function bar() {\n  return 1;\n}\n")
+    from impactguard.fix_generation import generate_fix_candidates
+    result = generate_fix_candidates({
+        "change_type": "REQUIRED_POSITIONAL_ADDED",
+        "function": "mod:bar",
+        "param_name": "x",
+        "file": str(source),
+        "lineno": 1,
+    })
+    assert len(result) == 1
+    assert result[0]["type"] == "text_patch"
+
+
+def test_generate_fix_candidates_non_python_no_lineno_fallback(tmp_path):
+    """Non-.py file falls back to text patch even without lineno."""
+    source = tmp_path / "mod.js"
+    source.write_text("function bar() { return 1; }\n")
+    from impactguard.fix_generation import generate_fix_candidates
+    result = generate_fix_candidates({
+        "change_type": "REQUIRED_POSITIONAL_ADDED",
+        "function": "mod:bar",
+        "param_name": "x",
+        "file": str(source),
+    })
+    assert len(result) == 1
+    assert result[0]["type"] == "text_patch"
+
+
+
 
 
 
@@ -285,6 +317,22 @@ def test_apply_safe_fixes_skips_nonexistent_file(tmp_path):
             "auto_applicable": True,
             "file": str(tmp_path / "nonexistent.py"),
             "patch": "updated",
+        }]
+    }
+    result = apply_safe_fixes([item])
+    assert result == []
+
+
+def test_apply_safe_fixes_skips_non_python_file(tmp_path):
+    """CST patches for non-.py files are skipped with a warning."""
+    f = tmp_path / "mod.ts"
+    f.write_text("function bar() { return 1; }\n")
+    item = {
+        "fix_candidates": [{
+            "type": "cst_patch",
+            "auto_applicable": True,
+            "file": str(f),
+            "patch": "updated_content",
         }]
     }
     result = apply_safe_fixes([item])

@@ -1,3 +1,16 @@
+"""Production runtime call tracer (Python-only).
+
+Sampling call tracer for production environments.  Uses a configurable
+sample rate, periodic flush, and signal-safe shutdown.
+
+.. note::
+
+   This module is **Python-only**.  It relies on CPython-specific
+   ``__module__``, ``__qualname__``, and ``@functools.wraps``.
+   Non-Python languages must supply runtime observations externally
+   as a JSON file matching the schema documented in ``SPEC.md``.
+"""
+
 import json
 import os
 import random

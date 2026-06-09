@@ -1,3 +1,13 @@
+"""Concrete Syntax Tree patching for Python source code.
+
+.. note::
+
+   This module is **Python-only**.  It uses ``libcst`` (a Python CST
+   library) and will produce incorrect results on non-Python source.
+   Always verify that the target file is ``.py`` before calling
+   :func:`patch_function` or :func:`patch_call`.
+"""
+
 try:
     import libcst as cst
     from libcst import matchers as m

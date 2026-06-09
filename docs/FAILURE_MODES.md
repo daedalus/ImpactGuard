@@ -64,8 +64,8 @@ The calibration system does nothing until 5 acceptance/rejection outcomes accumu
 **11. Type annotation changes undetectable without annotations** — Likelihood 3 | Impact 2 | Detectability 2 | Score 7 (MITIGATED)
 `TYPE_CHANGED` detection requires type annotations in both old and new signatures. Many Python codebases have partial or no annotations. A function that adds a type annotation to an unannotated parameter does not trigger `TYPE_CHANGED`. Mitigation: `_NAME_TYPE_HINTS` (60+ common parameter names) and `_infer_possible_type()` infer a likely type from parameter name when one side is missing. Covers `is_`/`has_`/`should_` prefix (→ `bool`) and `_id`/`_ids` suffix (→ `int`). Unknown names are left unannotated.
 
-**12. Python-only runtime tracing and CST patching** — Likelihood 2 | Impact 3 | Detectability 2 | Score 7
-`trace_calls_prod.py` (Python decorator) and `cst_patch.py` (libcst) work only for Python. For the 13 other languages, runtime data must be supplied externally in a JSON schema that may not match. Broken patches or mismatched runtime data produce no error. Mitigation: validate external runtime JSON against schema on ingest; clearly label Python-only features in docs.
+**12. Python-only runtime tracing and CST patching** — Likelihood 2 | Impact 3 | Detectability 2 | Score 7 (MITIGATED)
+`trace_calls_prod.py` (Python decorator) and `cst_patch.py` (libcst) work only for Python. For the 13 other languages, runtime data must be supplied externally in a JSON schema that may not match. Broken patches or mismatched runtime data produce no error. Mitigation: `validate_runtime()` is now called inside `load_runtime_observations()` — invalid JSON is logged and gracefully degrades to an empty list. `trace_calls_prod.py` and `cst_patch.py` both carry Python-only docstring notices. `fix_generation.py` skips CST patches for non-`.py` files and falls back to text patches.
 
 ---
 
