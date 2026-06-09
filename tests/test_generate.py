@@ -162,3 +162,14 @@ def test_generate_report_coverage_push(tmp_path):
     result = generate_html(items)
     assert "HIGH" in result
     assert "LOW" in result
+
+
+def test_generate_html_has_utc_timestamp():
+    """HTML report includes a UTC timestamp."""
+    from impactguard.generate_report import generate_html
+
+    result = generate_html([])
+    assert "Computed at" in result
+    assert "UTC" in result
+    assert "+00:00" in result or "+0000" in result
+    assert "T" in result

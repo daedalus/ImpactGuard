@@ -1,5 +1,6 @@
 import html as _html
 import json
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -68,6 +69,7 @@ def generate_html(report_data: list[dict[str, Any]]) -> str:
 </head>
 <body>
     <h1>API Risk Report</h1>
+    <p style="color:#666;font-size:13px;margin-top:-8px">Computed at """ + datetime.now(UTC).isoformat() + """ (UTC)</p>
 """)
 
     # Summary badges

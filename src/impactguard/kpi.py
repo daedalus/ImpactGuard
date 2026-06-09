@@ -48,6 +48,7 @@ patch-feedback and transitive-impact quality signals.
     despite very low runtime coverage are likely false positives.
 """
 
+from datetime import UTC, datetime
 from typing import Any
 
 # Exposure threshold below which a HIGH item is treated as a candidate FP.
@@ -133,6 +134,7 @@ def compute_kpis(
     Returns:
         Dictionary with keys:
 
+        * ``computed_at`` — ISO-8601 UTC timestamp of when KPIs were computed
         * ``total`` — total number of report items
         * ``mean_severity`` — mean severity score S across all items
         * ``mean_exposure`` — mean exposure E across all items
@@ -194,6 +196,7 @@ def compute_kpis(
     false_positive_proxy = _false_positive_proxy(report_data, fp_threshold)
 
     return {
+        "computed_at": datetime.now(UTC).isoformat(),
         "total": total,
         "mean_severity": mean_severity,
         "mean_exposure": mean_exposure,
@@ -220,12 +223,15 @@ def format_kpi_text(kpis: dict[str, Any]) -> str:
     """
     total = kpis.get("total", 0)
     dist = kpis.get("risk_distribution", {})
+    computed_at = kpis.get("computed_at", "")
     lines: list[str] = [
         "── ImpactGuard KPI Dashboard ──────────────────────────",
         f"  Total changes analyzed : {total}",
-        "",
-        "  Risk distribution",
     ]
+    if computed_at:
+        lines.append(f"  Computed at            : {computed_at}")
+    lines.append("")
+    lines.append("  Risk distribution")
 
     _level_icons = {
         "HIGH": "🔴",

@@ -82,7 +82,7 @@ Two different files producing the same SHA-256 hash requires ~2⁸⁷ attempts (
 `_is_stale()` stats the file, then callers (`build()`/`sync()`) later call `_index_file()` which reads the file. If the file is deleted or truncated between the stat and the read, the pipeline crashed with `FileNotFoundError` / `OSError`. `_index_file()` had a `path.exists()` gate that could pass while the subsequent `path.read_bytes()` still failed. Mitigation: `_index_file()` now reads content first (wrapped in `try/except OSError`) and derives `size` from the read bytes instead of `stat()`. `mtime` is stat'd after the read (with `OSError` fallback to 0). `_index_file_imports()` also wraps `read_bytes()` in `try/except OSError`. The stale removal on read failure uses `_relativize()` for correct DB lookups.
 **17. `git diff` parsing misses binary file changes** — Score 3 (MITIGATED)
 **18. `impactguard ignore` comment parsing fails on unusual syntax** — Score 3 (MITIGATED)
-**19. KPI dashboard aggregation wrong if timestamps cross DST boundary** — Score 2
+**19. KPI dashboard aggregation wrong if timestamps cross DST boundary** — Score 2 (MITIGATED)
 
 ---
 

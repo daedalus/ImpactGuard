@@ -70,6 +70,27 @@ def test_total():
     assert kpis["total"] == 5
 
 
+def test_computed_at_is_utc_iso8601():
+    """computed_at timestamp is present and in UTC ISO-8601 format."""
+    kpis = compute_kpis(_SAMPLE_REPORT)
+    assert "computed_at" in kpis
+    ts = kpis["computed_at"]
+    assert ts.endswith("+00:00")
+    assert "T" in ts
+    # Should parse without error
+    from datetime import datetime
+    parsed = datetime.fromisoformat(ts)
+    assert parsed.tzinfo is not None
+
+
+def test_computed_at_in_text_dashboard():
+    """computed_at appears in format_kpi_text output."""
+    kpis = compute_kpis(_SAMPLE_REPORT)
+    text = format_kpi_text(kpis)
+    assert "Computed at" in text
+    assert kpis["computed_at"] in text
+
+
 def test_risk_distribution_counts():
     kpis = compute_kpis(_SAMPLE_REPORT)
     dist = kpis["risk_distribution"]
