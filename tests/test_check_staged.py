@@ -373,3 +373,93 @@ def test_check_staged_prints_result(capsys):
         assert "Breaking changes: 1" in captured
         assert "HIGH: 1" in captured
         assert "Blocked: true" in captured
+
+
+# ---------------------------------------------------------------------------
+# SKIP_SIGNATURE_HOOK env preservation (failure mode #15)
+# ---------------------------------------------------------------------------
+
+
+class TestSkipSignatureHookEnv:
+    def test_check_staged_sets_env_during_execution(self):
+        """check_staged sets SKIP_SIGNATURE_HOOK=1 for the duration."""
+        from impactguard.__main__ import check_staged
+
+        diff_mock = MagicMock(returncode=0, stdout="src/mymod.py\n")
+        show_mock = MagicMock(returncode=0, stdout="def foo(): pass\n")
+
+        def fake_run_pipeline(**kwargs):
+            assert os.environ.get("SKIP_SIGNATURE_HOOK") == "1"
+            return {
+                "comparison": {"breaking": [], "nonbreaking": []},
+                "risk": [],
+                "analysis_status": {"status": "complete", "counters": {}},
+                "gate": {"blocked": False},
+            }
+
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("subprocess.run") as mock_run,
+            patch("impactguard.pipeline.run_pipeline", side_effect=fake_run_pipeline),
+        ):
+            mock_run.side_effect = [diff_mock, show_mock, show_mock]
+            check_staged()
+            assert "SKIP_SIGNATURE_HOOK" not in os.environ
+
+    def test_check_staged_restores_original_env_value(self):
+        """check_staged restores pre-existing SKIP_SIGNATURE_HOOK value."""
+        from impactguard.__main__ import check_staged
+
+        diff_mock = MagicMock(returncode=0, stdout="")
+        with (
+            patch.dict(os.environ, {"SKIP_SIGNATURE_HOOK": "original"}),
+            patch("subprocess.run", return_value=diff_mock),
+        ):
+            check_staged()
+            assert os.environ["SKIP_SIGNATURE_HOOK"] == "original"
+
+    def test_post_commit_hook_sets_env_during_execution(self):
+        """post_commit_hook sets SKIP_SIGNATURE_HOOK=1 for the duration."""
+        from impactguard.__main__ import post_commit_hook
+
+        ls_files_mock = MagicMock(returncode=0, stdout="mod.py\n")
+        extract_mock = MagicMock(returncode=0, stdout='[{"fqname": "mod:foo"}]\n')
+
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("subprocess.run") as mock_run,
+        ):
+            mock_run.side_effect = [ls_files_mock, extract_mock]
+            post_commit_hook()
+            assert "SKIP_SIGNATURE_HOOK" not in os.environ
+
+    def test_post_commit_hook_restores_original_env_value(self):
+        """post_commit_hook restores pre-existing SKIP_SIGNATURE_HOOK value."""
+        from impactguard.__main__ import post_commit_hook
+
+        ls_files_mock = MagicMock(returncode=0, stdout="")
+
+        with (
+            patch.dict(os.environ, {"SKIP_SIGNATURE_HOOK": "original"}),
+            patch("subprocess.run", return_value=ls_files_mock),
+        ):
+            post_commit_hook()
+            assert os.environ["SKIP_SIGNATURE_HOOK"] == "original"
+
+    def test_post_commit_hook_sets_env_in_subprocess_env(self):
+        """post_commit_hook passes SKIP_SIGNATURE_HOOK=1 to subprocess."""
+        from impactguard.__main__ import post_commit_hook
+
+        ls_files_mock = MagicMock(returncode=0, stdout="mod.py\n")
+
+        extract_mock = MagicMock(returncode=0, stdout='[{"fqname": "mod:foo"}]\n')
+
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("subprocess.run") as mock_run,
+        ):
+            mock_run.side_effect = [ls_files_mock, extract_mock]
+            post_commit_hook()
+            env_passed = mock_run.call_args_list[0][1].get("env")
+            assert env_passed is None  # inherits parent env by default
+            assert os.environ.get("SKIP_SIGNATURE_HOOK") is None  # cleaned up

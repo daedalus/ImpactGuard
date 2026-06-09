@@ -2674,39 +2674,47 @@ def check_staged() -> int:
     import os
     import subprocess
 
-    if os.environ.get("SKIP_SIGNATURE_HOOK"):
+    saved = os.environ.get("SKIP_SIGNATURE_HOOK")
+    if saved:
         return 0
 
-    changed = subprocess.run(
-        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"],
-        capture_output=True,
-        text=True,
-    )
-    if not changed.stdout.strip():
-        return 0
+    os.environ["SKIP_SIGNATURE_HOOK"] = "1"
+    try:
+        changed = subprocess.run(
+            ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"],
+            capture_output=True,
+            text=True,
+        )
+        if not changed.stdout.strip():
+            return 0
 
-    py_files = [f for f in changed.stdout.splitlines() if f.endswith(".py")]
-    if not py_files:
-        return 0
+        py_files = [f for f in changed.stdout.splitlines() if f.endswith(".py")]
+        if not py_files:
+            return 0
 
-    extracted = _extract_staged_files(py_files)
-    if extracted is None:
-        return 0
+        extracted = _extract_staged_files(py_files)
+        if extracted is None:
+            return 0
 
-    old_paths, new_paths, old_base, new_base = extracted
+        old_paths, new_paths, old_base, new_base = extracted
 
-    from .pipeline import run_pipeline
+        from .pipeline import run_pipeline
 
-    result = run_pipeline(
-        old_files=old_paths or None,
-        new_files=new_paths,
-        old_base_path=old_base,
-        new_base_path=new_base,
-    )
+        result = run_pipeline(
+            old_files=old_paths or None,
+            new_files=new_paths,
+            old_base_path=old_base,
+            new_base_path=new_base,
+        )
 
-    _print_pipeline_summary(result)
-    gate = result.get("gate", {})
-    return 1 if gate.get("blocked", False) else 0
+        _print_pipeline_summary(result)
+        gate = result.get("gate", {})
+        return 1 if gate.get("blocked", False) else 0
+    finally:
+        if saved is None:
+            os.environ.pop("SKIP_SIGNATURE_HOOK", None)
+        else:
+            os.environ["SKIP_SIGNATURE_HOOK"] = saved
 
 
 def post_commit_hook() -> int:
@@ -2716,7 +2724,8 @@ def post_commit_hook() -> int:
     import sys
     import tempfile
 
-    if os.environ.get("SKIP_SIGNATURE_HOOK"):
+    saved = os.environ.get("SKIP_SIGNATURE_HOOK")
+    if saved:
         return 0
 
     os.environ["SKIP_SIGNATURE_HOOK"] = "1"
@@ -2746,7 +2755,10 @@ def post_commit_hook() -> int:
     except (OSError, subprocess.SubprocessError):
         return 0
     finally:
-        os.environ.pop("SKIP_SIGNATURE_HOOK", None)
+        if saved is None:
+            os.environ.pop("SKIP_SIGNATURE_HOOK", None)
+        else:
+            os.environ["SKIP_SIGNATURE_HOOK"] = saved
     return 0
 
 
