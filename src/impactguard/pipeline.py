@@ -841,40 +841,6 @@ def _validate_git_path(path: str) -> bool:
     return True
 
 
-def _extract_by_language(
-    files: list[str],
-    base_path: str | None = None,
-) -> list[dict[str, Any]]:
-    """Extract signatures from *files* using the registry extractor for each file.
-
-    Files whose extension has no registered extractor are silently skipped.
-
-    Args:
-        files: Source file paths (any mix of languages).
-        base_path: Optional base path passed through to each extractor.
-
-    Returns:
-        Combined list of signature dicts from all supported files.
-    """
-    from .languages.lib.registry import get_extractor as _get_extractor
-
-    groups: dict[str, tuple[Any, list[str]]] = {}
-    for f in files:
-        extractor = _get_extractor(f)
-        if extractor is None:
-            continue
-        lang = extractor.language
-        if lang not in groups:
-            groups[lang] = (extractor, [])
-        groups[lang][1].append(f)
-
-    all_sigs: list[dict[str, Any]] = []
-    for extractor, lang_files in groups.values():
-        assert extractor is not None
-        all_sigs.extend(extractor.extract_signatures(lang_files, _base_path=base_path))
-    return all_sigs
-
-
 def run_pipeline(
     old_files: list[str] | None = None,
     new_files: list[str] | None = None,
@@ -898,6 +864,7 @@ def run_pipeline(
     block_unknown: bool | None = None,
     require_runtime: bool = False,
     use_call_graph: bool | None = None,
+    conservative: bool | None = None,
 ) -> dict[str, Any]:
     """Run the full ImpactGuard pipeline.
 
@@ -1055,6 +1022,32 @@ def run_pipeline(
     result["impact"] = impact
     _log.debug("Impact analysis found %d issue(s)", len(impact))
 
+    if conservative is None:
+        if config and "conservative_mode" in config.get("risk", {}):
+            conservative = bool(config["risk"]["conservative_mode"])
+        else:
+            from .config import get as cfg_get
+            conservative = bool(cfg_get("risk", "conservative_mode", False))
+    if conservative and comparison.get("breaking"):
+        from .impact_analysis import detect_uncalled_changes, load_calls, load_funcs
+
+        _log.debug("Conservative mode: checking for uncalled changed functions")
+        try:
+            funcs = load_funcs(new_sigs_path)
+            calls = load_calls(calls_path) if calls_path else []
+            uncalled = detect_uncalled_changes(
+                comparison["breaking"], funcs, calls
+            )
+            if uncalled:
+                impact.extend(uncalled)
+                result["impact"] = impact
+                _log.info(
+                    "Conservative mode: %d changed function(s) with no call sites flagged",
+                    len(uncalled),
+                )
+        except Exception:
+            _log.warning("Failed to detect uncalled changes", exc_info=True)
+
     # Step 5: Assess risk
     _log.debug("Step 5: Assessing risk")
     signature_pair = _load_result_signatures(old_sigs_path, new_sigs_path)
@@ -1182,6 +1175,7 @@ def quick_check(
     block_unknown: bool | None = None,
     require_runtime: bool = False,
     use_call_graph: bool | None = None,
+    conservative: bool | None = None,
 ) -> dict[str, Any]:
     """Quick check between two Python files or directories.
 
@@ -1191,6 +1185,7 @@ def quick_check(
         runtime_path: Optional path to runtime data
         suggest_patch: When True, generate patches for fixes
         show_patch: When True, display patched content inline
+        conservative: When True, flag changed functions with no call sites.
 
     Returns:
         Pipeline result dictionary
@@ -1231,10 +1226,12 @@ def quick_check(
         max_skipped_files=max_skipped_files,
         max_call_extraction_failures=max_call_extraction_failures,
         max_runtime_data_issues=max_runtime_data_issues,
-        block_unknown=block_unknown,
-        require_runtime=require_runtime,
-        use_call_graph=use_call_graph,
-    )
+            block_unknown=block_unknown,
+            require_runtime=require_runtime,
+            use_call_graph=use_call_graph,
+            conservative=conservative,
+        )
+
 
 
 def _extract_git_ref_signatures(ref: str, dest: Path) -> list[dict[str, Any]]:
@@ -1423,6 +1420,7 @@ def run_pipeline_git(
     block_unknown: bool | None = None,
     require_runtime: bool = False,
     use_call_graph: bool | None = None,
+    conservative: bool | None = None,
 ) -> dict[str, Any]:
     """Run pipeline comparing two git commits.
 
@@ -1612,6 +1610,7 @@ def run_pipeline_diff_content(
     block_unknown: bool | None = None,
     require_runtime: bool = False,
     use_call_graph: bool | None = None,
+    conservative: bool | None = None,
 ) -> dict[str, Any]:
     """Run the full ImpactGuard pipeline on unified diff content (as a string).
 
@@ -1684,6 +1683,7 @@ def run_pipeline_diff_content(
             block_unknown=block_unknown,
             require_runtime=require_runtime,
             use_call_graph=use_call_graph,
+            conservative=conservative,
         )
 
 
@@ -1704,6 +1704,7 @@ def run_pipeline_diff(
     block_unknown: bool | None = None,
     require_runtime: bool = False,
     use_call_graph: bool | None = None,
+    conservative: bool | None = None,
 ) -> dict[str, Any]:
     """Run the full ImpactGuard pipeline on a unified diff / patch file.
 
@@ -1746,6 +1747,7 @@ def run_pipeline_diff(
             block_unknown=block_unknown,
             require_runtime=require_runtime,
             use_call_graph=use_call_graph,
+            conservative=conservative,
         )
     except ValueError as exc:
         # Re-raise with the file path included in the error message.
@@ -1770,6 +1772,7 @@ def run_pipeline_commit(
     block_unknown: bool | None = None,
     require_runtime: bool = False,
     use_call_graph: bool | None = None,
+    conservative: bool | None = None,
 ) -> dict[str, Any]:
     """Run the full ImpactGuard pipeline on a single git commit.
 
@@ -1830,6 +1833,7 @@ def run_pipeline_commit(
         "block_unknown": block_unknown,
         "require_runtime": require_runtime,
         "use_call_graph": use_call_graph,
+        "conservative": conservative,
     }
     # Keep delegation kwargs minimal by forwarding new options only when they
     # deviate from defaults.

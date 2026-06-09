@@ -266,14 +266,16 @@ class CallGraphDB:
         """Remove DB entries for files no longer on disk.
 
         Args:
-            active_files: Set of absolute file paths that still exist.
+            active_files: Set of file paths that still exist (absolute or
+                relative to the project root — both are accepted).
 
         Returns:
             Number of stale files cleaned up.
         """
         rows = self.con.execute("SELECT path FROM files").fetchall()
         db_files = {row["path"] for row in rows}
-        stale = db_files - active_files
+        active = {self._relativize(p) for p in active_files}
+        stale = db_files - active
         if not stale:
             return 0
         for f in stale:
@@ -454,7 +456,7 @@ class CallGraphDB:
     def _index_signatures(self, file_path: str, rel_path: str | None = None) -> None:
         from .extract_signatures import extract as extract_sigs
 
-        sigs = extract_sigs([file_path])
+        sigs = extract_sigs([file_path], base_path=str(self.project_root))
         for sig in sigs:
             fqname = sig.get("fqname", "")
             if not fqname:
@@ -505,8 +507,8 @@ class CallGraphDB:
                 mod_prefix, func_name = parts
                 for cand in (f"{mod_prefix}.py", f"{mod_prefix}/__init__.py"):
                     row = self.con.execute(
-                        "SELECT id FROM nodes WHERE file_path = ? AND name = ?",
-                        (cand, func_name),
+                        "SELECT id FROM nodes WHERE (file_path = ? OR file_path LIKE ?) AND name = ?",
+                        (cand, f"%/{cand}", func_name),
                     ).fetchone()
                     if row:
                         return row["id"]

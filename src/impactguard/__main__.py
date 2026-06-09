@@ -385,6 +385,7 @@ def cmd_check(args: argparse.Namespace) -> int:
     generate_fixes: bool = not bool(getattr(args, "no_generate_fixes", False))
     apply_safe_fixes: bool = bool(getattr(args, "apply_safe_fixes", False))
     use_call_graph: bool = getattr(args, "use_call_graph", False)
+    conservative: bool = getattr(args, "conservative", False)
 
     def _run_once() -> int:
         print(f"Checking impact: {args.old} → {args.new}")
@@ -398,6 +399,7 @@ def cmd_check(args: argparse.Namespace) -> int:
                 generate_fixes=generate_fixes,
                 apply_safe_fixes=apply_safe_fixes,
                 use_call_graph=use_call_graph,
+                conservative=conservative,
             )
             comparison = result.get("comparison", {})
             print("\n=== Comparison ===")
@@ -610,11 +612,12 @@ def cmd_check_commits(args: argparse.Namespace) -> int:
     suggest_patch: bool = getattr(args, "suggest_patch", False)
     strict_extraction: bool = getattr(args, "strict_extraction", False)
     enforce_gate: bool = getattr(args, "enforce_gate", False)
-    block_unknown: bool = getattr(args, "block_unknown", False)
+    block_unknown: bool | None = getattr(args, "block_unknown", None) or None
     require_runtime: bool = getattr(args, "require_runtime", False)
     generate_fixes: bool = not bool(getattr(args, "no_generate_fixes", False))
     apply_safe_fixes: bool = bool(getattr(args, "apply_safe_fixes", False))
     use_call_graph: bool = getattr(args, "use_call_graph", False)
+    conservative: bool = getattr(args, "conservative", False)
 
     max_parse_failures: int = getattr(args, "max_parse_failures", 0)
     max_skipped_files: int = getattr(args, "max_skipped_files", 0)
@@ -649,6 +652,7 @@ def cmd_check_commits(args: argparse.Namespace) -> int:
             block_unknown=block_unknown,
             require_runtime=require_runtime,
             use_call_graph=use_call_graph,
+            conservative=conservative,
         )
 
         _print_check_result(result, args, suggest_patch)
@@ -672,6 +676,7 @@ def _run_diff_pipe(
     show_patch: bool,
     strict_extraction: bool,
     use_call_graph: bool,
+    conservative: bool,
 ) -> dict[str, Any] | None:
     from .pipeline import run_pipeline_diff_content
 
@@ -697,6 +702,7 @@ def _run_diff_pipe(
             apply_safe_fixes=bool(getattr(args, "apply_safe_fixes", False)),
             strict_extraction=strict_extraction,
             use_call_graph=use_call_graph,
+            conservative=conservative,
         )
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -704,7 +710,7 @@ def _run_diff_pipe(
 
 
 def _run_diff_file(
-    args: argparse.Namespace, strict_extraction: bool, use_call_graph: bool
+    args: argparse.Namespace, strict_extraction: bool, use_call_graph: bool, conservative: bool,
 ) -> dict[str, Any] | None:
     from .pipeline import run_pipeline_diff
 
@@ -723,6 +729,7 @@ def _run_diff_file(
             apply_safe_fixes=bool(getattr(args, "apply_safe_fixes", False)),
             strict_extraction=strict_extraction,
             use_call_graph=use_call_graph,
+            conservative=conservative,
         )
     except (FileNotFoundError, ValueError) as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -788,11 +795,12 @@ def cmd_check_diff(args: argparse.Namespace) -> int:
     show_patch: bool = getattr(args, "show_patch", False)
     strict_extraction: bool = getattr(args, "strict_extraction", False)
     use_call_graph: bool = getattr(args, "use_call_graph", False)
+    conservative: bool = getattr(args, "conservative", False)
 
     if getattr(args, "pipe", False):
-        result = _run_diff_pipe(args, suggest_patch, show_patch, strict_extraction, use_call_graph)
+        result = _run_diff_pipe(args, suggest_patch, show_patch, strict_extraction, use_call_graph, conservative)
     else:
-        result = _run_diff_file(args, strict_extraction, use_call_graph)
+        result = _run_diff_file(args, strict_extraction, use_call_graph, conservative)
 
     if result is None:
         return 1
@@ -811,6 +819,7 @@ def cmd_check_commit(args: argparse.Namespace) -> int:
     apply_safe_fixes: bool = bool(getattr(args, "apply_safe_fixes", False))
     strict_extraction: bool = getattr(args, "strict_extraction", False)
     use_call_graph: bool = getattr(args, "use_call_graph", False)
+    conservative: bool = getattr(args, "conservative", False)
     print(f"Analyzing commit: {args.commit_ref}")
 
     try:
@@ -824,6 +833,7 @@ def cmd_check_commit(args: argparse.Namespace) -> int:
             apply_safe_fixes=apply_safe_fixes,
             strict_extraction=strict_extraction,
             use_call_graph=use_call_graph,
+            conservative=conservative,
         )
     except (ValueError, RuntimeError) as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -1946,6 +1956,12 @@ def main() -> int:
         default=False,
         help="Enable persistent call graph (pre-indexed call extraction)",
     )
+    check_parser.add_argument(
+        "--conservative",
+        action="store_true",
+        default=False,
+        help="Flag changes touching uncalled functions/symbols as potential impact (dynamic dispatch blind spot).",
+    )
     check_parser.set_defaults(func=cmd_check)
 
     # check-diff subcommand (unified diff / patch file)
@@ -2005,6 +2021,12 @@ def main() -> int:
         default=False,
         help="Enable persistent call graph (pre-indexed call extraction)",
     )
+    check_diff_parser.add_argument(
+        "--conservative",
+        action="store_true",
+        default=False,
+        help="Flag changes touching uncalled functions/symbols as potential impact (dynamic dispatch blind spot).",
+    )
     check_diff_parser.set_defaults(func=cmd_check_diff)
 
     # check-commit subcommand (single commit vs its parent)
@@ -2061,6 +2083,12 @@ def main() -> int:
         action="store_true",
         default=False,
         help="Enable persistent call graph (pre-indexed call extraction)",
+    )
+    check_commit_parser.add_argument(
+        "--conservative",
+        action="store_true",
+        default=False,
+        help="Flag changes touching uncalled functions/symbols as potential impact (dynamic dispatch blind spot).",
     )
     check_commit_parser.set_defaults(func=cmd_check_commit)
 
@@ -2172,6 +2200,12 @@ def main() -> int:
         action="store_true",
         default=False,
         help="Enable persistent call graph (pre-indexed call extraction)",
+    )
+    check_commits_parser.add_argument(
+        "--conservative",
+        action="store_true",
+        default=False,
+        help="Flag changes touching uncalled functions/symbols as potential impact (dynamic dispatch blind spot).",
     )
 
     check_commits_parser.set_defaults(func=cmd_check_commits)

@@ -201,7 +201,13 @@ def _extract_with_tree_sitter(
             continue
 
         tree = parser.parse(source)
-        fq_file = path.name
+        if _base_path is not None:
+            try:
+                fq_file = str(path.relative_to(_base_path))
+            except ValueError:
+                fq_file = path.name
+        else:
+            fq_file = path.name
         funcs: list[dict[str, Any]] = []
 
         def visit(
@@ -287,7 +293,13 @@ def _extract_with_regex(
         except OSError:
             continue
 
-        fq_file = path.name
+        if _base_path is not None:
+            try:
+                fq_file = str(path.relative_to(_base_path))
+            except ValueError:
+                fq_file = path.name
+        else:
+            fq_file = path.name
         lines = source.splitlines()
 
         for m in _FUNC_RE.finditer(source):

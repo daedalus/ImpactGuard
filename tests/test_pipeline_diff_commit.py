@@ -407,8 +407,10 @@ class TestRunPipelineCommit:
                     max_skipped_files=0,
                     max_call_extraction_failures=0,
                     max_runtime_data_issues=0,
-                    block_unknown=False,
+                    block_unknown=None,
                     require_runtime=False,
+                    use_call_graph=None,
+                    conservative=None,
                 )
                 assert result == expected
 

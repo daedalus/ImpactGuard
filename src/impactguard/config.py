@@ -39,6 +39,7 @@ _DEFAULTS: dict[str, Any] = {
             "medium_exposure_min": 0.01,
             "block_unknown": True,
             "exposure_max_count": 0,
+            "conservative_mode": False,
         },
         "patches": {
             "target_file_match": 1.0,
@@ -80,6 +81,7 @@ _DEFAULTS: dict[str, Any] = {
             "log_file": "",
         },
         "analysis": {
+            "base_path": "",
             "include_private": False,
             "suppress": [],
             "transitive_depth": 0,

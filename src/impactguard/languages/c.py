@@ -295,7 +295,13 @@ def _extract_with_tree_sitter(
             continue
 
         tree = parser.parse(source)
-        fq_file = path.name
+        if _base_path is not None:
+            try:
+                fq_file = str(path.relative_to(_base_path))
+            except ValueError:
+                fq_file = path.name
+        else:
+            fq_file = path.name
         funcs: list[dict[str, Any]] = []
         _visit_node(tree.root_node, source, fq_file, None, funcs)
         all_funcs.extend(funcs)
@@ -391,7 +397,13 @@ def _extract_with_regex(
         except OSError:
             continue
 
-        fq_file = path.name
+        if _base_path is not None:
+            try:
+                fq_file = str(path.relative_to(_base_path))
+            except ValueError:
+                fq_file = path.name
+        else:
+            fq_file = path.name
         lines = source.splitlines()
 
         for m in _FUNC_RE.finditer(source):

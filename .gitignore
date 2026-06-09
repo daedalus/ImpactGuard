@@ -47,6 +47,7 @@ Thumbs.db
 htmlcov/
 
 # ImpactGuard generated files
+.impactguard/
 .signatures.txt
 .signatures.json
 .calls.json

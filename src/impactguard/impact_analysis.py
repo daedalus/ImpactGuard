@@ -375,6 +375,63 @@ def analyze(
     return issues
 
 
+def detect_uncalled_changes(
+    breaking_changes: list[str],
+    funcs: dict[str, dict[str, Any]],
+    calls: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Find changed functions that have zero call sites.
+
+    A function with a breaking change but no call sites is a blind spot:
+    it may be called dynamically (``getattr``, decorators, ``__call__``,
+    higher-order functions) where static analysis cannot see the caller.
+
+    Returns a list of issue dicts (same shape as :func:`analyze`) with
+    risk ``"UNKNOWN"`` and an explanatory ``change`` message.
+
+    Args:
+        breaking_changes: List of breaking change strings from
+            :func:`compare_signatures.compare`, each like
+            ``"REMOVED: file.py:func"``.
+        funcs: Signature dict from :func:`load_funcs`.
+        calls: Call-site list from :func:`load_calls`.
+
+    Returns:
+        Issues for changed functions with no observed call sites.
+    """
+    called_targets: set[str] = set()
+    for call in calls:
+        target = call.get("fqname") or call.get("name", "")
+        if target:
+            called_targets.add(target)
+
+    issues: list[dict[str, Any]] = []
+    for bc in breaking_changes:
+        parts = bc.split(": ", 1)
+        if len(parts) < 2:
+            continue
+        fqname = parts[1].split()[0]
+        if fqname not in funcs:
+            continue
+        if _resolve_target(fqname, funcs) and fqname in called_targets:
+            continue
+        issues.append(
+            {
+                "function": fqname,
+                "risk": "UNKNOWN",
+                "change": f"{parts[0]} — no call sites detected (possible dynamic dispatch blind spot)",
+                "exposure": 0.0,
+                "confidence": 0.0,
+                "file": funcs[fqname].get("file", ""),
+                "lineno": funcs[fqname].get("lineno", 0),
+                "count": 0,
+                "transitive": False,
+                "no_call_sites": True,
+            }
+        )
+    return issues
+
+
 def analyze_main() -> None:
     """CLI entry point."""
     if len(sys.argv) < 3:
