@@ -574,8 +574,16 @@ def _attach_patch_source_info(
             risk_item["file"] = fqname_to_file[fqname]
 
 
-def _calibrate_feedback(stats: dict[str, int], events: list[dict[str, str]]) -> None:
-    """Apply feedback-derived weights when outcome data is available."""
+def _calibrate_feedback(
+    stats: dict[str, int],
+    events: list[dict[str, str]],
+    skip_write: bool = False,
+) -> None:
+    """Apply feedback-derived weights when outcome data is available.
+
+    When *skip_write* is True, only log data needs without modifying
+    the config file (used during pre-commit hooks).
+    """
     try:
         from .feedback import (
             apply_weights_to_config,
@@ -587,7 +595,7 @@ def _calibrate_feedback(stats: dict[str, int], events: list[dict[str, str]]) -> 
         if not outcomes:
             return
         calibrated = compute_calibrated_weights(outcomes)
-        if calibrated:
+        if calibrated and not skip_write:
             apply_weights_to_config(calibrated)
     except ImportError:
         return
@@ -865,6 +873,7 @@ def run_pipeline(
     require_runtime: bool = False,
     use_call_graph: bool | None = None,
     conservative: bool | None = None,
+    skip_feedback_calibration: bool = False,
 ) -> dict[str, Any]:
     """Run the full ImpactGuard pipeline.
 
@@ -1124,7 +1133,7 @@ def run_pipeline(
             if "function" in item:
                 fixes.extend(enrich_with_fixes(item, [item]))
 
-    _calibrate_feedback(reliability_stats, analysis_events)
+    _calibrate_feedback(reliability_stats, analysis_events, skip_write=skip_feedback_calibration)
 
     result["fixes"] = fixes
     if apply_safe_fixes:

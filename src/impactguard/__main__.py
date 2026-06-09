@@ -2705,6 +2705,7 @@ def check_staged() -> int:
             new_files=new_paths,
             old_base_path=old_base,
             new_base_path=new_base,
+            skip_feedback_calibration=True,
         )
 
         _print_pipeline_summary(result)
