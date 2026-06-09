@@ -37,6 +37,40 @@ def test_find_config_file_not_found(tmp_path):
     assert found is None
 
 
+def test_find_config_file_stops_at_4_parents(tmp_path):
+    from impactguard.config import _find_config_file
+
+    deep = tmp_path / "a" / "b" / "c" / "d" / "e"
+    deep.mkdir(parents=True, exist_ok=True)
+    # Place a config 5 levels up from deep (beyond the 4-parent limit)
+    parent5 = tmp_path / "a" / "b" / "c" / "d"
+    # This is 4 parents up from 'deep/a/b/c/d/e' → deep→d→c→b→a = 4 levels
+    config_4up = tmp_path / "a" / "b" / "c" / "d" / "impactguard.toml"
+    config_4up.write_text("[impactguard]\n")
+    found = _find_config_file(start=deep)
+    assert found == config_4up
+
+    # Now place one 5 levels up (tmp_path itself, 5 from deep)
+    config_5up = tmp_path / "impactguard.toml"
+    config_5up.write_text("[impactguard]\n")
+    # Should still find the closer one
+    found = _find_config_file(start=deep)
+    assert found == config_4up
+
+
+def test_find_config_file_refuses_parent_beyond_4(tmp_path):
+    from impactguard.config import _find_config_file
+
+    # Place a config 6 levels deep, then put a config at tmp_path
+    deep = tmp_path / "a" / "b" / "c" / "d" / "e" / "f"
+    deep.mkdir(parents=True, exist_ok=True)
+    config_at_root = tmp_path / "impactguard.toml"
+    config_at_root.write_text("[impactguard]\n")
+    # With the 4-parent limit, the config at tmp_path (5 levels up) should not be found
+    found = _find_config_file(start=deep)
+    assert found is None
+
+
 # ── _resolve_validation_path ──────────────────────────────────────────────
 
 

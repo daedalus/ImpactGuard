@@ -135,16 +135,39 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
 def _find_config_file(start: Path | None = None) -> Path | None:
     """Walk up from *start* (default: cwd) looking for ``impactguard.toml``.
 
-    Stops at the project root (where ``.git`` exists) or the filesystem root,
-    preventing configuration poisoning from shared writable directories
-    outside the project boundary.
+    Stops at the project root (where ``.git`` exists), the filesystem root,
+    or after 4 parent directories when no ``.git`` is found — preventing
+    configuration poisoning from shared parent directories on CI workspaces,
+    monorepos, or filesystems where sibling projects share a common ancestor.
+
+    Use ``impactguard --config <path>`` to specify an explicit config file.
     """
     search = start or Path.cwd()
+
+    # First pass: find the project root (.git boundary), if any.
+    project_root: Path | None = None
     for directory in [search, *search.parents]:
+        if (directory / ".git").is_dir():
+            project_root = directory
+            break
+        if directory == directory.parent:
+            break
+
+    # Second pass: search from CWD up to project root, or up to 4
+    # parent levels when no project root was detected.
+    max_depth: int | None = None if project_root else 4
+    for i, directory in enumerate([search, *search.parents]):
+        if max_depth is not None and i > max_depth:
+            _log.debug(
+                "No .git found within %d parent levels; stopped at '%s'. "
+                "Use --config to set an explicit path.",
+                max_depth, directory,
+            )
+            break
         candidate = directory / "impactguard.toml"
         if candidate.is_file():
             return candidate
-        if (directory / ".git").is_dir():
+        if directory == project_root:
             break
         if directory == directory.parent:
             break
