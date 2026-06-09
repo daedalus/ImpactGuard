@@ -1,4 +1,5 @@
 import ast
+import re
 from pathlib import Path
 from typing import Any
 
@@ -7,6 +8,8 @@ from ._logging import get_logger
 
 # ImpactGuard signature extractor
 _log = get_logger(__name__)
+
+_IGNORE_RE = re.compile(r"impactguard\s*:\s*ignore", re.IGNORECASE)
 
 
 def _has_ignore_comment(source_lines: list[str], lineno: int) -> bool:
@@ -17,10 +20,9 @@ def _has_ignore_comment(source_lines: list[str], lineno: int) -> bool:
         source_lines: All lines of the source file (0-indexed list).
         lineno: 1-based line number of the ``def`` keyword.
     """
-    tag = "impactguard: ignore"
     def_line_idx = lineno - 1
     for idx in (def_line_idx - 1, def_line_idx):
-        if 0 <= idx < len(source_lines) and tag in source_lines[idx]:
+        if 0 <= idx < len(source_lines) and _IGNORE_RE.search(source_lines[idx]):
             return True
     return False
 
@@ -119,10 +121,9 @@ def _has_ignore_comment(source_lines: list[str], lineno: int) -> bool:
         source_lines: All lines of the source file (0-indexed list).
         lineno: 1-based line number of the ``def`` keyword.
     """
-    tag = "impactguard: ignore"
     def_line_idx = lineno - 1
     for idx in (def_line_idx - 1, def_line_idx):
-        if 0 <= idx < len(source_lines) and tag in source_lines[idx]:
+        if 0 <= idx < len(source_lines) and _IGNORE_RE.search(source_lines[idx]):
             return True
     return False
 

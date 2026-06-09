@@ -11,8 +11,15 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-# Constants
-_IGNORE_TAG = "impactguard: ignore"
+# ── Ignore-comment tag ──────────────────────────────────────────────────────
+
+# Allow whitespace/case variations (handles "unusual syntax" per FM #18).
+_IGNORE_RE = re.compile(r"impactguard\s*:\s*ignore", re.IGNORECASE)
+
+
+def _match_ignore_tag(line: str) -> bool:
+    """Return *True* if *line* contains an ``impactguard: ignore`` marker."""
+    return bool(_IGNORE_RE.search(line))
 
 
 # ── Helper functions (previously duplicated 12+ times each) ──────────────────
@@ -32,9 +39,9 @@ def child_of_type(node: Any, *types: str) -> Any | None:
 
 
 def has_ignore_comment_fallback(lines: list[str], lineno: int) -> bool:
-    """Check for ``// impactguard: ignore`` on or before *lineno* (1-based)."""
+    """Check for ``impactguard: ignore`` on or before *lineno* (1-based)."""
     for idx in (lineno - 2, lineno - 1):
-        if 0 <= idx < len(lines) and _IGNORE_TAG in lines[idx]:
+        if 0 <= idx < len(lines) and _match_ignore_tag(lines[idx]):
             return True
     return False
 

@@ -70,12 +70,14 @@ def _extract_type_annotation(type_annotation_node: Any, source: bytes) -> str | 
     return None
 
 
+_IGNORE_RE_TS = re.compile(rb"impactguard\s*:\s*ignore", re.IGNORECASE)
+
+
 def _has_ignore_comment_ts(source_bytes: bytes, lineno_0based: int) -> bool:
     """Return *True* if a ``// impactguard: ignore`` comment appears on or before the node."""
-    tag = b"impactguard: ignore"
     lines = source_bytes.split(b"\n")
     for idx in (lineno_0based - 1, lineno_0based):
-        if 0 <= idx < len(lines) and tag in lines[idx]:
+        if 0 <= idx < len(lines) and _IGNORE_RE_TS.search(lines[idx]):
             return True
     return False
 

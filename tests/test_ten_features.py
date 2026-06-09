@@ -103,6 +103,61 @@ def test_ignored_function_excluded_from_comparison(tmp_path: Path) -> None:
     assert "mod.py:foo" in result["suppressed"]
 
 
+# ── Unusual ignore-comment syntax (FM #18) ──────────────────────────────
+
+
+def test_ignore_comment_no_space_after_colon(tmp_path: Path) -> None:
+    """``impactguard:ignore`` (no space after colon) still matches."""
+    from impactguard.extract_signatures import extract
+
+    src = tmp_path / "mod.py"
+    src.write_text(
+        "# impactguard:ignore\ndef foo(x):\n    pass\n"
+    )
+    sigs = extract([str(src)])
+    foo = next(s for s in sigs if s["name"] == "foo")
+    assert foo["ignored"] is True
+
+
+def test_ignore_comment_case_insensitive(tmp_path: Path) -> None:
+    """``ImpactGuard: Ignore`` (mixed case) still matches."""
+    from impactguard.extract_signatures import extract
+
+    src = tmp_path / "mod.py"
+    src.write_text(
+        "# ImpactGuard: Ignore\ndef foo(x):\n    pass\n"
+    )
+    sigs = extract([str(src)])
+    foo = next(s for s in sigs if s["name"] == "foo")
+    assert foo["ignored"] is True
+
+
+def test_ignore_comment_extra_whitespace(tmp_path: Path) -> None:
+    """``impactguard:   ignore`` (extra whitespace) still matches."""
+    from impactguard.extract_signatures import extract
+
+    src = tmp_path / "mod.py"
+    src.write_text(
+        "# impactguard:   ignore\ndef foo(x):\n    pass\n"
+    )
+    sigs = extract([str(src)])
+    foo = next(s for s in sigs if s["name"] == "foo")
+    assert foo["ignored"] is True
+
+
+def test_ignore_comment_tab_separated(tmp_path: Path) -> None:
+    """``impactguard:\tignore`` (tab before ignore) still matches."""
+    from impactguard.extract_signatures import extract
+
+    src = tmp_path / "mod.py"
+    src.write_text(
+        "# impactguard:\tignore\ndef foo(x):\n    pass\n"
+    )
+    sigs = extract([str(src)])
+    foo = next(s for s in sigs if s["name"] == "foo")
+    assert foo["ignored"] is True
+
+
 def test_config_suppress_list_excludes_function(tmp_path: Path) -> None:
     from impactguard.compare_signatures import compare
     from impactguard.config import reload_config
@@ -127,6 +182,37 @@ def test_config_suppress_list_excludes_function(tmp_path: Path) -> None:
 
     assert "REMOVED: mod.py:bar" not in result["breaking"]
     assert "mod.py:bar" in result["suppressed"]
+
+
+def test_has_ignore_comment_fallback_variants() -> None:
+    """Direct test of has_ignore_comment_fallback with unusual syntax."""
+    from impactguard.languages.lib.shared import has_ignore_comment_fallback
+
+    lines = [
+        "def unrelated(): pass",     # 0
+        "# impactguard:ignore",      # 1 — no space after colon
+        "def foo(x): pass",          # 2
+        "",                          # 3
+        "# ImpactGuard: Ignore",     # 4 — mixed case
+        "def bar(y): pass",          # 5
+        "",                          # 6
+        "# impactguard:   ignore",   # 7 — extra whitespace
+        "def baz(z): pass",          # 8
+        "",                          # 9
+        "#  impactguard:\tignore",   # 10 — leading whitespace + tab
+        "def qux(w): pass",          # 11
+    ]
+
+    # no-space-after-colon: tag on line 1, def on line 2
+    assert has_ignore_comment_fallback(lines, 2) is True
+    # mixed case: tag on line 4, def on line 5
+    assert has_ignore_comment_fallback(lines, 5) is True
+    # extra whitespace: tag on line 7, def on line 8
+    assert has_ignore_comment_fallback(lines, 8) is True
+    # tab separator: tag on line 10, def on line 11
+    assert has_ignore_comment_fallback(lines, 11) is True
+    # no false positive on an unrelated line
+    assert has_ignore_comment_fallback(lines, 1) is False
 
 
 # ═════════════════════════════════════════════════════════════════════════════
