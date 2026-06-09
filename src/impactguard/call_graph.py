@@ -11,6 +11,7 @@ import ast
 import hashlib
 import json
 import sqlite3
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -178,11 +179,15 @@ class CallGraphDB:
         cache_dir.mkdir(parents=True, exist_ok=True)
         self.db_path = cache_dir / DB_FILENAME
 
-        self.con = sqlite3.connect(str(self.db_path))
+        self.con = sqlite3.connect(
+            str(self.db_path), check_same_thread=False, timeout=5,
+        )
         self.con.row_factory = sqlite3.Row
         self.con.execute("PRAGMA journal_mode=WAL")
         self.con.execute("PRAGMA synchronous=NORMAL")
+        self.con.execute("PRAGMA busy_timeout=5000")
         self.con.executescript(_SCHEMA_SQL)
+        self._write_lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # Build / Sync
@@ -206,29 +211,30 @@ class CallGraphDB:
         Returns:
             Number of files actually indexed.
         """
-        count = 0
-        for f in files:
-            try:
-                self._index_file(f)
-                count += 1
-            except Exception:
-                _log.warning("Failed to index '%s'", f, exc_info=True)
-        self.con.commit()
-        for f in files:
-            try:
-                self._index_file_imports(f)
-            except Exception:
-                _log.warning("Failed to index imports for '%s'", f, exc_info=True)
-        self.con.commit()
-        for f in files:
-            try:
-                rel_path = self._relativize(f)
-                self._index_calls(f, rel_path)
-            except Exception:
-                _log.warning("Failed to index calls for '%s'", f, exc_info=True)
-        self.con.commit()
-        self._record_build()
-        return count
+        with self._write_lock:
+            count = 0
+            for f in files:
+                try:
+                    self._index_file(f)
+                    count += 1
+                except Exception:
+                    _log.warning("Failed to index '%s'", f, exc_info=True)
+            self.con.commit()
+            for f in files:
+                try:
+                    self._index_file_imports(f)
+                except Exception:
+                    _log.warning("Failed to index imports for '%s'", f, exc_info=True)
+            self.con.commit()
+            for f in files:
+                try:
+                    rel_path = self._relativize(f)
+                    self._index_calls(f, rel_path)
+                except Exception:
+                    _log.warning("Failed to index calls for '%s'", f, exc_info=True)
+            self.con.commit()
+            self._record_build()
+            return count
 
     def _record_build(self) -> None:
         self.con.execute(
@@ -269,31 +275,32 @@ class CallGraphDB:
         Returns:
             Number of files that were re-indexed.
         """
-        changed = [f for f in files if self._is_stale(f)]
-        if not changed:
-            return 0
+        with self._write_lock:
+            changed = [f for f in files if self._is_stale(f)]
+            if not changed:
+                return 0
 
-        for f in changed:
-            try:
-                self._index_file(f)
-            except Exception:
-                _log.warning("Failed to sync '%s'", f, exc_info=True)
-        self.con.commit()
-        for f in changed:
-            try:
-                self._index_file_imports(f)
-            except Exception:
-                _log.warning("Failed to sync imports for '%s'", f, exc_info=True)
-        self.con.commit()
-        for f in changed:
-            try:
-                rel_path = self._relativize(f)
-                self._index_calls(f, rel_path)
-            except Exception:
-                _log.warning("Failed to sync calls for '%s'", f, exc_info=True)
-        self.con.commit()
-        self._record_build()
-        return len(changed)
+            for f in changed:
+                try:
+                    self._index_file(f)
+                except Exception:
+                    _log.warning("Failed to sync '%s'", f, exc_info=True)
+            self.con.commit()
+            for f in changed:
+                try:
+                    self._index_file_imports(f)
+                except Exception:
+                    _log.warning("Failed to sync imports for '%s'", f, exc_info=True)
+            self.con.commit()
+            for f in changed:
+                try:
+                    rel_path = self._relativize(f)
+                    self._index_calls(f, rel_path)
+                except Exception:
+                    _log.warning("Failed to sync calls for '%s'", f, exc_info=True)
+            self.con.commit()
+            self._record_build()
+            return len(changed)
 
     def remove_stale(self, active_files: set[str]) -> int:
         """Remove DB entries for files no longer on disk.
@@ -305,19 +312,20 @@ class CallGraphDB:
         Returns:
             Number of stale files cleaned up.
         """
-        rows = self.con.execute("SELECT path FROM files").fetchall()
-        db_files = {row["path"] for row in rows}
-        active = {self._relativize(p) for p in active_files}
-        stale = db_files - active
-        if not stale:
-            return 0
-        for f in stale:
-            self._remove_file(f)
-            self.con.execute(
-                "DELETE FROM file_imports WHERE imported = ?", (f,)
-            )
-        self.con.commit()
-        return len(stale)
+        with self._write_lock:
+            rows = self.con.execute("SELECT path FROM files").fetchall()
+            db_files = {row["path"] for row in rows}
+            active = {self._relativize(p) for p in active_files}
+            stale = db_files - active
+            if not stale:
+                return 0
+            for f in stale:
+                self._remove_file(f)
+                self.con.execute(
+                    "DELETE FROM file_imports WHERE imported = ?", (f,)
+                )
+            self.con.commit()
+            return len(stale)
 
     def filter_stale(self, files: list[str]) -> list[str]:
         """Return only files whose content has changed since last build/sync.
@@ -731,13 +739,15 @@ class CallGraphDB:
     # ------------------------------------------------------------------
 
     def close(self) -> None:
-        self.con.close()
+        with self._write_lock:
+            self.con.close()
 
     def clear(self) -> None:
-        self.con.executescript(
-            "DELETE FROM nodes; DELETE FROM edges; DELETE FROM file_imports; DELETE FROM files;"
-        )
-        self.con.commit()
+        with self._write_lock:
+            self.con.executescript(
+                "DELETE FROM nodes; DELETE FROM edges; DELETE FROM file_imports; DELETE FROM files;"
+            )
+            self.con.commit()
 
     @property
     def node_count(self) -> int:

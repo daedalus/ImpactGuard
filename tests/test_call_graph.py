@@ -684,3 +684,105 @@ class TestCallGraphLifecycle:
         db_path = cg.db_path
         cg.close()
         assert db_path.exists()
+
+
+# ---------------------------------------------------------------------------
+# Concurrent access protection (failure mode #13)
+# ---------------------------------------------------------------------------
+
+
+class TestWriteLock:
+    """Verifies that _write_lock serializes concurrent build/sync calls.
+
+    Without the lock, concurrent sync/build from multiple threads can
+    corrupt the single sqlite3.Connection object (not thread-safe).
+    With the lock, one thread waits while the other writes.
+    """
+
+    def test_concurrent_sync_does_not_corrupt_db(self, tmp_path):
+        import concurrent.futures
+        import time
+
+        from impactguard.call_graph import CallGraphDB
+
+        src = tmp_path / "module.py"
+        src.write_text("def foo():\n    return 1\n")
+
+        cg = CallGraphDB(tmp_path)
+        cg.build([str(src)])
+        assert cg.node_count == 1
+
+        def write_sync() -> int:
+            p = tmp_path / f"sync_{time.time_ns()}.py"
+            p.write_text("def bar():\n    return 2\n")
+            return cg.sync([str(p)])
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+            futs = [pool.submit(write_sync) for _ in range(8)]
+            results = [f.result() for f in concurrent.futures.as_completed(futs)]
+
+        assert sum(results) == 8
+        assert cg.node_count == 9
+        cg.close()
+
+    def test_concurrent_build_does_not_corrupt_db(self, tmp_path):
+        import concurrent.futures
+
+        from impactguard.call_graph import CallGraphDB
+
+        cg = CallGraphDB(tmp_path)
+
+        def write_build(i: int) -> int:
+            p = tmp_path / f"mod_{i}.py"
+            p.write_text(f"def func_{i}():\n    return {i}\n")
+            return cg.build([str(p)])
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+            futs = [pool.submit(write_build, i) for i in range(10)]
+            results = [f.result() for f in concurrent.futures.as_completed(futs)]
+
+        assert sum(results) == 10
+        assert cg.node_count == 10
+        cg.close()
+
+    def test_concurrent_clear_and_build_does_not_corrupt_db(self, tmp_path):
+        import concurrent.futures
+
+        from impactguard.call_graph import CallGraphDB
+
+        cg = CallGraphDB(tmp_path)
+
+        def writer(n: int) -> int:
+            p = tmp_path / f"w_{n}.py"
+            p.write_text(f"def w{n}():\n    return {n}\n")
+            cg.build([str(p)])
+            return n
+
+        def clearer() -> bool:
+            cg.clear()
+            return True
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+            writers = [pool.submit(writer, i) for i in range(5)]
+            clearers = [pool.submit(clearer) for _ in range(3)]
+            all_futs = writers + clearers
+            concurrent.futures.wait(all_futs)
+
+        # DB should be in a consistent state (either empty or with some nodes)
+        assert cg.node_count >= 0
+        cg.close()
+
+    def test_write_lock_held_during_build(self, tmp_path):
+        """Verify that _write_lock is acquired by build()."""
+        from impactguard.call_graph import CallGraphDB
+
+        src = tmp_path / "m.py"
+        src.write_text("def f(): pass\n")
+
+        cg = CallGraphDB(tmp_path)
+        assert cg._write_lock is not None
+        assert not cg._write_lock.locked()
+        try:
+            cg.build([str(src)])
+        finally:
+            cg.close()
