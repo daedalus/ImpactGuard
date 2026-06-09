@@ -33,7 +33,7 @@ def enforce(
     from .risk_gate import run
 
     if block_unknown is None:
-        block_unknown = bool(cfg_get("risk", "block_unknown", False))
+        block_unknown = bool(cfg_get("risk", "block_unknown", True))
 
     report: list[dict[str, Any]] = run(
         diff_path, runtime_path, output_path, lambda_=lambda_
@@ -117,7 +117,7 @@ def enforce_report(report_path: str, block_unknown: bool | None = None) -> int:
     from .config import get as cfg_get
 
     if block_unknown is None:
-        block_unknown = bool(cfg_get("risk", "block_unknown", False))
+        block_unknown = bool(cfg_get("risk", "block_unknown", True))
 
     try:
         with open(report_path) as f:

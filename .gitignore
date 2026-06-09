@@ -55,6 +55,9 @@ htmlcov/
 impact_report.html
 out.json
 
+# Failure mode analysis (generated, project-specific)
+FAILURE_MODES.md
+
 # RTK
 .rtk/
 !.rtk/filters.toml

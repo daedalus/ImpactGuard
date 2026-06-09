@@ -726,9 +726,13 @@ def _finalize_analysis_status(
     max_skipped_files: int,
     max_call_extraction_failures: int,
     max_runtime_data_issues: int,
-    block_unknown: bool,
+    block_unknown: bool | None = None,
     require_runtime: bool,
 ) -> None:
+    if block_unknown is None:
+        from .config import get as cfg_get
+
+        block_unknown = bool(cfg_get("risk", "block_unknown", True))
     """Populate analysis and gate summaries in the pipeline result."""
     partial_analysis = any(
         reliability_stats.get(key, 0) > 0 for key in _PARTIAL_ANALYSIS_COUNTERS
@@ -891,7 +895,7 @@ def run_pipeline(
     max_skipped_files: int = 0,
     max_call_extraction_failures: int = 0,
     max_runtime_data_issues: int = 0,
-    block_unknown: bool = False,
+    block_unknown: bool | None = None,
     require_runtime: bool = False,
     use_call_graph: bool | None = None,
 ) -> dict[str, Any]:
@@ -1175,7 +1179,7 @@ def quick_check(
     max_skipped_files: int = 0,
     max_call_extraction_failures: int = 0,
     max_runtime_data_issues: int = 0,
-    block_unknown: bool = False,
+    block_unknown: bool | None = None,
     require_runtime: bool = False,
     use_call_graph: bool | None = None,
 ) -> dict[str, Any]:
@@ -1416,7 +1420,7 @@ def run_pipeline_git(
     max_skipped_files: int = 0,
     max_call_extraction_failures: int = 0,
     max_runtime_data_issues: int = 0,
-    block_unknown: bool = False,
+    block_unknown: bool | None = None,
     require_runtime: bool = False,
     use_call_graph: bool | None = None,
 ) -> dict[str, Any]:
@@ -1605,7 +1609,7 @@ def run_pipeline_diff_content(
     max_skipped_files: int = 0,
     max_call_extraction_failures: int = 0,
     max_runtime_data_issues: int = 0,
-    block_unknown: bool = False,
+    block_unknown: bool | None = None,
     require_runtime: bool = False,
     use_call_graph: bool | None = None,
 ) -> dict[str, Any]:
@@ -1697,7 +1701,7 @@ def run_pipeline_diff(
     max_skipped_files: int = 0,
     max_call_extraction_failures: int = 0,
     max_runtime_data_issues: int = 0,
-    block_unknown: bool = False,
+    block_unknown: bool | None = None,
     require_runtime: bool = False,
     use_call_graph: bool | None = None,
 ) -> dict[str, Any]:
@@ -1763,7 +1767,7 @@ def run_pipeline_commit(
     max_skipped_files: int = 0,
     max_call_extraction_failures: int = 0,
     max_runtime_data_issues: int = 0,
-    block_unknown: bool = False,
+    block_unknown: bool | None = None,
     require_runtime: bool = False,
     use_call_graph: bool | None = None,
 ) -> dict[str, Any]:
