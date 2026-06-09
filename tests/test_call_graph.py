@@ -646,8 +646,34 @@ class TestCallGraphLifecycle:
             cg.build([str(src)])
             stats = cg.stats()
             assert stats["nodes"] == 2
+            assert stats["edges"] == 0
             assert stats["files"] == 1
+            assert stats["dangling_edge_targets"] == 0
             assert "db_path" in stats
+        finally:
+            cg.close()
+
+    def test_stats_dangling_edges_detected(self, tmp_path):
+        from impactguard.call_graph import CallGraphDB
+
+        lib = tmp_path / "lib.py"
+        lib.write_text("def helper(): pass\n")
+        main = tmp_path / "main.py"
+        main.write_text("from lib import helper\ndef run(): return helper()\n")
+
+        cg = CallGraphDB(tmp_path)
+        try:
+            cg.build([str(lib), str(main)])
+            assert cg.stats()["dangling_edge_targets"] == 0
+
+            lib.unlink()
+            cg.remove_stale({str(main.resolve())})
+
+            dangling = cg.stats()["dangling_edge_targets"]
+            assert dangling == 1, (
+                f"Expected 1 dangling edge (main.py:run → lib.py:helper, lib.py removed), "
+                f"got {dangling}"
+            )
         finally:
             cg.close()
 

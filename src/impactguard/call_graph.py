@@ -750,9 +750,23 @@ class CallGraphDB:
         return row["c"] if row else 0
 
     def stats(self) -> dict[str, Any]:
+        dangling = self.con.execute(
+            """SELECT COUNT(*) AS c FROM edges e
+               LEFT JOIN nodes n ON e.target = n.id
+               WHERE n.id IS NULL"""
+        ).fetchone()["c"]
+
+        if dangling:
+            _log.warning(
+                "Call graph has %d dangling edge target(s) — edges whose target FQN "
+                "does not match any node in the DB. BFS queries skip them silently.",
+                dangling,
+            )
+
         return {
             "nodes": self.node_count,
             "edges": self.edge_count,
+            "dangling_edge_targets": dangling,
             "files": self.con.execute(
                 "SELECT COUNT(*) AS c FROM files"
             ).fetchone()["c"],
