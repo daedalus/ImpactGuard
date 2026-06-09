@@ -1553,7 +1553,7 @@ def _parse_unified_diff(diff_text: str) -> dict[str, tuple[str, str]]:
 
     Only files whose extension is registered in the language registry are
     included in the result.  Unsupported files (Makefile, HTML, etc.) are
-    silently skipped.
+    silently skipped.  Binary files are logged as a warning.
     """
     from .languages.lib.registry import get_extractor as _get_extractor
 
@@ -1596,6 +1596,12 @@ def _parse_unified_diff(diff_text: str) -> dict[str, tuple[str, str]]:
             # context line – present in both versions
             old_lines.append(line[1:])
             new_lines.append(line[1:])
+        elif line.startswith("Binary files "):
+            name = new_name or old_name or ""
+            _log.warning(
+                "Binary file '%s' in diff — content is not parseable and will be skipped",
+                name,
+            )
 
     _save_current()
     return files

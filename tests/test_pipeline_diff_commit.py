@@ -256,6 +256,57 @@ class TestParseUnifiedDiff:
         result = _parse_unified_diff(diff)
         assert result == {}
 
+    def test_binary_file_logs_warning(self, caplog):
+        import logging
+
+        from impactguard.pipeline import _parse_unified_diff
+
+        caplog.set_level(logging.WARNING)
+
+        diff = textwrap.dedent("""\
+            --- a/image.png
+            +++ b/image.png
+            Binary files a/image.png and b/image.png differ
+        """)
+        result = _parse_unified_diff(diff)
+        assert "image.png" not in result
+        assert any(
+            "Binary file 'image.png'" in msg for msg in caplog.messages
+        ), "Expected warning about binary file"
+
+    def test_binary_file_among_text_files(self, caplog):
+        import logging
+
+        from impactguard.pipeline import _parse_unified_diff
+
+        caplog.set_level(logging.WARNING)
+
+        py_diff = _make_unified_diff("def foo(): pass\n", "def foo(x): pass\n", "mod.py")
+        bin_diff = textwrap.dedent("""\
+            --- a/logo.png
+            +++ b/logo.png
+            Binary files a/logo.png and b/logo.png differ
+        """)
+        result = _parse_unified_diff(py_diff + bin_diff)
+        assert "mod.py" in result
+        assert "logo.png" not in result
+        assert any(
+            "Binary file 'logo.png'" in msg for msg in caplog.messages
+        )
+
+    def test_binary_file_no_warning_for_non_binary(self, caplog):
+        import logging
+
+        from impactguard.pipeline import _parse_unified_diff
+
+        caplog.set_level(logging.WARNING)
+
+        diff = _make_unified_diff("x = 1\n", "x = 2\n", "example.py")
+        _ = _parse_unified_diff(diff)
+        assert not any(
+            "Binary file" in msg for msg in caplog.messages
+        )
+
 
 # ---------------------------------------------------------------------------
 # run_pipeline_diff

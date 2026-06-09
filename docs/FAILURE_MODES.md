@@ -80,7 +80,7 @@ Two different files producing the same SHA-256 hash requires ~2⁸⁷ attempts (
 `check_staged()` (pre-commit hook) did not set `SKIP_SIGNATURE_HOOK` before running the pipeline, risking infinite recursion if the pipeline or any subprocess triggered another commit. `post_commit_hook()` had a `finally` block that unconditionally `pop()`'d the env var — destroying the pre-existing value if the user had set it before running `git commit`. Mitigation: both hooks now save the original value, set `SKIP_SIGNATURE_HOOK=1` during execution, and restore the original value in `finally`. The pre-commit hook now has the same recursion guard as the post-commit hook.
 **16. TOCTOU between file stat and read in `_is_stale`** — Score 3 (MITIGATED)
 `_is_stale()` stats the file, then callers (`build()`/`sync()`) later call `_index_file()` which reads the file. If the file is deleted or truncated between the stat and the read, the pipeline crashed with `FileNotFoundError` / `OSError`. `_index_file()` had a `path.exists()` gate that could pass while the subsequent `path.read_bytes()` still failed. Mitigation: `_index_file()` now reads content first (wrapped in `try/except OSError`) and derives `size` from the read bytes instead of `stat()`. `mtime` is stat'd after the read (with `OSError` fallback to 0). `_index_file_imports()` also wraps `read_bytes()` in `try/except OSError`. The stale removal on read failure uses `_relativize()` for correct DB lookups.
-**17. `git diff` parsing misses binary file changes** — Score 3
+**17. `git diff` parsing misses binary file changes** — Score 3 (MITIGATED)
 **18. `impactguard ignore` comment parsing fails on unusual syntax** — Score 3
 **19. KPI dashboard aggregation wrong if timestamps cross DST boundary** — Score 2
 
