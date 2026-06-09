@@ -1,147 +1,131 @@
-## Function Signature Tracking
+## Project Overview
 
-This repository uses automatic signature tracking across all tracked `.py` files.
-
-### Purpose
-
-- Provide a lightweight view of the project's callable surface
-- Make API changes visible in diffs
-- Enable future tooling (API drift detection, compatibility checks)
+ImpactGuard is a multi-language API impact analyzer (Python, TypeScript, JS, Java, Kotlin, Go, Rust, Swift, C, C++, C#, Ruby, Haskell, Zig). Extracts signatures via AST/tree-sitter, detects breaking changes, analyzes call-site impact, and assigns risk scores (S×E×C×λ model).
 
 ---
 
-## Implementation
+## Key Files
 
-Signature extraction is performed via:
+| File | Purpose |
+|------|---------|
+| `src/impactguard/extract_signatures.py` | Python signature extraction (stdlib `ast`) |
+| `src/impactguard/languages/*.py` | 14 language extractors (tree-sitter + regex fallback) |
+| `src/impactguard/languages/lib/shared.py` | Shared helpers: `has_ignore_comment_fallback`, `has_ignore_comment`, `node_text`, `child_of_type` |
+| `src/impactguard/compare_signatures.py` | Semantic diff: breaking/non-breaking/suppressed classification |
+| `src/impactguard/impact_analysis.py` | Call-site impact + transitive BFS tracking |
+| `src/impactguard/risk_model.py` | S×E×C×λ risk scoring |
+| `src/impactguard/kpi.py` | 12-metric KPI dashboard (mean_severity, risk_distribution, etc.) |
+| `src/impactguard/feedback.py` | Patch-outcome feedback loop + weight calibration |
+| `src/impactguard/pipeline.py` | Pipeline orchestrator (`run_pipeline`, `_parse_unified_diff`) |
+| `src/impactguard/call_graph.py` | SQLite-backed call graph with staleness detection |
+| `src/impactguard/generate_report.py` | Static HTML + markdown report generation |
+| `src/impactguard/__main__.py` | CLI entry point (18+ subcommands) |
+| `extract_signatures.py` | Standalone script (toplevel, not under src/) |
+
+---
+
+## CLI Subcommands
 
 ```
-extract_signatures.py
+{extract,compare,analyze,risk,report,report-sarif,enforce,suggest,patch,
+ extract-calls,trace,check,check-diff,check-commit,check-commits,
+ install-hooks,generate-changelog,baseline,semver,report-markdown,
+ feedback,history,kpi,validate-config,behavior}
 ```
 
-This uses Python's `ast` module rather than regex to correctly handle:
-
-- `async def`
-- decorators
-- multiline signatures
-- type annotations and return types
-- `*args`, `**kwargs`, keyword-only arguments
+Run `impactguard --help` for details.
 
 ---
 
-## Git Hook: post-commit
+## Testing
 
-A `post-commit` hook runs signature extraction after each commit.
-
-### Hook behavior
-
-1. Collect Python files changed in the latest commit (incremental — avoids
-   re-scanning the entire repo on every commit, which is the #1 reason
-   developers disable the hook on large codebases):
-   ```
-   git diff-tree --no-commit-id -r --name-only HEAD | grep '\.py$'
-   ```
-
-2. Extract signatures (only extract files that are stale in the call graph DB
-   when available, falling back to full extraction):
-   ```
-   impactguard extract --incremental <files> > /tmp/impactguard_sigs.json
-   ```
-
-3. Hook runs silently (no auto-commit):
-   - Extraction is for tracking/debugging purposes
-   - No automatic commit of signature files
-
-4. Prevent infinite recursion via:
-   ```
-   SKIP_SIGNATURE_HOOK=1
-   ```
+- **Test framework:** pytest
+- **Coverage target:** ≥ 80%
+- **Command:** `rtk pytest` (uses rtk wrapper)
+- **All tests pass:** 3189+ tests
 
 ---
 
-## Important Tradeoffs
+## Code Quality
 
-### 1. Rebases / Merges
-Hooks run during history rewriting, which can:
-
-- introduce unexpected behavior
-- require manual cleanup
-
-### 2. CI/CD
-Git hooks are not executed in most CI environments.
-
-→ Signature tracking is **not guaranteed** unless explicitly checked.
+- **Linter:** ruff (0 issues target)
+- **Type checker:** mypy (strict mode)
 
 ---
 
-## Alternative (Not Currently Used)
+## Git Hooks
 
-A `pre-commit` hook could:
+Two hooks installed via `impactguard install-hooks .`:
 
-- extract signatures
-- include them in the *same* commit
+1. **Pre-commit** — runs `check-diff --pipe` on staged changes, sets `SKIP_SIGNATURE_HOOK=1` to prevent recursion
+2. **Post-commit** — runs `check-commit HEAD` + signature extraction, saves/restores `SKIP_SIGNATURE_HOOK`
 
-This avoids extra commits but couples working tree mutation with commit creation.
-
----
-
-## Known Limitations
-
-- Nested functions are included
-- Class methods now include class context (`ClassName.method`)
-- Parsing failures silently skip files
-- Requires Python ≥ 3.11 (`ast.unparse`)
+Both hooks save and restore the original env value instead of unconditionally popping.
 
 ---
 
-## Additional Tools
+## Ignore Comments
 
-### Runtime Tracing
+All 15 languages support `impactguard: ignore` comments on or immediately before a function definition. Whitespace and case variations handled automatically (regex: `impactguard\s*:\s*ignore`, case-insensitive).
 
-- `trace_calls.py` — low-overhead runtime call tracer
-- `trace_calls_prod.py` — production sampler with configurable `SAMPLE_RATE`
-- Aggregates call counts across test/prod runs
-
-### Risk Analysis
-
-- `risk_model.py` — computes risk as `S × E × C` (severity × exposure × confidence)
-- `risk_gate.py` — combines diff + runtime data into structured JSON report
-- `enforce_gate.py` — CI gate: blocks on HIGH, warns on UNKNOWN
-
-### Reporting & Fixes
-
-- `generate_report.py` — static HTML report from risk JSON
-- `suggest_fixes.py` — generates fix suggestions with call-site locations
-- `patch_generator.py` — diff-based patch previews using `difflib`
-- `cst_patch.py` — CST-based patches using `libcst` (preserves formatting)
-- `patch_confidence.py` — scores patch confidence per-multiplying target × structural × semantic × complexity
-
-### CI Integration
-
-- `.github/workflows/ci.yml` — GitHub Actions workflow with:
-  - Signature extraction + comparison
-  - Runtime data aggregation
-  - Risk analysis + HTML report generation
-  - Enforcement gate
-  - **Changelog generation** from signature diffs
-
-### Release Script
-
-- `tools/release.sh` — automated release workflow:
-  - Checks working tree is clean; warns if not on `master`/`main`
-  - ```
-    ./release.sh          # bump patch (default)
-    ./release.sh minor
-    ./release.sh major
-    ```
-  - Steps: `bumpversion <part> --tag --verbose` → `git push` + `git push --tags` → `python -m build` → `gh release create <tag> --generate-notes`
+| Comment style | Languages |
+|---------------|-----------|
+| `# impactguard: ignore` | Python, Ruby |
+| `// impactguard: ignore` | TypeScript, JS, Java, Kotlin, Go, Rust, Swift, C, C++, C# |
+| `-- impactguard: ignore` | Haskell |
+| `// impactguard: ignore` | Zig |
 
 ---
 
-## Future Directions
+## Recent Mitigations (FM #9–#19)
 
-Potential extensions:
+All 19 failure modes from the project audit are MITIGATED:
 
-- Detect breaking vs non-breaking API changes
-- Compare signatures across commits
-- Integrate with CI for enforcement
-- **Feedback loop** — learn from patch acceptance/rejection to calibrate confidence
+| # | Issue | Fix |
+|---|-------|-----|
+| 9 | Dangling call-graph edges | `stats()` validates edge targets resolve to node FQNs |
+| 10 | Calibration threshold inertia | Per-category data-need logging, `compute_data_needs()` public function |
+| 11 | Type annotation blind spots | `_NAME_TYPE_HINTS` (60+ mappings), `_infer_possible_type()` |
+| 12 | Python-only fallback gaps | `validate_runtime()` in load path, non-`.py` CST skip |
+| 13 | SQLite WAL contention | `threading.Lock` serializing writes, `busy_timeout=5000` |
+| 14 | mtime false negatives | `_is_stale()` also compares file `size` |
+| 15 | Pre-commit hook recursion | `SKIP_SIGNATURE_HOOK=1` with env save/restore |
+| 16 | TOCTOU file stat/read race | Read content first, derive size from bytes, stat mtime after |
+| 17 | Binary files in git diff | `Binary files ... differ` detected, warning logged, excluded |
+| 18 | Ignore comment unusual syntax | Regex replaces exact substring match |
+| 19 | DST in KPI timestamps | All timestamps use `datetime.now(UTC)`, `computed_at` in dashboard |
+
+---
+
+## Known Architecture
+
+### Diff Parsing (`_parse_unified_diff`)
+- Tracks `---`/`+++` lines for file names
+- Only includes files with registered extractor (`_get_extractor`) + safe path (`is_safe_path`)
+- Binary files logged as warning, excluded from result
+- Returns `dict[str, tuple[str, str]]` — old/new content per file
+
+### Call Graph (`CallGraphDB`)
+- SQLite-backed with WAL mode
+- Write lock (`_write_lock`, `threading.Lock`) serializing `build()`, `sync()`, `remove_stale()`, `clear()`, `close()`
+- Reads (BFS, stats) are lock-free
+- Staleness: compares `modified_at` + `size` from `stat()`
+- TOCTOU resilience: read-first, stat-after pattern
+
+### Language Extractors
+- All implement `LanguageExtractor` protocol (`src/impactguard/languages/base.py`)
+- Registered via `register()` in `registry.py`
+- Third-party extractors via `impactguard.languages` entry point group
+- Extractors produce signature dicts with `ignored`, `exported`, `deprecated` flags
+
+---
+
+## Release Process
+
+```bash
+./tools/release.sh          # bump patch (default)
+./tools/release.sh minor
+./tools/release.sh major
+```
+
+Steps: `bumpversion` → `git push` + `git push --tags` → `python -m build` → `gh release create <tag> --generate-notes`
