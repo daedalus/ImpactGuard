@@ -100,6 +100,10 @@ _DEFAULTS: dict[str, Any] = {
             "transitive_depth": 3,
             # Default BFS depth for affected test file detection.
             "affected_test_depth": 5,
+            # Maximum age (seconds) of the call graph DB before a full rebuild
+            # is forced instead of an incremental sync.  Set to 0 to always
+            # force a full rebuild.  Default: 1 hour.
+            "max_staleness_seconds": 3600,
         },
         "languages": {
             # Canonical language names to enable.  "python" is always available.

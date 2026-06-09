@@ -343,6 +343,47 @@ class TestCallGraphRemoveStale:
             cg.close()
 
 
+class TestCallGraphStaleness:
+    def test_is_stale_on_fresh_db(self, tmp_path):
+        from impactguard.call_graph import CallGraphDB
+
+        cg = CallGraphDB(tmp_path)
+        try:
+            assert cg.is_stale(0) is True
+        finally:
+            cg.close()
+
+    def test_is_stale_after_build(self, tmp_path):
+        from impactguard.call_graph import CallGraphDB
+
+        src = tmp_path / "m.py"
+        src.write_text("def f(): pass\n")
+        cg = CallGraphDB(tmp_path)
+        try:
+            cg.build([str(src)])
+            assert cg.is_stale(3600) is False
+            assert cg.is_stale(0) is True
+        finally:
+            cg.close()
+
+    def test_is_stale_after_sync(self, tmp_path):
+        import time
+
+        from impactguard.call_graph import CallGraphDB
+
+        src = tmp_path / "m.py"
+        src.write_text("def f(): pass\n")
+        cg = CallGraphDB(tmp_path)
+        try:
+            cg.build([str(src)])
+            time.sleep(1)
+            src.write_text("def f():\n    pass\n")
+            cg.sync([str(src)])
+            assert cg.is_stale(3600) is False
+        finally:
+            cg.close()
+
+
 # ---------------------------------------------------------------------------
 # Query methods
 # ---------------------------------------------------------------------------

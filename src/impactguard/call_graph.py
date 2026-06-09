@@ -101,6 +101,11 @@ CREATE TABLE IF NOT EXISTS files (
     modified_at INTEGER NOT NULL,
     indexed_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS metadata (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 # ---------------------------------------------------------------------------
@@ -222,7 +227,34 @@ class CallGraphDB:
             except Exception:
                 _log.warning("Failed to index calls for '%s'", f, exc_info=True)
         self.con.commit()
+        self._record_build()
         return count
+
+    def _record_build(self) -> None:
+        self.con.execute(
+            "INSERT OR REPLACE INTO metadata (key, value) VALUES ('built_at', ?)",
+            (str(int(time.time())),),
+        )
+        self.con.commit()
+
+    def is_stale(self, max_seconds: int = 3600) -> bool:
+        """Return *True* when the DB was last built more than *max_seconds* ago.
+
+        A stale DB may contain edges that reference outdated signatures,
+        particularly after switching branches or after a long gap between
+        ``--use-call-graph`` runs.  Callers should force a full rebuild
+        when this returns *True*.
+        """
+        row = self.con.execute(
+            "SELECT value FROM metadata WHERE key = 'built_at'"
+        ).fetchone()
+        if row is None:
+            return True
+        try:
+            built_at = int(row["value"])
+        except (ValueError, TypeError):
+            return True
+        return (time.time() - built_at) > max_seconds
 
     def sync(self, files: list[str]) -> int:
         """Incremental sync: only re-index files whose content changed.
@@ -260,6 +292,7 @@ class CallGraphDB:
             except Exception:
                 _log.warning("Failed to sync calls for '%s'", f, exc_info=True)
         self.con.commit()
+        self._record_build()
         return len(changed)
 
     def remove_stale(self, active_files: set[str]) -> int:

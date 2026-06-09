@@ -998,7 +998,15 @@ def run_pipeline(
         cg_db = CallGraphDB(project_root)
         if cg_config.get("auto_sync", True):
             all_files = list(set((new_files or []) + (old_files or [])))
-            cg_db.sync(all_files)
+            max_stale = cg_config.get("max_staleness_seconds", 3600)
+            if cg_db.is_stale(max_stale):
+                _log.warning(
+                    "Call graph is stale (last built >%ds ago); forcing full rebuild",
+                    max_stale,
+                )
+                cg_db.build(all_files)
+            else:
+                cg_db.sync(all_files)
         calls_path = str(Path(output_dir) / "calls.json")
         cg_export = cg_db.get_call_sites()
         with open(calls_path, "w") as f:
