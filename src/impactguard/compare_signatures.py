@@ -93,6 +93,83 @@ def _is_ignored(fqname: str, sig: dict[str, Any], suppress_list: list[str]) -> b
     return fqname in suppress_list or name in suppress_list
 
 
+# ── Name-based type inference heuristic ───────────────────────────────────────
+# When a parameter has a type annotation on only one side of the comparison,
+# infer a possible type from its name.  This catches e.g. ``user_id``
+# (likely ``int``) changing to ``str`` in a partially-typed codebase.
+
+_NAME_TYPE_HINTS: dict[str, str] = {
+    "id": "int",
+    "pk": "int",
+    "count": "int",
+    "limit": "int",
+    "offset": "int",
+    "index": "int",
+    "size": "int",
+    "year": "int",
+    "age": "int",
+    "port": "int",
+    "status_code": "int",
+    "max_size": "int",
+    "min_size": "int",
+    "page": "int",
+    "retries": "int",
+    "timeout": "int",
+    "ttl": "int",
+    "name": "str",
+    "title": "str",
+    "label": "str",
+    "email": "str",
+    "description": "str",
+    "text": "str",
+    "path": "str",
+    "url": "str",
+    "slug": "str",
+    "prefix": "str",
+    "suffix": "str",
+    "address": "str",
+    "message": "str",
+    "price": "float",
+    "amount": "float",
+    "rate": "float",
+    "tax": "float",
+    "score": "float",
+    "probability": "float",
+    "latency": "float",
+    "threshold": "float",
+    "enabled": "bool",
+    "active": "bool",
+    "debug": "bool",
+    "verbose": "bool",
+    "flag": "bool",
+    "dry_run": "bool",
+    "items": "list",
+    "results": "list",
+    "collection": "list",
+    "entries": "list",
+    "config": "dict",
+    "options": "dict",
+    "settings": "dict",
+    "mapping": "dict",
+    "headers": "dict",
+}
+
+
+def _infer_possible_type(name: str) -> str | None:
+    """Return a likely type for *name* based on naming conventions.
+
+    Checks exact name matches, ``is_`` / ``has_`` prefix (→ ``bool``),
+    and ``_id`` suffix (→ ``int``).
+    """
+    if name in _NAME_TYPE_HINTS:
+        return _NAME_TYPE_HINTS[name]
+    if name.startswith(("is_", "has_", "should_")):
+        return "bool"
+    if name.endswith("_id") or name.endswith("_ids"):
+        return "int"
+    return None
+
+
 # ── Type-compatibility helpers ────────────────────────────────────────────────
 
 
@@ -154,15 +231,19 @@ def _type_change_kind(
     if old_type == new_type:
         return None
 
-    # ── Attempt Z3-backed proof (requires impactguard[formal]) ──────────
-    try:
-        from .constraint_check import classify_type_change
+    # ── Z3-backed proof (Python types only) ─────────────────────────────
+    # Z3's type model uses Python-specific names (str, int, None).
+    # When a language-specific union_parser is provided, the type names
+    # are not Python types and Z3 cannot reason about them, so skip it.
+    if union_parser is None:
+        try:
+            from .constraint_check import classify_type_change
 
-        z3_result = classify_type_change(old_type, new_type)
-        if z3_result is not None and z3_result != "unknown":
-            return z3_result
-    except ImportError:
-        pass
+            z3_result = classify_type_change(old_type, new_type)
+            if z3_result is not None and z3_result != "unknown":
+                return z3_result
+        except ImportError:
+            pass
 
     # ── Heuristic fallback (set-based union parsing) ────────────────────
     parse = union_parser if union_parser is not None else _parse_union_members
@@ -347,10 +428,30 @@ def _compare_argument_types(
     breaking: list[str],
     nonbreaking: list[str],
 ) -> None:
-    """Compare positional and kw-only argument type annotations."""
+    """Compare positional and kw-only argument type annotations.
+
+    When a type annotation is present on only one side of the comparison,
+    a name-based heuristic (:func:`_infer_possible_type`) is used to
+    fill in the missing side so that ``None → "int"`` or ``"str" → None``
+    changes in partially-typed codebases are flagged.
+    """
+
+    def _heuristic_type(
+        arg_name: str, actual_type: str | None, side: str
+    ) -> str | None:
+        if actual_type is not None:
+            return actual_type
+        inferred = _infer_possible_type(arg_name)
+        if inferred is not None:
+            _log.debug(
+                "Inferred type '%s' for %s arg '%s' in %s (name-based heuristic)",
+                inferred, side, arg_name, fqname,
+            )
+        return inferred
+
     for old_arg, new_arg in zip(old_sig["positional"], new_sig["positional"]):
-        old_type = old_arg.get("type")
-        new_type = new_arg.get("type")
+        old_type = _heuristic_type(old_arg["name"], old_arg.get("type"), "old")
+        new_type = _heuristic_type(new_arg["name"], new_arg.get("type"), "new")
         if old_type is None or new_type is None or old_type == new_type:
             continue
         kind = _type_change_kind(old_type, new_type, union_parser)
@@ -365,8 +466,8 @@ def _compare_argument_types(
     for arg_name, old_arg in old_kw.items():
         if arg_name not in new_kw:
             continue
-        old_type = old_arg.get("type")
-        new_type = new_kw[arg_name].get("type")
+        old_type = _heuristic_type(arg_name, old_arg.get("type"), "old")
+        new_type = _heuristic_type(arg_name, new_kw[arg_name].get("type"), "new")
         if old_type is None or new_type is None or old_type == new_type:
             continue
         kind = _type_change_kind(old_type, new_type, union_parser)

@@ -666,6 +666,35 @@ class TestTypeChangeKindWithParser:
 
         assert _type_change_kind("number", "string", self._ts_parse) == "changed"
 
+    def test_z3_not_consulted_for_non_python_types(self) -> None:
+        """When a union_parser is passed, Z3 must not be called, because
+        language-specific type names (string, null, number, etc.) are unknown
+        to Z3's type model and would produce wrong results."""
+        from impactguard.compare_signatures import _type_change_kind
+
+        with patch(
+            "impactguard.constraint_check.classify_type_change"
+        ) as mock_z3:
+            r = _type_change_kind(
+                "string | null", "string", self._ts_parse
+            )
+        mock_z3.assert_not_called()
+        assert r == "narrowing"
+
+    def test_z3_not_consulted_when_parser_provided(self) -> None:
+        """Z3 is skipped entirely when union_parser is not None, even for
+        Python-native type names that Z3 could handle."""
+        from impactguard.compare_signatures import _type_change_kind
+
+        with patch(
+            "impactguard.constraint_check.classify_type_change"
+        ) as mock_z3:
+            r = _type_change_kind(
+                "int | None", "int", self._ts_parse
+            )
+        mock_z3.assert_not_called()
+        assert r == "narrowing"
+
 
 # ── Config defaults for languages section ────────────────────────────────────
 

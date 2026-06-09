@@ -33,6 +33,7 @@ from impactguard.cache import (
     is_cache_miss,
     reset_cache_metrics,
 )
+from impactguard.cache import _record_cache_hit, _record_cache_miss
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # BloomFilter
@@ -653,3 +654,82 @@ class TestEdgeCases:
         mode = cur.fetchone()[0].lower()
         assert mode == "wal"
         c.close()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Lock / concurrency
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def test_cache_metrics_lock_no_deadlock():
+    """_cache_metrics_lock is a non-reentrant Lock used by four independent
+    accessors.  Stress it from concurrent threads to verify no deadlock."""
+    import threading
+
+    reset_cache_metrics()
+    results: list[str] = []
+    errors: list[BaseException] = []
+    lock: threading.Lock = threading.Lock()
+
+    def hit_worker():
+        try:
+            for _ in range(200):
+                _record_cache_hit("ns:a")
+        except BaseException as e:
+            with lock:
+                errors.append(e)
+        else:
+            with lock:
+                results.append("hit")
+
+    def miss_worker():
+        try:
+            for _ in range(200):
+                _record_cache_miss("ns:b")
+        except BaseException as e:
+            with lock:
+                errors.append(e)
+        else:
+            with lock:
+                results.append("miss")
+
+    def snapshot_worker():
+        try:
+            for _ in range(100):
+                _ = get_cache_metrics_snapshot()
+        except BaseException as e:
+            with lock:
+                errors.append(e)
+        else:
+            with lock:
+                results.append("snap")
+
+    def reset_worker():
+        try:
+            for _ in range(50):
+                reset_cache_metrics()
+        except BaseException as e:
+            with lock:
+                errors.append(e)
+        else:
+            with lock:
+                results.append("reset")
+
+    workers = [
+        threading.Thread(target=hit_worker, daemon=True),
+        threading.Thread(target=miss_worker, daemon=True),
+        threading.Thread(target=hit_worker, daemon=True),
+        threading.Thread(target=miss_worker, daemon=True),
+        threading.Thread(target=snapshot_worker, daemon=True),
+        threading.Thread(target=reset_worker, daemon=True),
+    ]
+    for w in workers:
+        w.start()
+    for w in workers:
+        w.join(timeout=30)
+    for w in workers:
+        if w.is_alive():
+            pytest.fail("cache metrics lock deadlocked (thread hung for 30s)")
+    if errors:
+        raise errors[0]
+    assert len(results) == 6

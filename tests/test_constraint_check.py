@@ -5,12 +5,14 @@ and the graceful-degradation path (when it is not).
 """
 
 import sys
+import threading
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from impactguard.constraint_check import (
     _z3_available,
+    _reset,
     check_subsumption,
     classify_type_change,
 )
@@ -103,3 +105,58 @@ def test_no_change_for_unrelated():
     _skip_no_z3()
     result = check_subsumption("int", "str")
     assert result == "changed"
+
+
+# ── Regression: reentrant lock deadlock ──────────────────────────────────────
+#
+# The original _predicate() held _LOCK while calling _value_sort(), which also
+# tried to acquire _LOCK.  Since threading.Lock is non-reentrant, every first
+# Z3 type query deadlocked.  This test verifies the fix by calling
+# classify_type_change after forcibly resetting global state so the lock
+# ordering is exercised from a clean slate.
+
+
+def test_no_z3_deadlock_on_first_call():
+    """Assert no reentrant-lock deadlock when _predicate and _value_sort
+    are exercised for the first time after state reset."""
+    _skip_no_z3()
+    _reset(force=True)
+    # Must complete within a generous timeout (not hang forever)
+    result: str | None = None
+    exc: BaseException | None = None
+
+    def target():
+        nonlocal result, exc
+        try:
+            result = classify_type_change("int", "int | str")
+        except BaseException as e:
+            exc = e
+
+    t = threading.Thread(target=target, daemon=True)
+    t.start()
+    t.join(timeout=15)
+    assert not t.is_alive(), "classify_type_change deadlocked (hung for 15s)"
+    if exc:
+        raise exc
+    assert result in ("widening", None)
+
+
+def test_no_z3_deadlock_on_subsequent_call():
+    """Verify subsequent calls also work after reset + first call."""
+    _skip_no_z3()
+    _reset(force=True)
+    classify_type_change("int", "int | str")
+    r2 = classify_type_change("int | str", "int")
+    assert r2 in ("narrowing", None)
+
+
+def test_no_z3_deadlock_large_union():
+    """Stress the predicate builder with a large union under reset.
+
+    A large union triggers many _make_predicate → _predicate → _value_sort
+    transitions, exercising the lock ordering on each member."""
+    _skip_no_z3()
+    _reset(force=True)
+    r = classify_type_change("int | str | bool | bytes | float | complex | None",
+                              "int | str | bool | bytes | float | complex")
+    assert r in ("narrowing", None)

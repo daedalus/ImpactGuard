@@ -236,6 +236,96 @@ def test_compare_type_changed():
         os.unlink(new_p)
 
 
+def test_compare_type_changed_heuristic_unannotated_old():
+    """Name-based heuristic catches type change when old side is unannotated."""
+    from impactguard.compare_signatures import compare
+
+    old = [
+        _sig(
+            "m.py:foo",
+            "foo",
+            positional=[{"name": "user_id", "has_default": False, "type": None}],
+        )
+    ]
+    new = [
+        _sig(
+            "m.py:foo",
+            "foo",
+            positional=[{"name": "user_id", "has_default": False, "type": "str"}],
+        )
+    ]
+    old_p, new_p = _tmp_json(old), _tmp_json(new)
+    try:
+        result = compare(old_p, new_p, include_private=True)
+        assert any("TYPE_CHANGED" in c for c in result["breaking"]), (
+            f"Expected heuristic TYPE_CHANGED for user_id (int inferred) -> str, "
+            f"got breaking={result['breaking']}"
+        )
+    finally:
+        os.unlink(old_p)
+        os.unlink(new_p)
+
+
+def test_compare_type_changed_heuristic_unannotated_new():
+    """Name-based heuristic catches type change when new side is unannotated."""
+    from impactguard.compare_signatures import compare
+
+    old = [
+        _sig(
+            "m.py:foo",
+            "foo",
+            positional=[{"name": "count", "has_default": False, "type": "str"}],
+        )
+    ]
+    new = [
+        _sig(
+            "m.py:foo",
+            "foo",
+            positional=[{"name": "count", "has_default": False, "type": None}],
+        )
+    ]
+    old_p, new_p = _tmp_json(old), _tmp_json(new)
+    try:
+        result = compare(old_p, new_p, include_private=True)
+        assert any("TYPE_CHANGED" in c for c in result["breaking"]), (
+            f"Expected heuristic TYPE_CHANGED for count str -> None (int inferred), "
+            f"got breaking={result['breaking']}"
+        )
+    finally:
+        os.unlink(old_p)
+        os.unlink(new_p)
+
+
+def test_compare_type_changed_heuristic_unknown_name():
+    """Unknown param names do NOT trigger heuristic (old unannotated, side effect)."""
+    from impactguard.compare_signatures import compare
+
+    old = [
+        _sig(
+            "m.py:foo",
+            "foo",
+            positional=[{"name": "unknown_param", "has_default": False, "type": None}],
+        )
+    ]
+    new = [
+        _sig(
+            "m.py:foo",
+            "foo",
+            positional=[{"name": "unknown_param", "has_default": False, "type": "int"}],
+        )
+    ]
+    old_p, new_p = _tmp_json(old), _tmp_json(new)
+    try:
+        result = compare(old_p, new_p, include_private=True)
+        assert not any("TYPE_CHANGED" in c for c in result["breaking"]), (
+            f"Expected no TYPE_CHANGED for unknown_param (no heuristic), "
+            f"got breaking={result['breaking']}"
+        )
+    finally:
+        os.unlink(old_p)
+        os.unlink(new_p)
+
+
 def test_compare_return_type_changed():
     from impactguard.compare_signatures import compare
 

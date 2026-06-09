@@ -96,10 +96,10 @@ def _predicate(name: str, z3: Any) -> Any:
     cached = _PREDICATES.get(name)
     if cached is not None:
         return cached
+    val_sort = _value_sort(z3)
     with _LOCK:
         if name in _PREDICATES:
             return _PREDICATES[name]
-        val_sort = _value_sort(z3)
         fn = z3.Function(name, val_sort, z3.BoolSort())
         _PREDICATES[name] = fn
         return fn

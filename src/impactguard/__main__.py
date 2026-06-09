@@ -1424,6 +1424,7 @@ def cmd_feedback(args: argparse.Namespace) -> int:
     from .feedback import (
         apply_weights_to_config,
         compute_calibrated_weights,
+        compute_data_needs,
         get_stats,
         load_outcomes,
         record_outcome,
@@ -1460,7 +1461,13 @@ def cmd_feedback(args: argparse.Namespace) -> int:
         outcomes = load_outcomes(getattr(args, "feedback_path", None))
         weights = compute_calibrated_weights(outcomes)
         if not weights:
-            print("Not enough data for calibration (need ≥ 5 outcomes per category).")
+            needs = compute_data_needs(outcomes)
+            if needs:
+                print("Not enough data for calibration (need ≥ 5 outcomes per category):")
+                for ct, needed in sorted(needs.items()):
+                    print(f"  {ct}: {needed} more outcome(s) needed")
+            else:
+                print("No feedback data recorded yet.")
             return 0
         config_path: str = getattr(args, "config_path", None) or "impactguard.toml"
         ok = apply_weights_to_config(weights, config_path)

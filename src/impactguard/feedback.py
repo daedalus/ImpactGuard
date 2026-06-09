@@ -26,6 +26,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from ._logging import get_logger
+
+_log = get_logger(__name__)
+
 DEFAULT_FEEDBACK_PATH = ".impactguard_feedback.json"
 
 # Weight keys that map to ``[impactguard.patches]`` config entries.
@@ -232,6 +236,11 @@ def compute_calibrated_weights(
 
     for ct, results in by_type.items():
         if len(results) < _MIN_SAMPLES:
+            needed = _MIN_SAMPLES - len(results)
+            _log.info(
+                "Calibration: '%s' has %d outcome(s) — need %d more to reach %d-sample threshold.",
+                ct, len(results), needed, _MIN_SAMPLES,
+            )
             continue
         rate = sum(results) / len(results)
         ct_lower = ct.lower()
@@ -248,6 +257,34 @@ def compute_calibrated_weights(
             calibrated["complexity_multiline"] = max(0.1, rate)
 
     return calibrated
+
+
+def compute_data_needs(
+    outcomes: list[dict[str, Any]],
+    min_samples: int = 5,
+) -> dict[str, int]:
+    """Return per-category shortfall: how many more outcomes each category
+    needs before calibration can produce a weight for it.
+
+    Args:
+        outcomes: List of outcome dicts as returned by :func:`load_outcomes`.
+        min_samples: Minimum outcomes required for calibration (default 5).
+
+    Returns:
+        Dict of ``{change_type: needed_count}`` for categories below
+        *min_samples*.  Empty dict when all categories have enough data.
+    """
+    by_type: dict[str, list[bool]] = {}
+    for o in outcomes:
+        ct = o.get("change_type", "")
+        if ct:
+            by_type.setdefault(ct, []).append(bool(o.get("accepted")))
+
+    needs: dict[str, int] = {}
+    for ct, results in by_type.items():
+        if len(results) < min_samples:
+            needs[ct] = min_samples - len(results)
+    return needs
 
 
 def apply_weights_to_config(
