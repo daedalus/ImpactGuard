@@ -35,7 +35,7 @@ It provides a quantitative risk framework to help developers understand the cons
 | Risk Gate | `risk_gate.py`, `enforce_gate.py` | CI enforcement engine |
 | Runtime Intelligence | `trace_calls.py`, `trace_calls_prod.py`, `runtime_intelligence.py` | Python tracers plus language-agnostic runtime normalization |
 | Patch Generation | `cst_patch.py`, `patch_generator.py` | Format-preserving automated fixes |
-| Reporting | `generate_report.py`, `sarif.py` | Static HTML + SARIF v2.1.0 report generation |
+| Reporting & KPIs | `generate_report.py`, `kpi.py`, `sarif.py` | Static HTML + SARIF v2.1.0 report + KPI dashboard generation |
 | Robustness Evaluation | `tools/robustness_evaluator.py` | Composite robustness score, fragility index, diversity |
 | CLI | `cli.py` | Command-line interface |
 
@@ -70,6 +70,8 @@ It provides a quantitative risk framework to help developers understand the cons
 > **Suppression:** All languages that use C-style comments support `// impactguard: ignore` on or
 > immediately before a function definition.  Python uses `# impactguard: ignore`.  Ruby uses
 > `# impactguard: ignore`.  Haskell uses `-- impactguard: ignore`.
+> Whitespace and case variations are handled automatically (e.g. `impactguard:ignore`,
+> `ImpactGuard: Ignore`).
 >
 > **Adding new languages:** Implement the [`LanguageExtractor`](src/impactguard/languages/base.py)
 > protocol and register the extractor with [`register()`](src/impactguard/languages/registry.py).
@@ -369,12 +371,12 @@ The `impactguard` command-line tool is the primary entry point for developers an
 
 ```
 impactguard [-h] [--version]
-             {extract,compare,analyze,risk,report,report-sarif,enforce,suggest,patch,extract-calls,trace,check,check-diff,check-commit,check-commits,install-hooks,generate-changelog,baseline,semver,report-markdown,feedback,history} ...
+             {extract,compare,analyze,risk,report,report-sarif,enforce,suggest,patch,extract-calls,trace,check,check-diff,check-commit,check-commits,install-hooks,generate-changelog,baseline,semver,report-markdown,feedback,history,kpi,validate-config,behavior} ...
 
 ImpactGuard - API impact analyzer for Python
 
 positional arguments:
-  {extract,compare,analyze,risk,report,report-sarif,enforce,suggest,patch,extract-calls,trace,check,check-diff,check-commit,check-commits,install-hooks,generate-changelog,baseline,semver,report-markdown,feedback,history}
+  {extract,compare,analyze,risk,report,report-sarif,enforce,suggest,patch,extract-calls,trace,check,check-diff,check-commit,check-commits,install-hooks,generate-changelog,baseline,semver,report-markdown,feedback,history,kpi,validate-config,behavior}
                         Available commands
     extract             Extract function signatures from source files
     compare             Compare signature snapshots or source files directly
@@ -398,6 +400,9 @@ positional arguments:
     report-markdown     Generate markdown PR comment from risk report JSON
     feedback            Manage patch-outcome feedback for confidence calibration
     history             Manage tagged release-history baselines
+    kpi                 Compute KPI dashboard from a risk report JSON
+    validate-config     Validate impactguard.toml configuration
+    behavior            Analyze behavioral changes between old and new code
 
 options:
   -h, --help            show this help message and exit
