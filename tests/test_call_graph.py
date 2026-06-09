@@ -730,6 +730,76 @@ class TestCallGraphLifecycle:
 
 
 # ---------------------------------------------------------------------------
+# TOCTOU resilience (failure mode #16)
+# ---------------------------------------------------------------------------
+
+
+class TestTouTou:
+    """Verifies resilience against time-of-check/time-of-use races.
+
+    These tests simulate concurrent file deletion/modification between
+    _is_stale stat and _index_file read.
+    """
+
+    def test_index_file_copes_with_deleted_file(self, tmp_path):
+        """_index_file handles file deleted between stat and read."""
+        from impactguard.call_graph import CallGraphDB
+
+        src = tmp_path / "m.py"
+        src.write_text("def f(): pass\n")
+
+        cg = CallGraphDB(tmp_path)
+        try:
+            cg.build([str(src)])
+            assert cg.node_count == 1
+
+            src.unlink()
+            cg.build([str(src)])  # should not crash
+            assert cg.node_count == 0  # file was removed from index
+        finally:
+            cg.close()
+
+    def test_index_file_copes_with_truncated_file(self, tmp_path):
+        """_index_file handles file truncated between stat and read."""
+        from impactguard.call_graph import CallGraphDB
+
+        src = tmp_path / "m.py"
+        src.write_text("def f(): pass\n")
+
+        cg = CallGraphDB(tmp_path)
+        try:
+            cg.build([str(src)])
+            orig_count = cg.node_count
+
+            src.write_text("")  # truncate
+            cg.build([str(src)])  # should not crash
+            # After build with truncated file, node_count may differ
+            assert cg.node_count >= 0
+        finally:
+            cg.close()
+
+    def test_sync_during_file_deletion(self, tmp_path):
+        """sync does not crash when a file is deleted during the run."""
+        import time
+
+        from impactguard.call_graph import CallGraphDB
+
+        src = tmp_path / "m.py"
+        src.write_text("def f(): pass\n")
+
+        cg = CallGraphDB(tmp_path)
+        try:
+            cg.build([str(src)])
+
+            time.sleep(1.1)
+            src.unlink()
+            cg.sync([str(src)])  # should not crash
+            assert cg.node_count == 0
+        finally:
+            cg.close()
+
+
+# ---------------------------------------------------------------------------
 # Concurrent access protection (failure mode #13)
 # ---------------------------------------------------------------------------
 

@@ -470,14 +470,18 @@ class CallGraphDB:
 
     def _index_file(self, file_path: str) -> None:
         path = Path(file_path)
-        if not path.exists():
-            self._remove_file(file_path)
+        try:
+            content = path.read_bytes()
+        except OSError:
+            self._remove_file(self._relativize(file_path))
             return
 
-        content = path.read_bytes()
         content_hash = hashlib.sha256(content).hexdigest()
-        mtime = int(path.stat().st_mtime)
         size = len(content)
+        try:
+            mtime = int(path.stat().st_mtime)
+        except OSError:
+            mtime = 0
 
         try:
             rel_path = str(path.relative_to(self.project_root))
@@ -502,9 +506,10 @@ class CallGraphDB:
     def _index_file_imports(self, file_path: str) -> None:
         rel_path = self._relativize(file_path)
         path = Path(file_path)
-        if not path.exists():
+        try:
+            content = path.read_bytes()
+        except OSError:
             return
-        content = path.read_bytes()
         self._index_imports(rel_path, content.decode("utf-8", errors="replace"))
 
     def _index_signatures(self, file_path: str, rel_path: str | None = None) -> None:
