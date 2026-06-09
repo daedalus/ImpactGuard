@@ -4,6 +4,7 @@ This module contains functions that were previously duplicated across all
 language extractor files in the languages/ directory.
 """
 
+import logging
 import re
 import warnings
 from collections.abc import Callable
@@ -174,6 +175,80 @@ def warn_if_no_tree_sitter(self: Any, language_name: str, package_name: str) -> 
             stacklevel=3,
         )
         self._warned = True
+
+
+# ── Regex extraction per-file count logging ────────────────────────────────
+#
+# Each language has a simple heuristic pattern that counts how many function-
+# like definitions *could* be in a file.  When the regex fallback extracts
+# significantly fewer, a warning is emitted per file so users know what they
+# may be missing.
+
+_log = logging.getLogger("impactguard.languages")
+
+_REGEX_ESTIMATORS: dict[str, re.Pattern] = {
+    "C": re.compile(r"\b\w+\s+\w+\s*\("),
+    "C#": re.compile(r"(?:public|private|protected|internal|static|)\s*\w+\s+\w+\s*\("),
+    "C++": re.compile(r"\b\w+\s+\w+\s*\("),
+    "Go": re.compile(r"\bfunc\s+\w+\s*\("),
+    "Haskell": re.compile(r"^\s*\w+\s+::", re.MULTILINE),
+    "Java": re.compile(r"(?:public|private|protected|static|\w+\s+)\w+\s+\w+\s*\("),
+    "JavaScript": re.compile(r"\bfunction\s+\w+\s*\("),
+    "Kotlin": re.compile(r"\bfun\s+\w+"),
+    "Ruby": re.compile(r"\bdef\s+\w+"),
+    "Rust": re.compile(r"\bfn\s+\w+"),
+    "Swift": re.compile(r"\bfunc\s+\w+"),
+    "TypeScript": re.compile(r"\bfunction\s+\w+\s*\("),
+    "Zig": re.compile(r"\bfn\s+\w+"),
+}
+
+
+def log_regex_extraction(
+    language_name: str,
+    files: list[str],
+    result: list[dict[str, Any]],
+) -> None:
+    """Log per-file regex extraction results with an estimated baseline.
+
+    Groups extracted signatures by file, counts how many the regex extractor
+    found per file, and compares against a simple heuristic estimate.  Emits a
+    :func:`warnings.warn` when the extracted count is significantly lower than
+    the estimate (≤70%), helping users identify files where the regex fallback
+    may have missed many signatures.  Otherwise logs at ``INFO`` level.
+
+    Args:
+        language_name: Human-readable language name (e.g., ``"JavaScript"``).
+        files: List of absolute file paths that were processed.
+        result: The extracted signature dictionaries from ``_extract_with_regex``.
+    """
+    from collections import Counter
+
+    counts = Counter(sig.get("file", "") for sig in result)
+
+    for f in files:
+        try:
+            path = Path(f)
+            source = path.read_text(errors="replace")
+        except OSError:
+            continue
+        fname = path.name
+        file_count = counts.get(fname, 0)
+        estimator = _REGEX_ESTIMATORS.get(language_name)
+        estimated = len(estimator.findall(source)) if estimator else 0
+
+        if estimated and file_count < estimated * 0.7:
+            warnings.warn(
+                f"Regex fallback [{language_name}] extracted {file_count}/{estimated} "
+                f"signatures from {f} — may miss complex definitions. "
+                f"Install tree-sitter packages for full coverage.",
+                UserWarning,
+                stacklevel=2,
+            )
+        else:
+            _log.info(
+                "Regex fallback [%s] extracted %d/%d signatures from %s",
+                language_name, file_count, estimated or "?", f,
+            )
 
 
 # ── Signature dictionary constructor ──────────────────────────────────────

@@ -29,6 +29,7 @@ from .lib.shared import (
     extract_calls_with_tree_sitter,
     has_ignore_comment,
     has_ignore_comment_fallback,
+    log_regex_extraction,
     make_parser,
     node_text,
     register_extractor,
@@ -418,7 +419,9 @@ class RubyExtractor:
         if _TREE_SITTER_AVAILABLE:
             return _extract_with_tree_sitter(files, _base_path)
         warn_if_no_tree_sitter(self, "Ruby", "tree-sitter-ruby")
-        return _extract_with_regex(files, _base_path)
+        result = _extract_with_regex(files, _base_path)
+        log_regex_extraction("Ruby", files, result)
+        return result
 
     def extract_calls(self, path: Path) -> list[dict[str, Any]]:
         """Extract call sites from a Ruby file."""

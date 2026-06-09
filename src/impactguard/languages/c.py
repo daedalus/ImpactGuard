@@ -31,6 +31,7 @@ from .lib.shared import (
     extract_calls_with_tree_sitter,
     has_ignore_comment,
     has_ignore_comment_fallback,
+    log_regex_extraction,
     make_parser,
     node_text,
     register_extractor,
@@ -514,7 +515,9 @@ class _BaseCStyleExtractor(ABC):
                 files, use_cpp=self._use_cpp, _base_path=_base_path
             )
         warn_if_no_tree_sitter(self, self._tree_sitter_name, self._tree_sitter_package)
-        return _extract_with_regex(files, _base_path)
+        result = _extract_with_regex(files, _base_path)
+        log_regex_extraction(self._tree_sitter_name, files, result)
+        return result
 
     def extract_calls(self, path: Path) -> list[dict[str, Any]]:
         """Extract call sites from a source file."""
