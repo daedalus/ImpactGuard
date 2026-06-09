@@ -319,6 +319,17 @@ class CallGraphDB:
         self.con.commit()
         return len(stale)
 
+    def filter_stale(self, files: list[str]) -> list[str]:
+        """Return only files whose content has changed since last build/sync.
+
+        Args:
+            files: Absolute paths to candidate source files.
+
+        Returns:
+            Subset of *files* whose mtime or existence differs from the DB.
+        """
+        return [f for f in files if self._is_stale(f)]
+
     # ------------------------------------------------------------------
     # Queries: call graph
     # ------------------------------------------------------------------

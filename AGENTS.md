@@ -34,14 +34,17 @@ A `post-commit` hook runs signature extraction after each commit.
 
 ### Hook behavior
 
-1. Collect tracked Python files:
+1. Collect Python files changed in the latest commit (incremental — avoids
+   re-scanning the entire repo on every commit, which is the #1 reason
+   developers disable the hook on large codebases):
    ```
-   git ls-files '*.py'
+   git diff-tree --no-commit-id -r --name-only HEAD | grep '\.py$'
    ```
 
-2. Extract signatures:
+2. Extract signatures (only extract files that are stale in the call graph DB
+   when available, falling back to full extraction):
    ```
-   impactguard extract <files> > /tmp/impactguard_sigs.json
+   impactguard extract --incremental <files> > /tmp/impactguard_sigs.json
    ```
 
 3. Hook runs silently (no auto-commit):

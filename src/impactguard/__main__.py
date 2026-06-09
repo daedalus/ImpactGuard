@@ -27,6 +27,28 @@ def cmd_extract(args: argparse.Namespace) -> int:
         print("Error: No input files provided", file=sys.stderr)
         return 1
 
+    incremental: bool = getattr(args, "incremental", False)
+    if incremental:
+        try:
+            from .call_graph import CallGraphDB
+
+            cwd = Path.cwd()
+            db = CallGraphDB(cwd)
+            stale = db.filter_stale(files)
+            skipped = len(files) - len(stale)
+            if skipped:
+                print(
+                    f"Incremental: {skipped} file(s) unchanged, skipping",
+                    file=sys.stderr,
+                )
+            files = stale
+        except Exception as exc:
+            print(
+                f"Warning: --incremental call graph unavailable ({exc}); "
+                "falling back to full extraction",
+                file=sys.stderr,
+            )
+
     language: str | None = getattr(args, "language", None)
     strict: bool = getattr(args, "strict", False)
 
@@ -1753,6 +1775,14 @@ def main() -> int:
         default=False,
         help="Treat parse errors as fatal instead of skipping the file. "
         "Recommended for CI to ensure broken files are never silently ignored.",
+    )
+    extract_parser.add_argument(
+        "--incremental",
+        action="store_true",
+        default=False,
+        help="Only extract signatures for files whose content has changed since "
+        "the last call graph build/sync. Requires a pre-existing call graph DB. "
+        "Fall back to full extraction when no DB is found.",
     )
     extract_parser.set_defaults(func=cmd_extract)
 
