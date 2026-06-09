@@ -192,6 +192,9 @@ class CallGraphDB:
     def build(self, files: list[str]) -> int:
         """Full build: index all *files* into the call graph.
 
+        Three-pass strategy ensures imports are available before
+        cross-file call target resolution runs.
+
         Args:
             files: Absolute paths to source files to index.
 
@@ -199,12 +202,9 @@ class CallGraphDB:
             Number of files actually indexed.
         """
         count = 0
-        # Two passes: first index all signatures (nodes + file records),
-        # then process calls (edges) and imports.  This ensures import
-        # resolution can find files indexed earlier in the same batch.
         for f in files:
             try:
-                self._index_file(f, _index_all=False)
+                self._index_file(f)
                 count += 1
             except Exception:
                 _log.warning("Failed to index '%s'", f, exc_info=True)
@@ -215,10 +215,21 @@ class CallGraphDB:
             except Exception:
                 _log.warning("Failed to index imports for '%s'", f, exc_info=True)
         self.con.commit()
+        for f in files:
+            try:
+                rel_path = self._relativize(f)
+                self._index_calls(f, rel_path)
+            except Exception:
+                _log.warning("Failed to index calls for '%s'", f, exc_info=True)
+        self.con.commit()
         return count
 
     def sync(self, files: list[str]) -> int:
         """Incremental sync: only re-index files whose content changed.
+
+        Three-pass strategy (signatures → imports → calls) mirrors
+        :meth:`build` so that cross-file call resolution has access to
+        the ``file_imports`` table.
 
         Args:
             files: Absolute paths to candidate source files.
@@ -232,7 +243,7 @@ class CallGraphDB:
 
         for f in changed:
             try:
-                self._index_file(f, _index_all=False)
+                self._index_file(f)
             except Exception:
                 _log.warning("Failed to sync '%s'", f, exc_info=True)
         self.con.commit()
@@ -241,6 +252,13 @@ class CallGraphDB:
                 self._index_file_imports(f)
             except Exception:
                 _log.warning("Failed to sync imports for '%s'", f, exc_info=True)
+        self.con.commit()
+        for f in changed:
+            try:
+                rel_path = self._relativize(f)
+                self._index_calls(f, rel_path)
+            except Exception:
+                _log.warning("Failed to sync calls for '%s'", f, exc_info=True)
         self.con.commit()
         return len(changed)
 
@@ -260,6 +278,9 @@ class CallGraphDB:
             return 0
         for f in stale:
             self._remove_file(f)
+            self.con.execute(
+                "DELETE FROM file_imports WHERE imported = ?", (f,)
+            )
         self.con.commit()
         return len(stale)
 
@@ -391,7 +412,7 @@ class CallGraphDB:
         except OSError:
             return True
 
-    def _index_file(self, file_path: str, _index_all: bool = True) -> None:
+    def _index_file(self, file_path: str) -> None:
         path = Path(file_path)
         if not path.exists():
             self._remove_file(file_path)
@@ -410,15 +431,9 @@ class CallGraphDB:
         # Remove stale data for this file
         self._remove_file(rel_path)
 
-        # -- Signatures → nodes --
+        # -- Signatures → nodes -- (calls and imports indexed separately
+        # by build / sync so that file_imports is available for resolution)
         self._index_signatures(file_path, rel_path)
-
-        # -- Calls → edges --
-        self._index_calls(file_path, rel_path)
-
-        if _index_all:
-            # -- Imports → file_imports --
-            self._index_imports(rel_path, content.decode("utf-8", errors="replace"))
 
         # -- File record --
         self.con.execute(
@@ -484,6 +499,17 @@ class CallGraphDB:
             ).fetchone()
             if row2:
                 return row2["id"]
+        if "." in name:
+            parts = name.rsplit(".", 1)
+            if len(parts) == 2:
+                mod_prefix, func_name = parts
+                for cand in (f"{mod_prefix}.py", f"{mod_prefix}/__init__.py"):
+                    row = self.con.execute(
+                        "SELECT id FROM nodes WHERE file_path = ? AND name = ?",
+                        (cand, func_name),
+                    ).fetchone()
+                    if row:
+                        return row["id"]
         return name
 
     def _index_calls(self, file_path: str, rel_path: str | None = None) -> None:
@@ -565,7 +591,6 @@ class CallGraphDB:
         self.con.execute("DELETE FROM nodes WHERE file_path = ?", (file_path,))
         self.con.execute("DELETE FROM edges WHERE source_file = ?", (file_path,))
         self.con.execute("DELETE FROM file_imports WHERE importer = ?", (file_path,))
-        self.con.execute("DELETE FROM file_imports WHERE imported = ?", (file_path,))
         self.con.execute("DELETE FROM files WHERE path = ?", (file_path,))
 
     # ------------------------------------------------------------------
