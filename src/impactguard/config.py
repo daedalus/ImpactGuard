@@ -246,6 +246,16 @@ def reload_config(config_path: str | None = None) -> dict[str, Any]:
     return _config
 
 
+def reset_config() -> None:
+    """Reset the configuration singleton to force reload on next access.
+
+    Useful for test isolation — call this in test teardown to ensure
+    each test starts with a fresh configuration.
+    """
+    global _config
+    _config = None
+
+
 def get(section: str, key: str, default: Any = None) -> Any:
     """Convenience accessor for ``config["impactguard"][section][key]``.
 

@@ -705,6 +705,7 @@ def _build_gate_reasons(
 
 
 def _inject_coverage_disclaimer(html: str, reliability_stats: dict[str, int]) -> str:
+    """Inject a coverage disclaimer into the HTML report when analysis is partial."""
     if not any(reliability_stats.get(k, 0) > 0 for k in _PARTIAL_ANALYSIS_COUNTERS):
         return html
     disclaimer = (
@@ -712,7 +713,14 @@ def _inject_coverage_disclaimer(html: str, reliability_stats: dict[str, int]) ->
         "this report was generated from partial analysis. Review analysis_summary.json "
         "for skipped/failed extraction details before treating LOW/MEDIUM findings as complete.</p>"
     )
-    return html.replace("<body>", f"<body>{disclaimer}", 1)
+    # Try multiple insertion points for robustness
+    for marker in ("<body>", "<BODY>", "<body\n", "<BODY\n"):
+        idx = html.find(marker)
+        if idx != -1:
+            insert_pos = idx + len(marker)
+            return html[:insert_pos] + disclaimer + html[insert_pos:]
+    # Fallback: prepend to the HTML string
+    return disclaimer + html
 
 
 def _count_fixability(risk: list[dict[str, Any]]) -> tuple[int, int]:
@@ -1191,6 +1199,9 @@ def quick_check(
     """
 
     # Collect files with a registered language extractor
+    # Limit to 10,000 files to prevent performance issues with large directories
+    _MAX_COLLECT_FILES = 10_000
+
     def collect_files(path: str) -> list[str]:
         from .languages.lib.registry import get_extractor as _get_extractor
 
@@ -1198,11 +1209,19 @@ def quick_check(
         if p.is_file():
             return [str(p)] if _get_extractor(str(p)) is not None else []
         elif p.is_dir():
-            return [
-                str(f)
-                for f in p.rglob("*")
-                if f.is_file() and _get_extractor(str(f)) is not None
-            ]
+            files: list[str] = []
+            for f in p.rglob("*"):
+                if len(files) >= _MAX_COLLECT_FILES:
+                    _log.warning(
+                        "File collection limit reached (%d files) for '%s'; "
+                        "some files may be excluded from analysis.",
+                        _MAX_COLLECT_FILES,
+                        path,
+                    )
+                    break
+                if f.is_file() and _get_extractor(str(f)) is not None:
+                    files.append(str(f))
+            return files
         return []
 
     old_files = collect_files(old_path)
