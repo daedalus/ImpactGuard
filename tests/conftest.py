@@ -2,11 +2,41 @@
 
 import io
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
 
 import pytest
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _isolate_cache():
+    """Give each test session its own SQLite cache to prevent locking."""
+    import importlib
+
+    cache_dir = Path(tempfile.mkdtemp(prefix="impactguard_test_cache_"))
+    cache_path = str(cache_dir / "cache.db")
+    os.environ["IMPACTGUARD_CACHE_PATH"] = cache_path
+
+    # Reset any cached singleton so it picks up the new path
+    import impactguard.cache as cache_mod
+    cache_mod._cache = None
+
+    yield
+
+    # Cleanup
+    try:
+        if cache_mod._cache is not None:
+            cache_mod._cache.close()
+            cache_mod._cache = None
+    except Exception:
+        pass
+    try:
+        import shutil
+        shutil.rmtree(cache_dir, ignore_errors=True)
+    except Exception:
+        pass
 
 # ---------------------------------------------------------------------------
 # Robustness Evaluator — wired to pytest hooks
