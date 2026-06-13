@@ -41,6 +41,9 @@ _DEFAULTS: dict[str, Any] = {
             "exposure_max_count": 0,
             "conservative_mode": False,
         },
+        "git": {
+            "timeout": 30,
+        },
         "patches": {
             "target_file_match": 1.0,
             "target_lineno_match": 1.0,

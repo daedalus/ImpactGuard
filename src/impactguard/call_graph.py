@@ -8,6 +8,7 @@ Database location: ``<project_root>/.impactguard/call_graph.db``
 """
 
 import ast
+import fcntl
 import hashlib
 import json
 import sqlite3
@@ -188,6 +189,27 @@ class CallGraphDB:
         self.con.execute("PRAGMA busy_timeout=5000")
         self.con.executescript(_SCHEMA_SQL)
         self._write_lock = threading.Lock()
+        # File-level lock for cross-process safety
+        self._lock_path = cache_dir / ".call_graph.lock"
+        self._lock_fd: int | None = None
+
+    def _acquire_file_lock(self) -> None:
+        """Acquire an exclusive file-level lock for cross-process safety."""
+        try:
+            self._lock_fd = open(self._lock_path, "w")
+            fcntl.flock(self._lock_fd, fcntl.LOCK_EX)
+        except OSError:
+            self._lock_fd = None
+
+    def _release_file_lock(self) -> None:
+        """Release the file-level lock."""
+        if self._lock_fd is not None:
+            try:
+                fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
+                self._lock_fd.close()
+            except OSError:
+                pass
+            self._lock_fd = None
 
     # ------------------------------------------------------------------
     # Build / Sync
@@ -211,30 +233,34 @@ class CallGraphDB:
         Returns:
             Number of files actually indexed.
         """
-        with self._write_lock:
-            count = 0
-            for f in files:
-                try:
-                    self._index_file(f)
-                    count += 1
-                except Exception:
-                    _log.warning("Failed to index '%s'", f, exc_info=True)
-            self.con.commit()
-            for f in files:
-                try:
-                    self._index_file_imports(f)
-                except Exception:
-                    _log.warning("Failed to index imports for '%s'", f, exc_info=True)
-            self.con.commit()
-            for f in files:
-                try:
-                    rel_path = self._relativize(f)
-                    self._index_calls(f, rel_path)
-                except Exception:
-                    _log.warning("Failed to index calls for '%s'", f, exc_info=True)
-            self.con.commit()
-            self._record_build()
-            return count
+        self._acquire_file_lock()
+        try:
+            with self._write_lock:
+                count = 0
+                for f in files:
+                    try:
+                        self._index_file(f)
+                        count += 1
+                    except Exception:
+                        _log.warning("Failed to index '%s'", f, exc_info=True)
+                self.con.commit()
+                for f in files:
+                    try:
+                        self._index_file_imports(f)
+                    except Exception:
+                        _log.warning("Failed to index imports for '%s'", f, exc_info=True)
+                self.con.commit()
+                for f in files:
+                    try:
+                        rel_path = self._relativize(f)
+                        self._index_calls(f, rel_path)
+                    except Exception:
+                        _log.warning("Failed to index calls for '%s'", f, exc_info=True)
+                self.con.commit()
+                self._record_build()
+                return count
+        finally:
+            self._release_file_lock()
 
     def _record_build(self) -> None:
         self.con.execute(
@@ -275,32 +301,36 @@ class CallGraphDB:
         Returns:
             Number of files that were re-indexed.
         """
-        with self._write_lock:
-            changed = [f for f in files if self._is_stale(f)]
-            if not changed:
-                return 0
+        self._acquire_file_lock()
+        try:
+            with self._write_lock:
+                changed = [f for f in files if self._is_stale(f)]
+                if not changed:
+                    return 0
 
-            for f in changed:
-                try:
-                    self._index_file(f)
-                except Exception:
-                    _log.warning("Failed to sync '%s'", f, exc_info=True)
-            self.con.commit()
-            for f in changed:
-                try:
-                    self._index_file_imports(f)
-                except Exception:
-                    _log.warning("Failed to sync imports for '%s'", f, exc_info=True)
-            self.con.commit()
-            for f in changed:
-                try:
-                    rel_path = self._relativize(f)
-                    self._index_calls(f, rel_path)
-                except Exception:
-                    _log.warning("Failed to sync calls for '%s'", f, exc_info=True)
-            self.con.commit()
-            self._record_build()
-            return len(changed)
+                for f in changed:
+                    try:
+                        self._index_file(f)
+                    except Exception:
+                        _log.warning("Failed to sync '%s'", f, exc_info=True)
+                self.con.commit()
+                for f in changed:
+                    try:
+                        self._index_file_imports(f)
+                    except Exception:
+                        _log.warning("Failed to sync imports for '%s'", f, exc_info=True)
+                self.con.commit()
+                for f in changed:
+                    try:
+                        rel_path = self._relativize(f)
+                        self._index_calls(f, rel_path)
+                    except Exception:
+                        _log.warning("Failed to sync calls for '%s'", f, exc_info=True)
+                self.con.commit()
+                self._record_build()
+                return len(changed)
+        finally:
+            self._release_file_lock()
 
     def remove_stale(self, active_files: set[str]) -> int:
         """Remove DB entries for files no longer on disk.

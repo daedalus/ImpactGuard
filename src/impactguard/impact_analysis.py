@@ -157,6 +157,13 @@ def _resolve_target(target: str, funcs: dict[str, dict[str, Any]]) -> str | None
     matches = [f for f in funcs if f.endswith("." + target.split(".")[-1])]
     if len(matches) == 1:
         return matches[0]
+    if len(matches) > 1:
+        _log.warning(
+            "Ambiguous target resolution for '%s': multiple candidates found (%s). "
+            "Skipping to avoid false positives.",
+            target,
+            ", ".join(matches[:5]),
+        )
     return None
 
 

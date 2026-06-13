@@ -291,12 +291,19 @@ def _prepare_signature_snapshot(
             stats["fqname_collision_risk"] += 1
             _append_analysis_event(
                 events,
-                level="warning",
+                level="error",
                 kind="fqname_collision_risk",
                 file=_summarize_files(files),
                 message=(
-                    "Duplicate basenames detected without base path; fqname collisions are possible."
+                    "Duplicate basenames detected without base path; "
+                    "fqname collisions will cause incorrect results. "
+                    "Provide base_path to resolve this."
                 ),
+            )
+            raise ValueError(
+                "Duplicate basenames detected without base_path; "
+                "fqname collisions will cause incorrect results. "
+                "Provide base_path to resolve this."
             )
         signatures = _extract_by_language(
             files,
@@ -1220,14 +1227,17 @@ def quick_check(
 
 def _extract_git_ref_signatures(ref: str, dest: Path) -> list[dict[str, Any]]:
     """Extract signatures for all supported files at a git ref into *dest*."""
+    from .config import get as cfg_get
     from .languages.lib.registry import get_extractor as _get_extractor
+
+    git_timeout = cfg_get("git", "timeout", 30)
 
     try:
         result = subprocess.run(
             ["git", "ls-tree", "-r", "--name-only", ref],
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=git_timeout,
         )
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"Timeout listing files from {ref}") from exc
@@ -1245,7 +1255,7 @@ def _extract_git_ref_signatures(ref: str, dest: Path) -> list[dict[str, Any]]:
                 ["git", "show", f"{ref}:{src_file}"],
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=git_timeout,
             )
         except subprocess.TimeoutExpired:
             print(f"  Warning: Timeout extracting {src_file} from {ref}")

@@ -297,6 +297,9 @@ def apply_weights_to_config(
     unchanged.  When the config file does not exist, a minimal one is
     created with only the ``[impactguard.patches]`` section.
 
+    Uses atomic write (write-to-temp + rename) to prevent corruption
+    from concurrent runs or interrupted writes.
+
     Args:
         weights: Calibrated weight dict from :func:`compute_calibrated_weights`.
         config_path: Path to the TOML config file.
@@ -324,9 +327,24 @@ def apply_weights_to_config(
     # Locate the [impactguard.patches] section and update keys within it
     updated = _upsert_toml_section(existing_lines, "impactguard.patches", weights)
 
+    # Atomic write: write to temp file then rename
+    import tempfile
     try:
-        path.write_text("\n".join(updated) + "\n")
-        return True
+        fd, tmp_path = tempfile.mkstemp(
+            dir=path.parent, suffix=".tmp", prefix=".impactguard_"
+        )
+        try:
+            with os.fdopen(fd, "w") as tmp_file:
+                tmp_file.write("\n".join(updated) + "\n")
+            os.replace(tmp_path, path)
+            return True
+        except OSError:
+            # Clean up temp file on failure
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
     except OSError:
         return False
 
