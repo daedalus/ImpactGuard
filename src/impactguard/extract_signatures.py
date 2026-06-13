@@ -51,21 +51,58 @@ def _has_ignore_comment(source_lines: list[str], lineno: int) -> bool:
 def _extract_all_names(tree: ast.Module) -> set[str] | None:
     """Return the names listed in ``__all__``, or *None* when not defined.
 
-    Handles only the simple ``__all__ = [...]`` / ``__all__ = (...)`` form.
+    Handles:
+    * ``__all__ = ["a", "b"]`` — simple assignment
+    * ``__all__ = ("a", "b")`` — tuple assignment
+    * ``__all__ += ["c"]`` — augmented assignment (extends)
+    * ``__all__.append("d")`` — append call
+    * ``__all__.extend(["e", "f"])`` — extend call
     """
+    found_initial = False
+    names: set[str] = set()
+
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign):
-            continue
-        for target in node.targets:
-            if isinstance(target, ast.Name) and target.id == "__all__":
+        # Initial assignment: __all__ = [...]
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "__all__":
+                    val = node.value
+                    if isinstance(val, ast.List | ast.Tuple):
+                        for elt in val.elts:
+                            if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                                names.add(elt.value)
+                        found_initial = True
+
+        # Augmented assignment: __all__ += [...]
+        if isinstance(node, ast.AugAssign):
+            if isinstance(node.target, ast.Name) and node.target.id == "__all__":
                 val = node.value
                 if isinstance(val, ast.List | ast.Tuple):
-                    names: set[str] = set()
                     for elt in val.elts:
                         if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
                             names.add(elt.value)
-                    return names
-    return None
+                    found_initial = True
+
+        # Method calls: __all__.append(...) or __all__.extend(...)
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
+            call = node.value
+            if (isinstance(call.func, ast.Attribute)
+                    and isinstance(call.func.value, ast.Name)
+                    and call.func.value.id == "__all__"):
+                if call.func.attr == "append" and call.args:
+                    arg = call.args[0]
+                    if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                        names.add(arg.value)
+                        found_initial = True
+                elif call.func.attr == "extend" and call.args:
+                    arg = call.args[0]
+                    if isinstance(arg, ast.List | ast.Tuple):
+                        for elt in arg.elts:
+                            if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                                names.add(elt.value)
+                        found_initial = True
+
+    return names if found_initial else None
 
 
 def extract_reexports(files: list[str]) -> dict[str, str]:

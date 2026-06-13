@@ -269,9 +269,17 @@ def _append_analysis_event(
 
 
 def _write_json(path: str | Path, payload: Any) -> None:
-    """Write JSON payloads with stable formatting."""
-    with open(path, "w") as f:
-        json.dump(payload, f, indent=2)
+    """Write JSON payloads with stable formatting.
+
+    Raises OSError on disk-full or permission errors so callers can
+    handle partial pipeline output gracefully.
+    """
+    try:
+        with open(path, "w") as f:
+            json.dump(payload, f, indent=2)
+    except OSError as exc:
+        _log.error("Failed to write JSON to '%s': %s", path, exc)
+        raise
 
 
 def _prepare_signature_snapshot(

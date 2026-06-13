@@ -173,6 +173,33 @@ def _infer_possible_type(name: str) -> str | None:
 # ── Type-compatibility helpers ────────────────────────────────────────────────
 
 
+def _split_top_level(s: str, sep: str) -> list[str]:
+    """Split *s* on *sep* only at the top level (not inside brackets).
+
+    >>> _split_top_level("List[int], str", ",")
+    ['List[int]', ' str']
+    >>> _split_top_level("Dict[str, int] | None", "|")
+    ['Dict[str, int] ', ' None']
+    """
+    parts: list[str] = []
+    depth = 0
+    current: list[str] = []
+    for ch in s:
+        if ch in "([{":
+            depth += 1
+            current.append(ch)
+        elif ch in ")]}":
+            depth -= 1
+            current.append(ch)
+        elif ch == sep and depth == 0:
+            parts.append("".join(current))
+            current = []
+        else:
+            current.append(ch)
+    parts.append("".join(current))
+    return parts
+
+
 def _parse_union_members(type_str: str) -> frozenset[str]:
     """Break a type annotation string into its constituent member types.
 
@@ -181,6 +208,7 @@ def _parse_union_members(type_str: str) -> frozenset[str]:
     * PEP 604 ``X | Y | Z``
     * ``Optional[X]`` → ``{X, None}``
     * ``Union[X, Y]`` → ``{X, Y}``
+    * Nested generics like ``Dict[str, int] | None``
     * Everything else → ``{type_str}``
     """
     s = type_str.strip()
@@ -191,16 +219,15 @@ def _parse_union_members(type_str: str) -> frozenset[str]:
         inner = m.group(1).strip()
         return frozenset({inner, "None"})
 
-    # Union[X, Y, ...]  (top-level commas only — simple split is good enough
-    # for well-formed annotations without nested generics at the top level)
+    # Union[X, Y, ...]  — use bracket-aware split
     m2 = re.fullmatch(r"Union\[(.+)\]", s)
     if m2:
-        parts = [p.strip() for p in m2.group(1).split(",")]
+        parts = [p.strip() for p in _split_top_level(m2.group(1), ",")]
         return frozenset(parts)
 
-    # PEP 604: X | Y | Z
+    # PEP 604: X | Y | Z — use bracket-aware split
     if "|" in s:
-        parts = [p.strip() for p in s.split("|")]
+        parts = [p.strip() for p in _split_top_level(s, "|")]
         return frozenset(parts)
 
     return frozenset({s})

@@ -379,7 +379,14 @@ def cmd_trace(args: argparse.Namespace) -> int:
 
         try:
             # nosemgrep: python.lang.security.audit.non-literal-import.non-literal-import
-            module = importlib.import_module(_ALLOWED_TRACE_MODULES[args.module])
+            module = importlib.import_module(args.module)
+            # Verify the imported module name matches exactly (prevents submodule bypass)
+            if getattr(module, "__name__", None) != args.module:
+                print(
+                    f"Error: Module name mismatch for '{args.module}'",
+                    file=sys.stderr,
+                )
+                return 1
         except ImportError as e:
             print(f"Error: Cannot import module '{args.module}': {e}", file=sys.stderr)
             return 1
