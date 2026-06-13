@@ -140,6 +140,16 @@ def exposure(count: int, max_count: int) -> float:
     """
     if count == 0 or max_count <= 0:
         return 0
+
+    # Check for an absolute reference point in config
+    try:
+        from .config import get as cfg_get
+        absolute_max = cfg_get("risk", "exposure_max_count", 0)
+        if absolute_max and absolute_max > 0:
+            max_count = max(max_count, absolute_max)
+    except (OSError, ValueError, AttributeError, KeyError):
+        pass
+
     return min(1.0, math.log(1 + count) / math.log(1 + max_count))
 
 

@@ -38,7 +38,7 @@ _DEFAULTS: dict[str, Any] = {
             "high_exposure_min": 0.1,
             "medium_exposure_min": 0.01,
             "block_unknown": True,
-            "exposure_max_count": 1000,
+            "exposure_max_count": 0,
             "conservative_mode": False,
         },
         "patches": {

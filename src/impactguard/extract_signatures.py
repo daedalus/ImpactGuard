@@ -12,6 +12,27 @@ _log = get_logger(__name__)
 _IGNORE_RE = re.compile(r"impactguard\s*:\s*ignore", re.IGNORECASE)
 
 
+def _unparse_annotation(node: ast.expr | None) -> str | None:
+    """Safely unparse an AST annotation node to a string.
+
+    Returns *None* when the node is absent or cannot be unparsed.
+    """
+    if node is None:
+        return None
+    try:
+        return ast.unparse(node)
+    except Exception:
+        return None
+
+
+def _decorator_name(node: ast.expr) -> str:
+    """Return the string representation of a decorator expression."""
+    try:
+        return ast.unparse(node)
+    except Exception:
+        return "<decorator>"
+
+
 def _has_ignore_comment(source_lines: list[str], lineno: int) -> bool:
     """Return *True* if a ``# impactguard: ignore`` comment appears on the
     function definition line or on the line immediately preceding it.
@@ -90,128 +111,6 @@ def extract_reexports(files: list[str]) -> dict[str, str]:
                 reexports[public_fq] = source_fq
 
     return reexports
-
-
-def _unparse_annotation(node: ast.expr | None) -> str | None:
-    """Safely unparse an AST annotation node to a string.
-
-    Returns *None* when the node is absent or cannot be unparsed.
-    """
-    if node is None:
-        return None
-    try:
-        return ast.unparse(node)
-    except (RecursionError, ValueError):
-        return None
-
-
-def _decorator_name(node: ast.expr) -> str:
-    """Return the string representation of a decorator expression."""
-    try:
-        return ast.unparse(node)
-    except (RecursionError, ValueError):
-        return "<decorator>"
-
-
-def _has_ignore_comment(source_lines: list[str], lineno: int) -> bool:
-    """Return *True* if a ``# impactguard: ignore`` comment appears on the
-    function definition line or on the line immediately preceding it.
-
-    Args:
-        source_lines: All lines of the source file (0-indexed list).
-        lineno: 1-based line number of the ``def`` keyword.
-    """
-    def_line_idx = lineno - 1
-    for idx in (def_line_idx - 1, def_line_idx):
-        if 0 <= idx < len(source_lines) and _IGNORE_RE.search(source_lines[idx]):
-            return True
-    return False
-
-
-def _extract_all_names(tree: ast.Module) -> set[str] | None:
-    """Return the names listed in ``__all__``, or *None* when not defined.
-
-    Handles only the simple ``__all__ = [...]`` / ``__all__ = (...)`` form.
-    """
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign):
-            continue
-        for target in node.targets:
-            if isinstance(target, ast.Name) and target.id == "__all__":
-                val = node.value
-                if isinstance(val, ast.List | ast.Tuple):
-                    names: set[str] = set()
-                    for elt in val.elts:
-                        if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
-                            names.add(elt.value)
-                    return names
-    return None
-
-
-def extract_reexports(files: list[str]) -> dict[str, str]:
-    """Parse ``__init__.py`` files and collect explicit re-exports.
-
-    Recognises ``from .<module> import <name>`` and
-    ``from .<module> import <name> as <alias>`` statements.
-
-    Args:
-        files: List of Python file paths.  Only ``__init__.py`` files are
-            processed; all others are ignored.
-
-    Returns:
-        Mapping ``{public_fqname: source_fqname}`` where *public_fqname* is
-        ``<init_basename>:<exported_name>`` and *source_fqname* is the
-        inferred ``<source_module_basename>:<original_name>``.
-    """
-    reexports: dict[str, str] = {}
-    for file_path in files:
-        path = Path(file_path)
-        if path.name != "__init__.py":
-            continue
-        try:
-            tree = ast.parse(path.read_text())
-        except Exception:
-            continue
-
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.ImportFrom):
-                continue
-            if not node.module:
-                continue
-            # Only relative imports (from .module import ...)
-            if node.level == 0:
-                continue
-            # Source module base name (last segment)
-            source_module = node.module.split(".")[-1] + ".py"
-            for alias in node.names:
-                original = alias.name
-                exported = alias.asname or alias.name
-                public_fq = f"{path.name}:{exported}"
-                source_fq = f"{source_module}:{original}"
-                reexports[public_fq] = source_fq
-
-    return reexports
-
-
-def _unparse_annotation(node: ast.expr | None) -> str | None:
-    """Safely unparse an AST annotation node to a string.
-
-    Returns *None* when the node is absent or cannot be unparsed.
-    """
-    if node is None:
-        return None
-    try:
-        return ast.unparse(node)
-    except Exception:
-        return None
-
-
-def _decorator_name(node: ast.expr) -> str:
-    """Return the string representation of a decorator expression."""
-    try:
-        return ast.unparse(node)
-    except Exception:
-        return "<decorator>"
 
 
 def serialize_function(
