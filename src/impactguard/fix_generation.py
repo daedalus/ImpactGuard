@@ -256,7 +256,11 @@ def enrich_risk_with_fix_candidates(
 
 
 def apply_safe_fixes(risk_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Apply high-confidence CST fixes conservatively (one fix per file)."""
+    """Apply high-confidence CST fixes conservatively (one fix per file).
+
+    Creates backup files (``*.bak``) before applying each fix so that
+    changes can be reverted if needed.
+    """
     grouped: dict[str, list[dict[str, Any]]] = {}
     for item in risk_items:
         for fix in item.get("fix_candidates", []):
@@ -287,10 +291,18 @@ def apply_safe_fixes(risk_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         path = Path(file_path)
         if not path.exists():
             continue
+        # Create backup before applying
+        backup_path = path.with_suffix(path.suffix + ".bak")
+        try:
+            backup_path.write_text(path.read_text())
+        except OSError as exc:
+            _log.warning("Failed to create backup for '%s': %s", file_path, exc)
+            continue
         path.write_text(patch_content)
         applied.append(
             {
                 "file": file_path,
+                "backup": str(backup_path),
                 "function": fix.get("function", ""),
                 "type": fix.get("type", ""),
                 "confidence_level": fix.get("confidence_level", ""),

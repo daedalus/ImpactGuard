@@ -56,13 +56,20 @@ def _validate_git_path(path: str) -> bool:
     return is_safe_path(path, max_length=255)
 
 
-def _summarize_files(files: list[str], limit: int = 5) -> str:
-    """Return a compact, deterministic summary for file-path lists."""
-    if len(files) <= limit:
-        return ",".join(files)
-    shown = ",".join(files[:limit])
-    remaining = len(files) - limit
-    return f"{shown} (+{remaining} more)"
+def _summarize_files(files: list[str], limit: int = 10) -> str:
+    """Return a compact, deterministic summary for file-path lists.
+
+    Files are sorted for deterministic output. When the list exceeds
+    *limit*, a ``(+/total)`` suffix is appended.
+    """
+    if not files:
+        return "(no files)"
+    sorted_files = sorted(files)
+    if len(sorted_files) <= limit:
+        return ",".join(sorted_files)
+    shown = ",".join(sorted_files[:limit])
+    remaining = len(sorted_files) - limit
+    return f"{shown} (+{remaining}/{len(sorted_files)} total)"
 
 
 def _record_unsupported_file(
