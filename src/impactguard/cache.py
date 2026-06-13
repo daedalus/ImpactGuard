@@ -234,9 +234,12 @@ class Cache:
     def _init_bloom(self) -> None:
         capacity = max(1, self._entry_count) * 10
         self._bloom = BloomFilter(capacity)
-        rows = self.con.execute("SELECT key FROM cache").fetchall()
-        for (key,) in rows:
-            self._bloom.add(key)
+        try:
+            rows = self.con.execute("SELECT key FROM cache").fetchall()
+            for (key,) in rows:
+                self._bloom.add(key)
+        except sqlite3.OperationalError:
+            pass
 
     def _maybe_grow_bloom(self) -> None:
         self._bloom_check_counter += 1
@@ -271,16 +274,19 @@ class Cache:
 
     def _delete_expired(self) -> int:
         now = time.time()
-        cur = self.con.execute(
-            "DELETE FROM cache WHERE expires_at IS NOT NULL AND expires_at <= ?",
-            (now,),
-        )
-        deleted = int(cur.rowcount or 0)
-        if deleted:
-            self._entry_count = max(0, self._entry_count - deleted)
-            self._mem.clear()
-            self.con.commit()
-        return deleted
+        try:
+            cur = self.con.execute(
+                "DELETE FROM cache WHERE expires_at IS NOT NULL AND expires_at <= ?",
+                (now,),
+            )
+            deleted = int(cur.rowcount or 0)
+            if deleted:
+                self._entry_count = max(0, self._entry_count - deleted)
+                self._mem.clear()
+                self.con.commit()
+            return deleted
+        except sqlite3.OperationalError:
+            return 0
 
     def _prune_if_needed(self) -> int:
         if self.max_entries <= 0:
@@ -319,19 +325,22 @@ class Cache:
         if not self._bloom.query(canonical_key):
             _record_cache_miss(canonical_key)
             return None
-        row = self.con.execute(
-            "SELECT value, expires_at FROM cache WHERE key = ?", (canonical_key,)
-        ).fetchone()
-        if row:
-            expires_at = row[1]
-            if expires_at is not None and float(expires_at) <= time.time():
-                self._delete_key(canonical_key)
-                _record_cache_miss(canonical_key)
-                return None
-            value = _unwrap_value(row[0])
-            self._mem[canonical_key] = value
-            _record_cache_hit(canonical_key)
-            return value
+        try:
+            row = self.con.execute(
+                "SELECT value, expires_at FROM cache WHERE key = ?", (canonical_key,)
+            ).fetchone()
+            if row:
+                expires_at = row[1]
+                if expires_at is not None and float(expires_at) <= time.time():
+                    self._delete_key(canonical_key)
+                    _record_cache_miss(canonical_key)
+                    return None
+                value = _unwrap_value(row[0])
+                self._mem[canonical_key] = value
+                _record_cache_hit(canonical_key)
+                return value
+        except sqlite3.OperationalError:
+            pass
         _record_cache_miss(canonical_key)
         return None
 
@@ -366,28 +375,31 @@ class Cache:
         if ttl_seconds is not None and ttl_seconds <= 0:
             raise ValueError("ttl_seconds must be positive (greater than zero)")
         expires_at = time.time() + ttl_seconds if ttl_seconds is not None else None
-        existing = self.con.execute(
-            "SELECT 1 FROM cache WHERE key = ?",
-            (canonical_key,),
-        ).fetchone()
-        self.con.execute(
-            "INSERT OR REPLACE INTO cache (key, value, created_at, expires_at) "
-            "VALUES (?, ?, ?, ?)",
-            (canonical_key, _wrap_value(value), time.time(), expires_at),
-        )
-        self.con.commit()
-        if existing is None:
-            self._entry_count += 1
-        self._writes_since_maintenance += 1
-        needs_maintenance = (
-            self._writes_since_maintenance >= _MAINTENANCE_INTERVAL_WRITES
-            or self._entry_count > self.max_entries
-        )
-        if needs_maintenance:
-            self._delete_expired()
-            self._prune_if_needed()
-            self._writes_since_maintenance = 0
-        self._maybe_grow_bloom()
+        try:
+            existing = self.con.execute(
+                "SELECT 1 FROM cache WHERE key = ?",
+                (canonical_key,),
+            ).fetchone()
+            self.con.execute(
+                "INSERT OR REPLACE INTO cache (key, value, created_at, expires_at) "
+                "VALUES (?, ?, ?, ?)",
+                (canonical_key, _wrap_value(value), time.time(), expires_at),
+            )
+            self.con.commit()
+            if existing is None:
+                self._entry_count += 1
+            self._writes_since_maintenance += 1
+            needs_maintenance = (
+                self._writes_since_maintenance >= _MAINTENANCE_INTERVAL_WRITES
+                or self._entry_count > self.max_entries
+            )
+            if needs_maintenance:
+                self._delete_expired()
+                self._prune_if_needed()
+                self._writes_since_maintenance = 0
+            self._maybe_grow_bloom()
+        except sqlite3.OperationalError:
+            pass
 
     def clear(self) -> None:
         self.con.execute("DELETE FROM cache")
