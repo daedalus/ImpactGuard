@@ -196,20 +196,22 @@ class CallGraphDB:
     def _acquire_file_lock(self) -> None:
         """Acquire an exclusive file-level lock for cross-process safety."""
         try:
-            self._lock_fd = open(self._lock_path, "w")
-            fcntl.flock(self._lock_fd, fcntl.LOCK_EX)
+            fd = open(self._lock_path, "w")
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            self._lock_fd = fd
         except OSError:
             self._lock_fd = None
 
     def _release_file_lock(self) -> None:
         """Release the file-level lock."""
-        if self._lock_fd is not None:
+        fd = self._lock_fd
+        if fd is not None:
+            self._lock_fd = None
             try:
-                fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
-                self._lock_fd.close()
+                fcntl.flock(fd, fcntl.LOCK_UN)
+                fd.close()
             except OSError:
                 _log.debug("Failed to release file lock: %s", self._lock_path)
-            self._lock_fd = None
 
     # ------------------------------------------------------------------
     # Build / Sync
@@ -567,20 +569,18 @@ class CallGraphDB:
                 ),
             )
 
-    def _resolve_call_target(self, rel_path: str, name: str) -> str:
-        if not name:
-            return ""
-        if ":" in name:
-            return name
-        same = self.con.execute(
+    def _resolve_from_same_file(self, rel_path: str, name: str) -> str | None:
+        """Resolve *name* within the same file."""
+        row = self.con.execute(
             "SELECT id FROM nodes WHERE file_path = ? AND name = ?",
             (rel_path, name),
         ).fetchone()
-        if same:
-            return same["id"]
+        return row["id"] if row else None
+
+    def _resolve_from_imports(self, rel_path: str, name: str) -> str | None:
+        """Resolve *name* by scanning file_imports for matching nodes."""
         imported = self.con.execute(
-            """SELECT fi.imported FROM file_imports fi
-               WHERE fi.importer = ?""",
+            "SELECT fi.imported FROM file_imports fi WHERE fi.importer = ?",
             (rel_path,),
         ).fetchall()
         for row in imported:
@@ -590,17 +590,43 @@ class CallGraphDB:
             ).fetchone()
             if row2:
                 return row2["id"]
-        if "." in name:
-            parts = name.rsplit(".", 1)
-            if len(parts) == 2:
-                mod_prefix, func_name = parts
-                for cand in (f"{mod_prefix}.py", f"{mod_prefix}/__init__.py"):
-                    row = self.con.execute(
-                        "SELECT id FROM nodes WHERE (file_path = ? OR file_path LIKE ?) AND name = ?",
-                        (cand, f"%/{cand}", func_name),
-                    ).fetchone()
-                    if row:
-                        return row["id"]
+        return None
+
+    def _resolve_from_dotted(self, name: str) -> str | None:
+        """Resolve a dotted *name* (e.g. ``pkg.mod.func``) to a node id."""
+        if "." not in name:
+            return None
+        parts = name.rsplit(".", 1)
+        if len(parts) != 2:
+            return None
+        mod_prefix, func_name = parts
+        for cand in (f"{mod_prefix}.py", f"{mod_prefix}/__init__.py"):
+            row = self.con.execute(
+                "SELECT id FROM nodes WHERE (file_path = ? OR file_path LIKE ?) AND name = ?",
+                (cand, f"%/{cand}", func_name),
+            ).fetchone()
+            if row:
+                return row["id"]
+        return None
+
+    def _resolve_call_target(self, rel_path: str, name: str) -> str:
+        if not name:
+            return ""
+        if ":" in name:
+            return name
+
+        resolved = self._resolve_from_same_file(rel_path, name)
+        if resolved is not None:
+            return resolved
+
+        resolved = self._resolve_from_imports(rel_path, name)
+        if resolved is not None:
+            return resolved
+
+        resolved = self._resolve_from_dotted(name)
+        if resolved is not None:
+            return resolved
+
         return name
 
     def _index_calls(self, file_path: str, rel_path: str | None = None) -> None:
