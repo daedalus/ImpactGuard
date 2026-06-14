@@ -202,6 +202,25 @@ def generate_html(report_data: list[dict[str, Any]]) -> str:
     return "\n".join(html)
 
 
+_LEVEL_ICONS = {
+    "HIGH": "🔴 HIGH",
+    "MEDIUM": "🟡 MED",
+    "LOW": "🟢 LOW",
+    "UNKNOWN": "⚪ UNK",
+}
+
+
+def _render_markdown_row(item: dict[str, Any]) -> str:
+    """Render a single markdown table row for the risk report."""
+    lvl = str(item.get("risk", "UNKNOWN"))
+    func = str(item.get("function", ""))
+    change = str(item.get("raw_change") or item.get("change", ""))
+    exp = item.get("exposure", 0)
+    transitive = item.get("transitive", False)
+    func_cell = f"`{func}`" + (" *(indirect)*" if transitive else "")
+    return f"| {_LEVEL_ICONS.get(lvl, lvl)} | {func_cell} | {change} | {exp:.0%} |"
+
+
 def generate_markdown(
     report_data: list[dict[str, Any]],
     semver_rec: dict[str, Any] | None = None,
@@ -262,22 +281,8 @@ def generate_markdown(
     if table_items:
         lines.append("| Risk | Function | Change | Exposure |")
         lines.append("|------|----------|--------|----------|")
-        level_icons = {
-            "HIGH": "🔴 HIGH",
-            "MEDIUM": "🟡 MED",
-            "LOW": "🟢 LOW",
-            "UNKNOWN": "⚪ UNK",
-        }
         for item in table_items:
-            lvl = str(item.get("risk", "UNKNOWN"))
-            func = str(item.get("function", ""))
-            change = str(item.get("raw_change") or item.get("change", ""))
-            exp = item.get("exposure", 0)
-            transitive = item.get("transitive", False)
-            func_cell = f"`{func}`" + (" *(indirect)*" if transitive else "")
-            lines.append(
-                f"| {level_icons.get(lvl, lvl)} | {func_cell} | {change} | {exp:.0%} |"
-            )
+            lines.append(_render_markdown_row(item))
 
         if len(sorted_items) > max_rows:
             lines.append(

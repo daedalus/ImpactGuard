@@ -612,16 +612,9 @@ def compare(  # noqa: MC0001
         functions that were skipped due to an inline ignore comment or the
         config suppress list.
     """
-    from .config import get as cfg_get
-
-    if include_private is None:
-        include_private = bool(cfg_get("analysis", "include_private", False))
-
-    suppress_list: list[str] = list(cfg_get("analysis", "suppress", [])) or []
-    if suppress:
-        suppress_list.extend(suppress)
-
-    union_parser = _resolve_union_parser(language)
+    include_private, suppress_list, union_parser = _resolve_compare_config(
+        include_private, suppress, language
+    )
 
     old_sigs: dict[str, dict[str, Any]] = _load_signatures(old)
     new_sigs: dict[str, dict[str, Any]] = _load_signatures(new)
@@ -683,3 +676,23 @@ def compare(  # noqa: MC0001
         "nonbreaking": nonbreaking_sorted,
         "suppressed": suppressed_sorted,
     }
+
+
+def _resolve_compare_config(
+    include_private: bool | None,
+    suppress: list[str] | None,
+    language: str | None,
+) -> tuple[bool, list[str], Any]:
+    """Resolve comparison configuration from params and global config."""
+    from .config import get as cfg_get
+
+    if include_private is None:
+        include_private = bool(cfg_get("analysis", "include_private", False))
+
+    suppress_list: list[str] = list(cfg_get("analysis", "suppress", [])) or []
+    if suppress:
+        suppress_list.extend(suppress)
+
+    union_parser = _resolve_union_parser(language)
+
+    return include_private, suppress_list, union_parser

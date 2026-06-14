@@ -443,6 +443,50 @@ def _extract_non_python_calls(
         )
 
 
+def _load_runtime_calls(
+    all_calls: list[dict[str, Any]],
+    runtime_path: str | None,
+    stats: dict[str, int],
+    events: list[dict[str, str]],
+) -> None:
+    """Load runtime call data and merge into all_calls."""
+    if runtime_path and Path(runtime_path).exists():
+        try:
+            all_calls.extend(
+                runtime_callsite_entries(load_runtime_observations(runtime_path))
+            )
+        except (json.JSONDecodeError, OSError) as exc:
+            _log.warning(
+                "Failed to process runtime data from '%s': %s", runtime_path, exc
+            )
+            stats["runtime_data_issues"] += 1
+            _append_analysis_event(
+                events,
+                level="error",
+                kind="runtime_data_invalid",
+                file=runtime_path,
+                message=str(exc),
+            )
+            print(f"Warning: Failed to process runtime data: {exc}", file=sys.stderr)
+    elif runtime_path:
+        stats["runtime_data_issues"] += 1
+        _append_analysis_event(
+            events,
+            level="error",
+            kind="runtime_data_missing",
+            file=runtime_path,
+            message="Runtime data path does not exist.",
+        )
+    else:
+        _append_analysis_event(
+            events,
+            level="warning",
+            kind="runtime_data_not_provided",
+            file="",
+            message="No runtime data provided; confidence may be reduced.",
+        )
+
+
 def _extract_calls_to_path(
     calls_path: str | None,
     *,
@@ -491,42 +535,7 @@ def _extract_calls_to_path(
                 events=events,
             )
 
-    if runtime_path and Path(runtime_path).exists():
-        try:
-            all_calls.extend(
-                runtime_callsite_entries(load_runtime_observations(runtime_path))
-            )
-        except (json.JSONDecodeError, OSError) as exc:
-            _log.warning(
-                "Failed to process runtime data from '%s': %s", runtime_path, exc
-            )
-            stats["runtime_data_issues"] += 1
-            _append_analysis_event(
-                events,
-                level="error",
-                kind="runtime_data_invalid",
-                file=runtime_path,
-                message=str(exc),
-            )
-            print(f"Warning: Failed to process runtime data: {exc}", file=sys.stderr)
-    elif runtime_path:
-        stats["runtime_data_issues"] += 1
-        _append_analysis_event(
-            events,
-            level="error",
-            kind="runtime_data_missing",
-            file=runtime_path,
-            message="Runtime data path does not exist.",
-        )
-    else:
-        _append_analysis_event(
-            events,
-            level="warning",
-            kind="runtime_data_not_provided",
-            file="",
-            message="No runtime data provided; confidence may be reduced.",
-        )
-
+    _load_runtime_calls(all_calls, runtime_path, stats, events)
     _write_json(output_path, all_calls)
     return output_path
 
@@ -1705,54 +1714,63 @@ def run_pipeline_diff_content(
     if not file_contents:
         raise ValueError("No supported file changes found in diff)")
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        old_dir = Path(tmpdir) / "old"
-        new_dir = Path(tmpdir) / "new"
-        old_dir.mkdir()
-        new_dir.mkdir()
+    old_files, new_files, old_dir, new_dir = _extract_diff_files(file_contents)
 
-        old_files: list[str] = []
-        new_files: list[str] = []
+    if not new_files:
+        raise ValueError("Diff contains only deletions – nothing to analyze)")
 
-        for rel_path, (old_src, new_src) in file_contents.items():
-            if old_src.strip():
-                dest = old_dir / rel_path
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                dest.write_text(old_src)
-                old_files.append(str(dest))
-            if new_src.strip():
-                dest = new_dir / rel_path
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                dest.write_text(new_src)
-                new_files.append(str(dest))
+    effective_output = output_dir or tempfile.mkdtemp(prefix="impactguard_diff_")
 
-        if not new_files:
-            raise ValueError("Diff contains only deletions – nothing to analyze)")
+    return run_pipeline(
+        old_files=old_files or None,
+        new_files=new_files,
+        runtime_path=runtime_path,
+        output_dir=effective_output,
+        config=config,
+        suggest_patch=suggest_patch,
+        show_patch=show_patch,
+        generate_fixes=generate_fixes,
+        apply_safe_fixes=apply_safe_fixes,
+        strict_extraction=strict_extraction,
+        old_base_path=str(old_dir.resolve()),
+        new_base_path=str(new_dir.resolve()),
+        max_parse_failures=max_parse_failures,
+        max_skipped_files=max_skipped_files,
+        max_call_extraction_failures=max_call_extraction_failures,
+        max_runtime_data_issues=max_runtime_data_issues,
+        block_unknown=block_unknown,
+        require_runtime=require_runtime,
+        use_call_graph=use_call_graph,
+        conservative=conservative,
+    )
 
-        effective_output = output_dir or tempfile.mkdtemp(prefix="impactguard_diff_")
 
-        return run_pipeline(
-            old_files=old_files or None,
-            new_files=new_files,
-            runtime_path=runtime_path,
-            output_dir=effective_output,
-            config=config,
-            suggest_patch=suggest_patch,
-            show_patch=show_patch,
-            generate_fixes=generate_fixes,
-            apply_safe_fixes=apply_safe_fixes,
-            strict_extraction=strict_extraction,
-            old_base_path=str(old_dir.resolve()),
-            new_base_path=str(new_dir.resolve()),
-            max_parse_failures=max_parse_failures,
-            max_skipped_files=max_skipped_files,
-            max_call_extraction_failures=max_call_extraction_failures,
-            max_runtime_data_issues=max_runtime_data_issues,
-            block_unknown=block_unknown,
-            require_runtime=require_runtime,
-            use_call_graph=use_call_graph,
-            conservative=conservative,
-        )
+def _extract_diff_files(
+    file_contents: dict[str, tuple[str, str]],
+) -> tuple[list[str], list[str], Path, Path]:
+    """Extract old/new files from parsed diff content into temp directories."""
+    tmpdir = tempfile.mkdtemp(prefix="impactguard_diff_")
+    old_dir = Path(tmpdir) / "old"
+    new_dir = Path(tmpdir) / "new"
+    old_dir.mkdir()
+    new_dir.mkdir()
+
+    old_files: list[str] = []
+    new_files: list[str] = []
+
+    for rel_path, (old_src, new_src) in file_contents.items():
+        if old_src.strip():
+            dest = old_dir / rel_path
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(old_src)
+            old_files.append(str(dest))
+        if new_src.strip():
+            dest = new_dir / rel_path
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(new_src)
+            new_files.append(str(dest))
+
+    return old_files, new_files, old_dir, new_dir
 
 
 def run_pipeline_diff(
