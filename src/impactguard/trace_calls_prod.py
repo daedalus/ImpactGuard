@@ -78,7 +78,7 @@ def trace(func: Callable[..., Any]) -> Callable[..., Any]:
                 try:
                     flush()
                 except OSError:
-                    pass
+                    _log.debug("Failed to flush trace data")
                 LAST_FLUSH = now
 
         return func(*args, **kwargs)
@@ -110,7 +110,7 @@ def flush(path: str | None = None) -> None:
                 with open(path) as f:
                     existing = json.load(f)
             except (FileNotFoundError, json.JSONDecodeError):
-                pass
+                _log.debug("No existing trace data to merge from '%s'", trace_path)
 
             for k, v in data.items():
                 existing[k] = existing.get(k, 0) + v
@@ -150,7 +150,7 @@ if _try_sigterm:
     try:
         signal.signal(signal.SIGTERM, _sigterm_chain)
     except (ValueError, OSError):
-        pass
+        _log.debug("Failed to register SIGTERM handler for trace cleanup")
 
 
 def install_tracer(module: object, prefix: str | None = None) -> None:
@@ -163,4 +163,4 @@ def install_tracer(module: object, prefix: str | None = None) -> None:
             try:
                 setattr(module, name, trace(obj))
             except (AttributeError, TypeError):
-                pass
+                _log.debug("Cannot trace attribute %s on module", name)

@@ -239,7 +239,7 @@ class Cache:
             for (key,) in rows:
                 self._bloom.add(key)
         except sqlite3.OperationalError:
-            pass
+            _log.debug("Cache bloom init skipped due to locked database")
 
     def _maybe_grow_bloom(self) -> None:
         self._bloom_check_counter += 1
@@ -340,7 +340,7 @@ class Cache:
                 _record_cache_hit(canonical_key)
                 return value
         except sqlite3.OperationalError:
-            pass
+            _log.debug("Cache get skipped due to locked database: %s", canonical_key)
         _record_cache_miss(canonical_key)
         return None
 
@@ -399,7 +399,7 @@ class Cache:
                 self._writes_since_maintenance = 0
             self._maybe_grow_bloom()
         except sqlite3.OperationalError:
-            pass
+            _log.debug("Cache set skipped due to locked database: %s", canonical_key)
 
     def clear(self) -> None:
         self.con.execute("DELETE FROM cache")

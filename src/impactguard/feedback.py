@@ -343,7 +343,7 @@ def apply_weights_to_config(
             try:
                 os.unlink(tmp_path)
             except OSError:
-                pass
+                _log.debug("Failed to clean up temp file: %s", tmp_path)
             raise
     except OSError:
         return False

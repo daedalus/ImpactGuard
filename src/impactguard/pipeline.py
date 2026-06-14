@@ -842,7 +842,7 @@ def _resolve_project_root(new_files: list[str] | None) -> str:
         try:
             return str(Path(_os.path.commonpath(new_files)).resolve())
         except ValueError:
-            pass
+            _log.debug("No common path found for new files; using CWD")
     return str(cwd.resolve())
 
 

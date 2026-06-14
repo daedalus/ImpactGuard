@@ -270,7 +270,7 @@ def _type_change_kind(
             if z3_result is not None and z3_result != "unknown":
                 return z3_result
         except ImportError:
-            pass
+            _log.debug("Z3 constraint checker not available; using heuristic fallback")
 
     # ── Heuristic fallback (set-based union parsing) ────────────────────
     parse = union_parser if union_parser is not None else _parse_union_members

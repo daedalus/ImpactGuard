@@ -21,7 +21,7 @@ def trace(func: Callable[..., Any]) -> Callable[..., Any]:
                 _ = sig.bind_partial(*args, **kwargs)  # noqa: F841 - called for side effects
                 DETAILS[name] = {"args_count": len(args), "kwargs": list(kwargs.keys())}
         except (TypeError, ValueError):
-            pass
+            _log.debug("Failed to record trace details for %s", name)
 
         return func(*args, **kwargs)
 
@@ -52,4 +52,4 @@ def install_tracer(module: object, prefix: str | None = None) -> None:
             try:
                 setattr(module, name, trace(obj))
             except (AttributeError, TypeError):
-                pass
+                _log.debug("Cannot trace attribute %s on module", name)

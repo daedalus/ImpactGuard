@@ -148,7 +148,7 @@ class _BehaviorVisitor(ast.NodeVisitor):
                 if exc_type:
                     self.raises.add(exc_type)
             except (RecursionError, ValueError):
-                pass
+                _log.debug("Failed to extract exception type from AST node")
         self.generic_visit(node)
 
     # ── Side-effect detection ─────────────────────────────────────────────────
@@ -167,7 +167,7 @@ class _BehaviorVisitor(ast.NodeVisitor):
             elif any(call_str.startswith(p) for p in _LOG_PREFIXES):
                 self.side_effects.add("logging")
         except (RecursionError, ValueError):
-            pass
+            _log.debug("Failed to analyze call for side effects")
         self.generic_visit(node)
 
     # ── Generator detection ───────────────────────────────────────────────────

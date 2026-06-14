@@ -229,7 +229,7 @@ def cmd_risk(args: argparse.Namespace) -> "int | list[dict[str, Any]]":
             try:
                 os.unlink(_tmp_path)
             except OSError:
-                pass
+                _log.debug("Failed to clean up temp file: %s", _tmp_path)
 
 
 def cmd_report(args: argparse.Namespace) -> int:
@@ -295,7 +295,7 @@ def cmd_enforce(args: argparse.Namespace) -> int:
             try:
                 os.unlink(_tmp_path)
             except OSError:
-                pass
+                _log.debug("Failed to clean up temp file: %s", _tmp_path)
 
 
 def cmd_extract_calls(args: argparse.Namespace) -> int:
@@ -486,7 +486,7 @@ def cmd_check(args: argparse.Namespace) -> int:
                         try:
                             times[p] = Path(p).stat().st_mtime
                         except OSError:
-                            pass
+                            _log.debug("Failed to stat file for watch mode: %s", p)
         return times
 
     last_times = _mtimes()

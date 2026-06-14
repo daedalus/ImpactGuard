@@ -43,7 +43,7 @@ def get_line(file: str, lineno: int) -> str:
         if 0 <= lineno - 1 < len(lines):
             return lines[lineno - 1]
     except OSError:
-        pass
+        _log.debug("Failed to read line %d from '%s'", lineno, file_path)
     return ""
 
 

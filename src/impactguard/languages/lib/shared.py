@@ -71,7 +71,7 @@ try:
     _TreeSitterParser = tree_sitter.Parser
     _TREE_SITTER_AVAILABLE = True
 except ImportError:
-    pass
+    _log.debug("tree-sitter not available; regex-based fallback will be used")
 
 
 def make_parser(language_name: str, language_object: Any) -> Any:

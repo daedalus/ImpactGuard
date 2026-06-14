@@ -90,7 +90,7 @@ def _effective_severity_scores() -> dict[str, float]:
             merged.update(overrides)
             return merged
     except (OSError, ValueError, AttributeError, KeyError):
-        pass
+        _log.debug("Failed to load severity score overrides from config")
     return SEVERITY_SCORES
 
 
@@ -148,7 +148,7 @@ def exposure(count: int, max_count: int) -> float:
         if absolute_max and absolute_max > 0:
             max_count = max(max_count, absolute_max)
     except (OSError, ValueError, AttributeError, KeyError):
-        pass
+        _log.debug("Failed to load exposure_max_count from config")
 
     return min(1.0, math.log(1 + count) / math.log(1 + max_count))
 

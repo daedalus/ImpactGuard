@@ -208,7 +208,7 @@ class CallGraphDB:
                 fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
                 self._lock_fd.close()
             except OSError:
-                pass
+                _log.debug("Failed to release file lock: %s", self._lock_path)
             self._lock_fd = None
 
     # ------------------------------------------------------------------

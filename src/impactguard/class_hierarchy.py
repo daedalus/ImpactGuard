@@ -31,7 +31,7 @@ def _base_names(bases: list[ast.expr]) -> list[str]:
         try:
             names.append(ast.unparse(base))
         except (RecursionError, ValueError):
-            pass
+            _log.debug("Failed to unparse base class name from AST node")
     return names
 
 
