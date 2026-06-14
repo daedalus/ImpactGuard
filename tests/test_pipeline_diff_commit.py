@@ -453,6 +453,8 @@ class TestRunPipelineCommit:
                     config=None,
                     suggest_patch=False,
                     show_patch=False,
+                    generate_fixes=True,
+                    apply_safe_fixes=False,
                     strict_extraction=False,
                     max_parse_failures=0,
                     max_skipped_files=0,

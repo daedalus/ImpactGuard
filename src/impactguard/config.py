@@ -299,6 +299,31 @@ def _append_top_level_issues(raw: dict[str, Any], issues: list[str]) -> None:
             )
 
 
+def _validate_float_value(key_prefix: str, value: Any, issues: list[str]) -> None:
+    if not (0.0 <= float(value) <= 10.0):
+        issues.append(
+            f"ERROR: {key_prefix} = {value!r} is outside the expected range [0.0, 10.0]."
+        )
+
+
+def _validate_bool_value(key_prefix: str, value: Any, issues: list[str]) -> None:
+    if not isinstance(value, bool):
+        issues.append(
+            f"ERROR: {key_prefix} should be a boolean (true/false), got {type(value).__name__!r}."
+        )
+
+
+def _validate_int_value(key_prefix: str, value: Any, issues: list[str]) -> None:
+    if not isinstance(value, int) or isinstance(value, bool):
+        issues.append(
+            f"ERROR: {key_prefix} should be an integer, got {type(value).__name__!r}."
+        )
+    elif value <= 0:
+        issues.append(
+            f"ERROR: {key_prefix} = {value!r} must be a positive integer."
+        )
+
+
 def _validate_config_value(
     section_name: str,
     key_name: str,
@@ -309,28 +334,15 @@ def _validate_config_value(
     """Validate a single config value against its default's shape."""
     key_prefix = f"[impactguard.{section_name}].{key_name}"
     if isinstance(default_val, float) and isinstance(value, int | float):
-        if not (0.0 <= float(value) <= 10.0):
-            issues.append(
-                f"ERROR: {key_prefix} = {value!r} is outside the expected range [0.0, 10.0]."
-            )
+        _validate_float_value(key_prefix, value, issues)
         return
 
     if isinstance(default_val, bool):
-        if not isinstance(value, bool):
-            issues.append(
-                f"ERROR: {key_prefix} should be a boolean (true/false), got {type(value).__name__!r}."
-            )
+        _validate_bool_value(key_prefix, value, issues)
         return
 
     if isinstance(default_val, int) and not isinstance(default_val, bool):
-        if not isinstance(value, int) or isinstance(value, bool):
-            issues.append(
-                f"ERROR: {key_prefix} should be an integer, got {type(value).__name__!r}."
-            )
-        elif value <= 0:
-            issues.append(
-                f"ERROR: {key_prefix} = {value!r} must be a positive integer."
-            )
+        _validate_int_value(key_prefix, value, issues)
         return
 
     if isinstance(default_val, list) and not isinstance(value, list):

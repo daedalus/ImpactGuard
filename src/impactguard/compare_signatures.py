@@ -445,6 +445,74 @@ def _append_type_change(
         breaking.append(changed_msg)
 
 
+def _heuristic_type(
+    fqname: str,
+    arg_name: str,
+    actual_type: str | None,
+    side: str,
+) -> str | None:
+    """Resolve a type, using name-based heuristic when annotation is missing."""
+    if actual_type is not None:
+        return actual_type
+    inferred = _infer_possible_type(arg_name)
+    if inferred is not None:
+        _log.debug(
+            "Inferred type '%s' for %s arg '%s' in %s (name-based heuristic)",
+            inferred, side, arg_name, fqname,
+        )
+    return inferred
+
+
+def _compare_positional_types(
+    fqname: str,
+    old_sig: dict[str, Any],
+    new_sig: dict[str, Any],
+    union_parser: Any,
+    breaking: list[str],
+    nonbreaking: list[str],
+) -> None:
+    """Compare positional argument type annotations."""
+    for old_arg, new_arg in zip(old_sig["positional"], new_sig["positional"]):
+        old_type = _heuristic_type(fqname, old_arg["name"], old_arg.get("type"), "old")
+        new_type = _heuristic_type(fqname, new_arg["name"], new_arg.get("type"), "new")
+        if old_type is None or new_type is None or old_type == new_type:
+            continue
+        kind = _type_change_kind(old_type, new_type, union_parser)
+        _append_type_change(
+            kind,
+            f"TYPE_WIDENED: {fqname} arg '{old_arg['name']}' {old_type} -> {new_type}",
+            f"TYPE_CHANGED: {fqname} arg '{old_arg['name']}' {old_type} -> {new_type}",
+            breaking,
+            nonbreaking,
+        )
+
+
+def _compare_kwonly_types(
+    fqname: str,
+    old_kw: dict[str, Any],
+    new_kw: dict[str, Any],
+    union_parser: Any,
+    breaking: list[str],
+    nonbreaking: list[str],
+) -> None:
+    """Compare keyword-only argument type annotations."""
+    for arg_name, old_arg in old_kw.items():
+        if arg_name not in new_kw:
+            continue
+        old_type = _heuristic_type(fqname, arg_name, old_arg.get("type"), "old")
+        new_type = _heuristic_type(fqname, arg_name, new_kw[arg_name].get("type"), "new")
+        if old_type is None or new_type is None or old_type == new_type:
+            continue
+        kind = _type_change_kind(old_type, new_type, union_parser)
+        _append_type_change(
+            kind,
+            f"TYPE_WIDENED: {fqname} kwarg '{arg_name}' {old_type} -> {new_type}",
+            f"TYPE_CHANGED: {fqname} kwarg '{arg_name}' {old_type} -> {new_type}",
+            breaking,
+            nonbreaking,
+        )
+
+
 def _compare_argument_types(
     fqname: str,
     old_sig: dict[str, Any],
@@ -462,49 +530,8 @@ def _compare_argument_types(
     fill in the missing side so that ``None → "int"`` or ``"str" → None``
     changes in partially-typed codebases are flagged.
     """
-
-    def _heuristic_type(
-        arg_name: str, actual_type: str | None, side: str
-    ) -> str | None:
-        if actual_type is not None:
-            return actual_type
-        inferred = _infer_possible_type(arg_name)
-        if inferred is not None:
-            _log.debug(
-                "Inferred type '%s' for %s arg '%s' in %s (name-based heuristic)",
-                inferred, side, arg_name, fqname,
-            )
-        return inferred
-
-    for old_arg, new_arg in zip(old_sig["positional"], new_sig["positional"]):
-        old_type = _heuristic_type(old_arg["name"], old_arg.get("type"), "old")
-        new_type = _heuristic_type(new_arg["name"], new_arg.get("type"), "new")
-        if old_type is None or new_type is None or old_type == new_type:
-            continue
-        kind = _type_change_kind(old_type, new_type, union_parser)
-        _append_type_change(
-            kind,
-            f"TYPE_WIDENED: {fqname} arg '{old_arg['name']}' {old_type} -> {new_type}",
-            f"TYPE_CHANGED: {fqname} arg '{old_arg['name']}' {old_type} -> {new_type}",
-            breaking,
-            nonbreaking,
-        )
-
-    for arg_name, old_arg in old_kw.items():
-        if arg_name not in new_kw:
-            continue
-        old_type = _heuristic_type(arg_name, old_arg.get("type"), "old")
-        new_type = _heuristic_type(arg_name, new_kw[arg_name].get("type"), "new")
-        if old_type is None or new_type is None or old_type == new_type:
-            continue
-        kind = _type_change_kind(old_type, new_type, union_parser)
-        _append_type_change(
-            kind,
-            f"TYPE_WIDENED: {fqname} kwarg '{arg_name}' {old_type} -> {new_type}",
-            f"TYPE_CHANGED: {fqname} kwarg '{arg_name}' {old_type} -> {new_type}",
-            breaking,
-            nonbreaking,
-        )
+    _compare_positional_types(fqname, old_sig, new_sig, union_parser, breaking, nonbreaking)
+    _compare_kwonly_types(fqname, old_kw, new_kw, union_parser, breaking, nonbreaking)
 
 
 def _compare_return_type(

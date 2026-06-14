@@ -209,6 +209,35 @@ def _split_generic_args(s: str) -> list[str]:
 # ── Core subsumption check ────────────────────────────────────────────────────
 
 
+def _run_subsumption_query(
+    pred1: Any,
+    pred2: Any,
+    v: Any,
+    timeout_ms: int,
+    negate: bool,
+    z3: Any,
+) -> Any:
+    """Run a single Z3 subsumption query and return the check result."""
+    solver = z3.Solver()
+    solver.set("timeout", timeout_ms)
+    solver.add(pred1(v))
+    solver.add(z3.Not(pred2(v)) if negate else pred2(v))
+    return solver.check()
+
+
+def _classify_results(widening_result: Any, narrowing_result: Any, z3: Any) -> str | None:
+    """Classify paired widening/narrowing Z3 check results."""
+    if widening_result == z3.unknown or narrowing_result == z3.unknown:
+        return "unknown"
+    is_widening_ce = widening_result == z3.sat
+    is_narrowing_ce = narrowing_result == z3.sat
+    if is_widening_ce and is_narrowing_ce:
+        return "changed"
+    if is_widening_ce:
+        return "narrowing"
+    return "widening"
+
+
 def check_subsumption(
     old_type: str,
     new_type: str,
@@ -242,33 +271,10 @@ def check_subsumption(
     val_sort = _value_sort(z3)
     v = z3.Const("v", val_sort)
 
-    # ── Direction 1: widening? ∃v: old(v) ∧ ¬new(v) ──────────────────────
-    solver = z3.Solver()
-    solver.set("timeout", timeout_ms)
-    solver.add(old_pred(v))
-    solver.add(z3.Not(new_pred(v)))
+    widening_result = _run_subsumption_query(old_pred, new_pred, v, timeout_ms, True, z3)
+    narrowing_result = _run_subsumption_query(new_pred, old_pred, v, timeout_ms, True, z3)
 
-    widening_result = solver.check()
-    is_widening_counterexample = (widening_result == z3.sat)
-
-    # ── Direction 2: narrowing? ∃v: new(v) ∧ ¬old(v) ─────────────────────
-    solver2 = z3.Solver()
-    solver2.set("timeout", timeout_ms)
-    solver2.add(new_pred(v))
-    solver2.add(z3.Not(old_pred(v)))
-
-    narrowing_result = solver2.check()
-    is_narrowing_counterexample = (narrowing_result == z3.sat)
-
-    # ── Classify ──────────────────────────────────────────────────────────
-    if widening_result == z3.unknown or narrowing_result == z3.unknown:
-        return "unknown"
-
-    if is_widening_counterexample and is_narrowing_counterexample:
-        return "changed"
-    if is_widening_counterexample:
-        return "narrowing"
-    return "widening"
+    return _classify_results(widening_result, narrowing_result, z3)
 
 
 # ── High-level public API ─────────────────────────────────────────────────────

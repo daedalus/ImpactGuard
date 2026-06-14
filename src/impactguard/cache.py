@@ -368,6 +368,31 @@ class Cache:
         _record_cache_miss(canonical_key)
         return SENTINEL
 
+    def _maybe_maintain(self) -> None:
+        """Run expired-delete and LRU prune if write interval reached."""
+        if self._writes_since_maintenance < _MAINTENANCE_INTERVAL_WRITES:
+            return
+        self._delete_expired()
+        self._prune_if_needed()
+        self._writes_since_maintenance = 0
+
+    def _persist_entry(
+        self, canonical_key: str, value: Any, expires_at: float | None
+    ) -> None:
+        """Insert or replace a cache entry in SQLite."""
+        existing = self.con.execute(
+            "SELECT 1 FROM cache WHERE key = ?",
+            (canonical_key,),
+        ).fetchone()
+        self.con.execute(
+            "INSERT OR REPLACE INTO cache (key, value, created_at, expires_at) "
+            "VALUES (?, ?, ?, ?)",
+            (canonical_key, _wrap_value(value), time.time(), expires_at),
+        )
+        self.con.commit()
+        if existing is None:
+            self._entry_count += 1
+
     def set(self, key: str, value: Any, *, ttl_seconds: int | None = None) -> None:
         canonical_key = self.canonicalize_key(key)
         self._mem[canonical_key] = value
@@ -376,27 +401,9 @@ class Cache:
             raise ValueError("ttl_seconds must be positive (greater than zero)")
         expires_at = time.time() + ttl_seconds if ttl_seconds is not None else None
         try:
-            existing = self.con.execute(
-                "SELECT 1 FROM cache WHERE key = ?",
-                (canonical_key,),
-            ).fetchone()
-            self.con.execute(
-                "INSERT OR REPLACE INTO cache (key, value, created_at, expires_at) "
-                "VALUES (?, ?, ?, ?)",
-                (canonical_key, _wrap_value(value), time.time(), expires_at),
-            )
-            self.con.commit()
-            if existing is None:
-                self._entry_count += 1
+            self._persist_entry(canonical_key, value, expires_at)
             self._writes_since_maintenance += 1
-            needs_maintenance = (
-                self._writes_since_maintenance >= _MAINTENANCE_INTERVAL_WRITES
-                or self._entry_count > self.max_entries
-            )
-            if needs_maintenance:
-                self._delete_expired()
-                self._prune_if_needed()
-                self._writes_since_maintenance = 0
+            self._maybe_maintain()
             self._maybe_grow_bloom()
         except sqlite3.OperationalError:
             logger.debug("Cache set skipped due to locked database: %s", canonical_key)

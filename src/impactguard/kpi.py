@@ -212,6 +212,13 @@ def compute_kpis(
     }
 
 
+def _format_metric_line(label: str, value: str, suffix: str = "") -> str:
+    """Format a single KPI metric line with optional suffix."""
+    if suffix:
+        return f"  {label} : {value}  {suffix}"
+    return f"  {label} : {value}"
+
+
 def format_kpi_text(kpis: dict[str, Any]) -> str:
     """Format KPIs as a human-readable text dashboard.
 
@@ -248,41 +255,22 @@ def format_kpi_text(kpis: dict[str, Any]) -> str:
 
     lines.append("")
 
-    ms = kpis.get("mean_severity", 0.0)
-    lines.append(f"  Mean severity (S)      : {ms:.3f}  (avg breakage probability)")
-
-    mean_risk = kpis.get("mean_risk_score", 0.0)
-    lines.append(f"  Mean risk score (E×C)  : {mean_risk:.3f}")
-
-    high_rate = kpis.get("high_rate", 0.0)
-    lines.append(f"  HIGH rate              : {high_rate:.1%}")
-
-    me = kpis.get("mean_exposure", 0.0)
-    lines.append(f"  Mean exposure (E)      : {me:.1%}  (avg call-trace coverage)")
-
-    mc = kpis.get("mean_confidence", 0.0)
-    lines.append(
-        f"  Mean confidence (C)    : {mc:.3f}  (avg runtime telemetry strength)"
-    )
-
-    cc = kpis.get("confidence_coverage", 0.0)
-    lines.append(f"  Confidence coverage    : {cc:.1%}  (fraction with runtime data)")
+    lines.append(_format_metric_line("Mean severity (S)", f"{kpis.get('mean_severity', 0.0):.3f}", "(avg breakage probability)"))
+    lines.append(_format_metric_line("Mean risk score (E×C)", f"{kpis.get('mean_risk_score', 0.0):.3f}"))
+    lines.append(_format_metric_line("HIGH rate", f"{kpis.get('high_rate', 0.0):.1%}"))
+    lines.append(_format_metric_line("Mean exposure (E)", f"{kpis.get('mean_exposure', 0.0):.1%}", "(avg call-trace coverage)"))
+    lines.append(_format_metric_line("Mean confidence (C)", f"{kpis.get('mean_confidence', 0.0):.3f}", "(avg runtime telemetry strength)"))
+    lines.append(_format_metric_line("Confidence coverage", f"{kpis.get('confidence_coverage', 0.0):.1%}", "(fraction with runtime data)"))
 
     par = kpis.get("patch_acceptance_rate")
-    if par is None:
-        par_str = "n/a  (no feedback data)"
-    else:
-        par_str = f"{par:.1%}"
-    lines.append(f"  Patch acceptance rate  : {par_str}")
+    par_str = "n/a  (no feedback data)" if par is None else f"{par:.1%}"
+    lines.append(_format_metric_line("Patch acceptance rate", par_str))
 
-    fpp = kpis.get("false_positive_proxy", 0.0)
-    lines.append(f"  False-positive proxy   : {fpp:.1%}  (HIGH items w/ exposure < 5%)")
+    lines.append(_format_metric_line("False-positive proxy", f"{kpis.get('false_positive_proxy', 0.0):.1%}", "(HIGH items w/ exposure < 5%)"))
 
     tc = kpis.get("transitive_count", 0)
     tr = kpis.get("transitive_rate", 0.0)
-    lines.append(
-        f"  Transitive items       : {tc}  ({tr:.1%} of total — indirect callers)"
-    )
+    lines.append(_format_metric_line("Transitive items", f"{tc}  ({tr:.1%} of total — indirect callers)"))
 
     lines.append("────────────────────────────────────────────────────────")
 

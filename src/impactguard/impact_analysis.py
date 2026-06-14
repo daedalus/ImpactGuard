@@ -243,6 +243,16 @@ def _append_transitive_issues(
 # ── Core analysis ─────────────────────────────────────────────────────────────
 
 
+def _check_arity_match(call: dict[str, Any], func: dict[str, Any]) -> bool:
+    """Return True when the call-site arity is compatible with the function signature."""
+    if call.get("has_starargs") or call.get("has_kwargs"):
+        return True
+    min_args = required_positional(func)
+    max_args = total_positional(func) if not func.get("vararg") else float("inf")
+    argc = call.get("args", 0)
+    return argc >= min_args and argc <= max_args
+
+
 def analyze(
     sigs_path: str, calls_path: str, runtime_path: str | None = None
 ) -> list[dict[str, Any]]:
@@ -285,15 +295,11 @@ def analyze(
 
         f = funcs[target]
 
-        if call.get("has_starargs") or call.get("has_kwargs"):
+        if _check_arity_match(call, f):
             continue
 
         min_args = required_positional(f)
-        max_args = total_positional(f) if not f.get("vararg") else float("inf")
         argc = call.get("args", 0)
-
-        if argc >= min_args and argc <= max_args:
-            continue
 
         directly_affected.add(target)
         issues.append(_build_issue(call, target, f, argc, min_args, runtime, max_count))

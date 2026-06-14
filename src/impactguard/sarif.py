@@ -58,6 +58,18 @@ def _build_rules(
     return rules, seen
 
 
+def _build_physical_location(func: str) -> dict[str, Any]:
+    """Build a SARIF physicalLocation dict for a function."""
+    return {
+        "artifactLocation": {
+            "uri": func,
+        },
+        "region": {
+            "startLine": 1,
+        },
+    }
+
+
 def _build_result(item: dict[str, Any], rule_index: int) -> dict[str, Any]:
     func = item.get("function", "unknown")
     change = item.get("change", "")
@@ -74,14 +86,7 @@ def _build_result(item: dict[str, Any], rule_index: int) -> dict[str, Any]:
         "message": {"text": f"{risk} — {func}: {change}"},
         "locations": [
             {
-                "physicalLocation": {
-                    "artifactLocation": {
-                        "uri": func,
-                    },
-                    "region": {
-                        "startLine": 1,
-                    },
-                }
+                "physicalLocation": _build_physical_location(func),
             }
         ],
         "properties": {

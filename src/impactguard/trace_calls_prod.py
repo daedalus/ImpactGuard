@@ -90,22 +90,13 @@ def trace(func: Callable[..., Any]) -> Callable[..., Any]:
     return wrapper
 
 
-def flush(path: str | None = None) -> None:
+def _merge_and_write(data: dict[str, int], path: str, dir_name: str) -> None:
+    """Read existing trace data, merge *data* into it, and write atomically."""
     import fcntl
     import tempfile
 
-    if path is None:
-        path = ".runtime_calls.json"
-
-    with _lock:
-        data = dict(COUNTS)
-        COUNTS.clear()
-
-    dir_name = os.path.dirname(os.path.abspath(path)) or "."
     lock_path = path + ".lock"
 
-    # Read-merge-write under an fcntl flock so that multiple processes (e.g.
-    # gunicorn workers) can safely flush without clobbering each other.
     with open(lock_path, "w") as lf:
         fcntl.flock(lf, fcntl.LOCK_EX)
         try:
@@ -128,6 +119,18 @@ def flush(path: str | None = None) -> None:
             os.replace(temp_path, path)
         finally:
             fcntl.flock(lf, fcntl.LOCK_UN)
+
+
+def flush(path: str | None = None) -> None:
+    if path is None:
+        path = ".runtime_calls.json"
+
+    with _lock:
+        data = dict(COUNTS)
+        COUNTS.clear()
+
+    dir_name = os.path.dirname(os.path.abspath(path)) or "."
+    _merge_and_write(data, path, dir_name)
 
 
 import atexit as _atexit

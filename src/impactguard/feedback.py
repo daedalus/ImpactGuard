@@ -370,6 +370,46 @@ def _save_raw(path: str, outcomes: list[dict[str, Any]]) -> None:
     resolved.write_text(json.dumps(outcomes, indent=2))
 
 
+def _find_section_bounds(lines: list[str], header: str) -> tuple[int | None, int]:
+    """Return (start_idx, end_idx) for the section matching *header*."""
+    start_idx: int | None = None
+    for i, line in enumerate(lines):
+        if line.strip() == header:
+            start_idx = i
+            break
+
+    if start_idx is None:
+        return None, len(lines)
+
+    end_idx = len(lines)
+    for i in range(start_idx + 1, len(lines)):
+        stripped_line = lines[i].strip()
+        if stripped_line.startswith("[") and not stripped_line.startswith("[#"):
+            end_idx = i
+            break
+
+    return start_idx, end_idx
+
+
+def _update_existing_keys(
+    section_lines: list[str], values: dict[str, float]
+) -> list[str]:
+    """Update existing keys in *section_lines* from *values*, return updated list."""
+    remaining = dict(values)
+    for j, sline in enumerate(section_lines):
+        stripped = sline.strip()
+        for k in list(remaining.keys()):
+            if stripped.startswith(k + " ") or stripped.startswith(k + "="):
+                section_lines[j] = f"{k} = {remaining[k]:.4f}"
+                del remaining[k]
+                break
+
+    for k, v in remaining.items():
+        section_lines.append(f"{k} = {v:.4f}")
+
+    return section_lines
+
+
 def _upsert_toml_section(
     lines: list[str],
     section_header: str,
@@ -384,43 +424,16 @@ def _upsert_toml_section(
     header = f"[{section_header}]"
     result = list(lines)
 
-    # Find section start
-    start_idx: int | None = None
-    for i, line in enumerate(result):
-        if line.strip() == header:
-            start_idx = i
-            break
+    start_idx, end_idx = _find_section_bounds(result, header)
 
     if start_idx is None:
-        # Append the section at the end
         result.append("")
         result.append(header)
         for k, v in values.items():
             result.append(f"{k} = {v:.4f}")
         return result
 
-    # Find section end (next section header or EOF)
-    end_idx = len(result)
-    for i in range(start_idx + 1, len(result)):
-        stripped_line = result[i].strip()
-        if stripped_line.startswith("[") and not stripped_line.startswith("[#"):
-            end_idx = i
-            break
-
     section_lines = result[start_idx + 1 : end_idx]
-    remaining_values = dict(values)
-
-    # Update existing keys
-    for j, sline in enumerate(section_lines):
-        stripped = sline.strip()
-        for k in list(remaining_values.keys()):
-            if stripped.startswith(k + " ") or stripped.startswith(k + "="):
-                section_lines[j] = f"{k} = {remaining_values[k]:.4f}"
-                del remaining_values[k]
-                break
-
-    # Append new keys not already present
-    for k, v in remaining_values.items():
-        section_lines.append(f"{k} = {v:.4f}")
+    section_lines = _update_existing_keys(section_lines, dict(values))
 
     return result[: start_idx + 1] + section_lines + result[end_idx:]

@@ -129,6 +129,22 @@ def find_implementations(hierarchy: Hierarchy) -> dict[str, list[str]]:
     return implementations
 
 
+def _extract_method_info(change: str) -> tuple[str, str, str] | None:
+    """Extract (fqname, class_name, method_name) from a change string.
+
+    Returns *None* when the change is not a method on a class.
+    """
+    parts = change.split(": ", 1)
+    if len(parts) < 2:
+        return None
+    fqname = parts[1].strip()
+    name_part = fqname.split(":")[-1]
+    if "." not in name_part:
+        return None
+    class_name, method_name = name_part.split(".", 1)
+    return fqname, class_name, method_name
+
+
 def get_cascade_changes(
     comparison: dict[str, list[str]],
     hierarchy: Hierarchy,
@@ -157,26 +173,18 @@ def get_cascade_changes(
     all_changes = comparison.get("breaking", []) + comparison.get("nonbreaking", [])
 
     for change in all_changes:
-        # Look for patterns like "REMOVED: some_file.py:MyProtocol.method"
-        parts = change.split(": ", 1)
-        if len(parts) < 2:
+        info_tuple = _extract_method_info(change)
+        if info_tuple is None:
             continue
-        fqname = parts[1].strip()
+        fqname, class_name, method_name = info_tuple
 
-        # Extract class.method from fqname (format: "file:ClassName.method")
-        name_part = fqname.split(":")[-1]
-        if "." not in name_part:
-            continue  # top-level function, not a method
-
-        class_name, method_name = name_part.split(".", 1)
-        info = hierarchy.get(class_name)
-        if info is None:
+        class_info = hierarchy.get(class_name)
+        if class_info is None:
             continue
 
-        if not (info["is_protocol"] or info["is_abc"]):
+        if not (class_info["is_protocol"] or class_info["is_abc"]):
             continue
 
-        # Emit one cascade message per concrete implementation
         for concrete in implementations.get(class_name, []):
             cascade.append(
                 f"CASCADE: {fqname} → {concrete}.{method_name} "

@@ -1765,13 +1765,17 @@ def _parse_unified_diff(diff_text: str) -> dict[str, tuple[str, str]]:
             name,
         )
 
+    def _handle_context(line: str) -> None:
+        old_lines.append(line[1:])
+        new_lines.append(line[1:])
+
     dispatch: dict[str, Any] = {
         "old_file": _handle_old_file,
         "new_file": _handle_new_file,
         "hunk": lambda _: None,
         "removed": lambda line: old_lines.append(line[1:]),
         "added": lambda line: new_lines.append(line[1:]),
-        "context": lambda line: (old_lines.append(line[1:]), new_lines.append(line[1:])),
+        "context": _handle_context,
         "binary": lambda _: _handle_binary(),
     }
 

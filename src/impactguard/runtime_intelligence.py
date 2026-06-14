@@ -134,6 +134,41 @@ def _normalize_runtime_entry(entry: object) -> dict[str, Any] | None:
     return normalized
 
 
+def _normalize_dict_payload(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Normalize a dict-shaped runtime payload (list container or nested dict)."""
+    for key in _RUNTIME_CONTAINER_KEYS:
+        nested = data.get(key)
+        if isinstance(nested, list):
+            return normalize_runtime_payload(nested)
+
+    direct = _normalize_runtime_entry(data)
+    if direct is not None:
+        return [direct]
+
+    return _normalize_mapping_payload(data)
+
+
+def _normalize_mapping_payload(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Normalize a name→value mapping into runtime observations."""
+    observations: list[dict[str, Any]] = []
+    for name, value in data.items():
+        if isinstance(value, dict):
+            entry = dict(value)
+            entry.setdefault("function", name)
+            normalized = _normalize_runtime_entry(entry)
+        else:
+            count = _coerce_non_negative_int(value)
+            normalized = (
+                _normalize_runtime_entry({"function": name, "count": count})
+                if count is not None
+                else None
+            )
+        if normalized is None:
+            continue
+        observations.append(normalized)
+    return observations
+
+
 def normalize_runtime_payload(data: object) -> list[dict[str, Any]]:
     """Normalize supported runtime payload shapes into ImpactGuard observations."""
     if isinstance(data, list):
@@ -144,32 +179,7 @@ def normalize_runtime_payload(data: object) -> list[dict[str, Any]]:
         ]
 
     if isinstance(data, dict):
-        for key in _RUNTIME_CONTAINER_KEYS:
-            nested = data.get(key)
-            if isinstance(nested, list):
-                return normalize_runtime_payload(nested)
-
-        direct = _normalize_runtime_entry(data)
-        if direct is not None:
-            return [direct]
-
-        observations: list[dict[str, Any]] = []
-        for name, value in data.items():
-            if isinstance(value, dict):
-                entry = dict(value)
-                entry.setdefault("function", name)
-                normalized = _normalize_runtime_entry(entry)
-            else:
-                count = _coerce_non_negative_int(value)
-                normalized = (
-                    _normalize_runtime_entry({"function": name, "count": count})
-                    if count is not None
-                    else None
-                )
-            if normalized is None:
-                continue
-            observations.append(normalized)
-        return observations
+        return _normalize_dict_payload(data)
 
     return []
 
