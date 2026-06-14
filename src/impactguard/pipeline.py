@@ -642,6 +642,41 @@ def _calibrate_feedback(
         )
 
 
+def _show_and_collect_patch(
+    item: dict[str, Any],
+    suggest_patch: bool,
+    show_patch: bool,
+    patches: dict[str, Any],
+    patch_dir: Path,
+) -> None:
+    """Show patch content and/or collect it into the patches dict."""
+    patch_content = item["patch"]
+
+    if show_patch:
+        func_name = item.get("function", "unknown")
+        if ":" in func_name:
+            func_name = func_name.split(":")[-1]
+        print(f"\n=== Patched: {func_name} ===")
+        print(patch_content)
+
+    if not suggest_patch:
+        return
+
+    counter = len(patches) + 1
+    patch_file = patch_dir / f"patch_{counter}.py"
+    patch_file.write_text(patch_content)
+    patches[f"patch_{counter}"] = {
+        "type": item.get("type", ""),
+        "file": str(patch_file),
+        "content": patch_content,
+        "confidence_level": item.get("confidence_level"),
+        "confidence": item.get("confidence"),
+        "auto_applicable": item.get("auto_applicable", False),
+        "function": item.get("function"),
+        "param_name": item.get("param_name"),
+    }
+
+
 def _generate_patches(
     fixes: list[dict[str, Any]],
     *,
@@ -658,32 +693,7 @@ def _generate_patches(
     for item in fixes:
         if "patch" not in item or not item["patch"]:
             continue
-        patch_content = item["patch"]
-        patch_type = item.get("type", "")
-
-        if show_patch:
-            func_name = item.get("function", "unknown")
-            if ":" in func_name:
-                func_name = func_name.split(":")[-1]
-            print(f"\n=== Patched: {func_name} ===")
-            print(patch_content)
-
-        if not suggest_patch:
-            continue
-
-        counter = len(patches) + 1
-        patch_file = patch_dir / f"patch_{counter}.py"
-        patch_file.write_text(patch_content)
-        patches[f"patch_{counter}"] = {
-            "type": patch_type,
-            "file": str(patch_file),
-            "content": patch_content,
-            "confidence_level": item.get("confidence_level"),
-            "confidence": item.get("confidence"),
-            "auto_applicable": item.get("auto_applicable", False),
-            "function": item.get("function"),
-            "param_name": item.get("param_name"),
-        }
+        _show_and_collect_patch(item, suggest_patch, show_patch, patches, patch_dir)
 
     return patches
 
@@ -739,23 +749,29 @@ def _inject_coverage_disclaimer(html: str, reliability_stats: dict[str, int]) ->
     return disclaimer + html
 
 
+def _is_auto_fixable_high(item: dict[str, Any]) -> bool | None:
+    """Return True if item is HIGH with auto-fixable candidates, False otherwise, None if not HIGH."""
+    if item.get("risk") != "HIGH":
+        return None
+    candidates = item.get("fix_candidates", [])
+    if not isinstance(candidates, list):
+        return False
+    return any(
+        isinstance(fc, dict)
+        and fc.get("type") == "cst_patch"
+        and bool(fc.get("auto_applicable", False))
+        for fc in candidates
+    )
+
+
 def _count_fixability(risk: list[dict[str, Any]]) -> tuple[int, int]:
     high_auto = 0
     high_manual = 0
     for item in risk:
-        if item.get("risk") != "HIGH":
+        result = _is_auto_fixable_high(item)
+        if result is None:
             continue
-        candidates = item.get("fix_candidates", [])
-        if not isinstance(candidates, list):
-            high_manual += 1
-            continue
-        has_auto = any(
-            isinstance(fc, dict)
-            and fc.get("type") == "cst_patch"
-            and bool(fc.get("auto_applicable", False))
-            for fc in candidates
-        )
-        if has_auto:
+        if result:
             high_auto += 1
         else:
             high_manual += 1

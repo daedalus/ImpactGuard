@@ -7,6 +7,51 @@ from ._logging import get_logger
 _log = get_logger(__name__)
 
 
+def _print_risk_item(item: dict[str, Any]) -> tuple[bool, bool]:
+    """Print a single risk item and return (is_high, is_unknown)."""
+    risk = item.get("risk", "LOW")
+    func = item.get("function", "unknown")
+
+    if risk == "HIGH":
+        _log.warning(
+            "HIGH-risk change detected: %s — %s", func, item.get("change", "")
+        )
+        print(f"🔴 HIGH — {func}")
+        print(f"   change: {item.get('change', '')}")
+        print(f"   exposure: {item.get('exposure', 0):.2%}")
+        print(f"   confidence: {item.get('confidence', 0):.2f}")
+        print()
+        return True, False
+
+    if risk == "UNKNOWN":
+        _log.warning("UNKNOWN-risk change: %s — %s", func, item.get("change", ""))
+        reason = "insufficient runtime data" if item.get("confidence", 0) < 0.3 else "below confidence threshold"
+        print(f"🟡 UNKNOWN — {func}")
+        print(f"   change: {item.get('change', '')}")
+        print(f"   reason: {reason}")
+        print()
+        return False, True
+
+    return False, False
+
+
+def _evaluate_blocking(
+    has_high: bool, has_unknown: bool, block_unknown: bool
+) -> tuple[bool, int]:
+    """Return (blocked, exit_code) based on risk flags."""
+    if has_high:
+        _log.error("Gate BLOCKED: HIGH risk API changes detected")
+        print("❌ Blocking: HIGH risk API changes detected")
+        return True, 1
+
+    if has_unknown and block_unknown:
+        _log.error("Gate BLOCKED: UNKNOWN risk API changes (block_unknown=true)")
+        print("❌ Blocking: UNKNOWN risk API changes detected (block_unknown=true)")
+        return True, 1
+
+    return False, 0
+
+
 def enforce(
     diff_path: str,
     runtime_path: str,
@@ -48,37 +93,13 @@ def enforce(
     has_unknown = False
 
     for item in report:
-        risk = item.get("risk", "LOW")
-        func = item.get("function", "unknown")
+        item_high, item_unknown = _print_risk_item(item)
+        has_high = has_high or item_high
+        has_unknown = has_unknown or item_unknown
 
-        if risk == "HIGH":
-            has_high = True
-            _log.warning(
-                "HIGH-risk change detected: %s — %s", func, item.get("change", "")
-            )
-            print(f"🔴 HIGH — {func}")
-            print(f"   change: {item.get('change', '')}")
-            print(f"   exposure: {item.get('exposure', 0):.2%}")
-            print(f"   confidence: {item.get('confidence', 0):.2f}")
-            print()
-        elif risk == "UNKNOWN":
-            has_unknown = True
-            _log.warning("UNKNOWN-risk change: %s — %s", func, item.get("change", ""))
-            reason = "insufficient runtime data" if item.get("confidence", 0) < 0.3 else "below confidence threshold"
-            print(f"🟡 UNKNOWN — {func}")
-            print(f"   change: {item.get('change', '')}")
-            print(f"   reason: {reason}")
-            print()
-
-    if has_high:
-        _log.error("Gate BLOCKED: HIGH risk API changes detected")
-        print("❌ Blocking: HIGH risk API changes detected")
-        return 1
-
-    if has_unknown and block_unknown:
-        _log.error("Gate BLOCKED: UNKNOWN risk API changes (block_unknown=true)")
-        print("❌ Blocking: UNKNOWN risk API changes detected (block_unknown=true)")
-        return 1
+    blocked, exit_code = _evaluate_blocking(has_high, has_unknown, block_unknown)
+    if blocked:
+        return exit_code
 
     if has_unknown:
         _log.warning("Unknown risk areas detected — not blocking")
@@ -104,6 +125,25 @@ def _print_unknown_warning() -> None:
     print("  [impactguard.risk] config, or pass --block-unknown on the CLI.", file=sys.stderr)
     print(line, file=sys.stderr)
     print()
+
+
+def _print_risk_item_brief(item: dict[str, Any], block_unknown: bool) -> tuple[bool, bool]:
+    """Print a single risk item (brief mode) and return (is_high, is_unknown)."""
+    risk = item.get("risk", "LOW")
+    func = item.get("function", "unknown")
+
+    if risk == "HIGH":
+        print(f"🔴 HIGH — {func}")
+        return True, False
+
+    if risk == "UNKNOWN":
+        reason = "insufficient runtime data" if item.get("confidence", 0) < 0.3 else "below confidence threshold"
+        print(f"🟡 UNKNOWN — {func}  ({reason})")
+        if block_unknown:
+            print(f"   change: {item.get('change', '')}")
+        return False, True
+
+    return False, False
 
 
 def enforce_report(report_path: str, block_unknown: bool | None = None) -> int:
@@ -135,26 +175,13 @@ def enforce_report(report_path: str, block_unknown: bool | None = None) -> int:
     has_unknown = False
 
     for item in report:
-        risk = item.get("risk", "LOW")
-        func = item.get("function", "unknown")
+        item_high, item_unknown = _print_risk_item_brief(item, block_unknown)
+        has_high = has_high or item_high
+        has_unknown = has_unknown or item_unknown
 
-        if risk == "HIGH":
-            has_high = True
-            print(f"🔴 HIGH — {func}")
-        elif risk == "UNKNOWN":
-            has_unknown = True
-            reason = "insufficient runtime data" if item.get("confidence", 0) < 0.3 else "below confidence threshold"
-            print(f"🟡 UNKNOWN — {func}  ({reason})")
-            if block_unknown:
-                print(f"   change: {item.get('change', '')}")
-
-    if has_high:
-        print("❌ Blocking: HIGH risk API changes detected")
-        return 1
-
-    if has_unknown and block_unknown:
-        print("❌ Blocking: UNKNOWN risk API changes detected (block_unknown=true)")
-        return 1
+    blocked, exit_code = _evaluate_blocking(has_high, has_unknown, block_unknown)
+    if blocked:
+        return exit_code
 
     if has_unknown:
         _print_unknown_warning()
