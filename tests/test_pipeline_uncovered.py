@@ -65,7 +65,7 @@ def test_summarize_files_over_limit():
 
     files = ["a.py", "b.py", "c.py", "d.py"]
     result = _summarize_files(files, limit=2)
-    assert "+2 more" in result
+    assert "+2/4 total)" in result
 
 
 def test_has_basename_collisions():

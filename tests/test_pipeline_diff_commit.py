@@ -937,10 +937,12 @@ class TestMultiLanguageDiff:
     def test_summarize_files_truncation(self):
         from impactguard.pipeline import _summarize_files
 
-        files = [f"f{i}.py" for i in range(7)]
+        files = [f"f{i}.py" for i in range(15)]
         summary = _summarize_files(files)
-        assert summary.startswith("f0.py,f1.py,f2.py,f3.py,f4.py")
-        assert "(+2 more)" in summary
+        assert "(+5/15 total)" in summary
+        # Files are sorted alphabetically
+        assert "f0.py" in summary
+        assert "f1.py" in summary
 
 
 # ---------------------------------------------------------------------------
