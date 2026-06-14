@@ -104,6 +104,30 @@ def _group_files_by_extractor(files: list[str]) -> dict[str, tuple[Any, list[str
     return groups
 
 
+def _process_extraction_warnings(
+    caught: list[warnings.WarningMessage],
+    lang_files: list[str],
+    stats: dict[str, int] | None,
+    events: list[dict[str, str]] | None,
+) -> None:
+    """Record extraction warnings from the warnings context manager."""
+    for w in caught:
+        msg = str(w.message)
+        if "regex-based fallback" not in msg:
+            continue
+        if stats is not None:
+            stats["fallback_used"] = stats.get("fallback_used", 0) + 1
+        if events is not None:
+            events.append(
+                {
+                    "level": "warning",
+                    "kind": "fallback_used",
+                    "file": _summarize_files(lang_files),
+                    "message": msg,
+                }
+            )
+
+
 def _extract_group(
     extractor: Any,
     lang_files: list[str],
@@ -130,20 +154,7 @@ def _extract_group(
                 kwargs["strict"] = True
             extracted: list[dict[str, Any]] = method(lang_files, **kwargs)
 
-        for w in caught:
-            msg = str(w.message)
-            if "regex-based fallback" in msg:
-                if stats is not None:
-                    stats["fallback_used"] = stats.get("fallback_used", 0) + 1
-                if events is not None:
-                    events.append(
-                        {
-                            "level": "warning",
-                            "kind": "fallback_used",
-                            "file": _summarize_files(lang_files),
-                            "message": msg,
-                        }
-                    )
+        _process_extraction_warnings(caught, lang_files, stats, events)
         return extracted
     except (OSError, SyntaxError, UnicodeDecodeError, ValueError, TypeError) as exc:
         if stats is not None:
@@ -778,6 +789,16 @@ def _count_fixability(risk: list[dict[str, Any]]) -> tuple[int, int]:
     return high_auto, high_manual
 
 
+def _count_risk_level(risk: list[dict[str, Any]], level: str) -> int:
+    """Count risk items at a specific level."""
+    return sum(1 for item in risk if item.get("risk") == level)
+
+
+def _has_partial_analysis(reliability_stats: dict[str, int]) -> bool:
+    """Check if any reliability counter indicates partial analysis."""
+    return any(reliability_stats.get(key, 0) > 0 for key in _PARTIAL_ANALYSIS_COUNTERS)
+
+
 def _finalize_analysis_status(
     *,
     result: dict[str, Any],
@@ -797,9 +818,7 @@ def _finalize_analysis_status(
 
         block_unknown = bool(cfg_get("risk", "block_unknown", True))
     """Populate analysis and gate summaries in the pipeline result."""
-    partial_analysis = any(
-        reliability_stats.get(key, 0) > 0 for key in _PARTIAL_ANALYSIS_COUNTERS
-    )
+    partial_analysis = _has_partial_analysis(reliability_stats)
     runtime_state = _runtime_state(result.get("runtime_path"), reliability_stats)
     policy = _evaluate_analysis_policy(
         reliability_stats,
@@ -808,12 +827,14 @@ def _finalize_analysis_status(
         max_call_extraction_failures=max_call_extraction_failures,
         max_runtime_data_issues=max_runtime_data_issues,
     )
-    high_count = sum(1 for item in risk if item.get("risk") == "HIGH")
-    unknown_count = sum(1 for item in risk if item.get("risk") == "UNKNOWN")
+    high_count = _count_risk_level(risk, "HIGH")
+    unknown_count = _count_risk_level(risk, "UNKNOWN")
     high_auto_fixable, high_manual_required = _count_fixability(risk)
-    risk_gate_blocked = high_count > 0 or (block_unknown and unknown_count > 0)
-    analysis_gate_blocked = not policy["passes"]
-    runtime_gate_blocked = require_runtime and runtime_state != "loaded"
+
+    gate_blocked_by_risk = high_count > 0 or (block_unknown and unknown_count > 0)
+    gate_blocked_by_analysis = not policy["passes"]
+    gate_blocked_by_runtime = require_runtime and runtime_state != "loaded"
+    any_gate_blocked = gate_blocked_by_risk or gate_blocked_by_analysis or gate_blocked_by_runtime
 
     analysis_status = {
         "status": "partial" if partial_analysis else "complete",
@@ -824,10 +845,10 @@ def _finalize_analysis_status(
         "policy": policy,
     }
     gate_status = {
-        "blocked": risk_gate_blocked or analysis_gate_blocked or runtime_gate_blocked,
-        "risk_gate_blocked": risk_gate_blocked,
-        "analysis_gate_blocked": analysis_gate_blocked,
-        "runtime_gate_blocked": runtime_gate_blocked,
+        "blocked": any_gate_blocked,
+        "risk_gate_blocked": gate_blocked_by_risk,
+        "analysis_gate_blocked": gate_blocked_by_analysis,
+        "runtime_gate_blocked": gate_blocked_by_runtime,
         "block_unknown": block_unknown,
         "risk": {"high": high_count, "unknown": unknown_count},
         "fixability": {
@@ -835,7 +856,7 @@ def _finalize_analysis_status(
             "manual_required": high_manual_required,
         },
         "reasons": _build_gate_reasons(
-            high_count, unknown_count, block_unknown, policy, runtime_gate_blocked
+            high_count, unknown_count, block_unknown, policy, gate_blocked_by_runtime
         ),
     }
     result["analysis_status"] = analysis_status
@@ -871,6 +892,23 @@ def _resolve_project_root(new_files: list[str] | None) -> str:
     return str(cwd.resolve())
 
 
+def _run_call_graph_sync(
+    cg_db: Any,
+    all_files: list[str],
+    cg_config: dict[str, Any],
+) -> None:
+    """Synchronize or rebuild the call graph for the given files."""
+    max_stale = cg_config.get("max_staleness_seconds", 3600)
+    if cg_db.is_stale(max_stale):
+        _log.warning(
+            "Call graph is stale (last built >%ds ago); forcing full rebuild",
+            max_stale,
+        )
+        cg_db.build(all_files)
+    else:
+        cg_db.sync(all_files)
+
+
 def _extract_call_sites(
     calls_path: str | None,
     new_files: list[str] | None,
@@ -897,15 +935,7 @@ def _extract_call_sites(
         cg_db = CallGraphDB(project_root)
         if cg_config.get("auto_sync", True):
             all_files = list(set((new_files or []) + (old_files or [])))
-            max_stale = cg_config.get("max_staleness_seconds", 3600)
-            if cg_db.is_stale(max_stale):
-                _log.warning(
-                    "Call graph is stale (last built >%ds ago); forcing full rebuild",
-                    max_stale,
-                )
-                cg_db.build(all_files)
-            else:
-                cg_db.sync(all_files)
+            _run_call_graph_sync(cg_db, all_files, cg_config)
         out_path = str(Path(output_dir) / "calls.json")
         cg_export = cg_db.get_call_sites()
         with open(out_path, "w") as f:
@@ -1318,6 +1348,67 @@ def quick_check(
 
 
 
+def _list_commit_files(
+    ref: str,
+    files: list[str] | None,
+    get_extractor: Any,
+) -> list[str]:
+    """List supported source files from a git ref, optionally filtered."""
+    if files:
+        return [
+            f
+            for f in files
+            if get_extractor(f) is not None and _validate_git_path(f)
+        ]
+
+    try:
+        result = subprocess.run(
+            ["git", "ls-tree", "-r", "--name-only", ref],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=30,
+        )
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:
+        print(f"  Error: Failed to list files from {ref}: {e}", file=sys.stderr)
+        return []
+
+    return [
+        f
+        for f in result.stdout.splitlines()
+        if get_extractor(f) is not None and _validate_git_path(f)
+    ]
+
+
+def _extract_single_file(
+    ref: str,
+    src_file: str,
+    dest: str,
+    timeout: int = 30,
+) -> bool:
+    """Extract a single file from a git ref into dest. Returns True on success."""
+    dest_path = Path(dest) / src_file
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        result = subprocess.run(
+            ["git", "show", f"{ref}:{src_file}"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        print(f"  Warning: Timeout extracting {src_file} from {ref}")
+        return False
+
+    if result.returncode == 0 and result.stdout:
+        dest_path.write_text(result.stdout)
+        return True
+
+    print(f"  Warning: Could not extract {src_file} from {ref}")
+    return False
+
+
 def _extract_git_ref_signatures(ref: str, dest: Path) -> list[dict[str, Any]]:
     """Extract signatures for all supported files at a git ref into *dest*."""
     from .config import get as cfg_get
@@ -1361,6 +1452,31 @@ def _extract_git_ref_signatures(ref: str, dest: Path) -> list[dict[str, Any]]:
     )
 
 
+def _classify_nonbreaking_item(item: str) -> str | None:
+    """Classify a nonbreaking change item by its prefix."""
+    if item.startswith("ADDED: "):
+        return "added"
+    if item.startswith("OPTIONAL POSITIONAL ADDED: "):
+        return "changed_nonbreaking"
+    if item.startswith("OPTIONAL KWONLY ADDED: "):
+        return "changed_nonbreaking"
+    return None
+
+
+def _strip_nonbreaking_prefix(item: str, category: str) -> str:
+    """Remove the known prefix from a nonbreaking change item."""
+    if category == "added":
+        return item.replace("ADDED: ", "")
+    if item.startswith("OPTIONAL POSITIONAL ADDED: "):
+        return item.replace("OPTIONAL POSITIONAL ADDED: ", "")
+    return item.replace("OPTIONAL KWONLY ADDED: ", "")
+
+
+def _is_breaking_signature_change(item: str) -> bool:
+    """Return True if a breaking change item is a signature-level change."""
+    return "POSITIONAL" in item or "KWONLY" in item or "REQUIRED" in item
+
+
 def _categorize_changelog_changes(
     comparison: dict[str, list[str]],
 ) -> tuple[list[str], list[str], list[str], list[str]]:
@@ -1371,57 +1487,59 @@ def _categorize_changelog_changes(
     changed_nonbreaking: list[str] = []
 
     for item in comparison.get("nonbreaking", []):
-        if item.startswith("ADDED: "):
-            added.append(item.replace("ADDED: ", ""))
-        elif item.startswith("OPTIONAL POSITIONAL ADDED: "):
-            changed_nonbreaking.append(item.replace("OPTIONAL POSITIONAL ADDED: ", ""))
-        elif item.startswith("OPTIONAL KWONLY ADDED: "):
-            changed_nonbreaking.append(item.replace("OPTIONAL KWONLY ADDED: ", ""))
+        category = _classify_nonbreaking_item(item)
+        if category is not None:
+            target = added if category == "added" else changed_nonbreaking
+            target.append(_strip_nonbreaking_prefix(item, category))
 
     for item in comparison.get("breaking", []):
         if item.startswith("REMOVED: "):
             removed.append(item.replace("REMOVED: ", ""))
-        elif "POSITIONAL" in item or "KWONLY" in item or "REQUIRED" in item:
+        elif _is_breaking_signature_change(item):
             changed_breaking.append(item)
 
     return added, removed, changed_breaking, changed_nonbreaking
 
 
+def _format_func_item(item: str) -> str:
+    """Extract and format a function name from a changelog item."""
+    func_name = item.split(":")[-1] if ":" in item else item
+    return f"- `{func_name}`"
+
+
 def _build_changelog_text(comparison: dict[str, list[str]]) -> str:
     """Build markdown changelog text from comparison output."""
-    lines = ["## [Unreleased]\n"]
     added, removed, changed_breaking, changed_nonbreaking = (
         _categorize_changelog_changes(comparison)
     )
 
+    sections: list[str] = ["## [Unreleased]\n"]
+
     if added:
-        lines.append("### Added")
+        sections.append("### Added")
         for item in added:
-            func_name = item.split(":")[-1] if ":" in item else item
-            lines.append(f"- `{func_name}` - New function/method added")
-        lines.append("")
+            sections.append(f"{_format_func_item(item)} - New function/method added")
+        sections.append("")
 
     if changed_nonbreaking:
-        lines.append("### Changed")
+        sections.append("### Changed")
         for item in changed_nonbreaking:
-            func_name = item.split(":")[-1] if ":" in item else item
-            lines.append(f"- `{func_name}` - Signature modified (non-breaking)")
-        lines.append("")
+            sections.append(f"{_format_func_item(item)} - Signature modified (non-breaking)")
+        sections.append("")
 
     if removed:
-        lines.append("### Removed")
+        sections.append("### Removed")
         for item in removed:
-            func_name = item.split(":")[-1] if ":" in item else item
-            lines.append(f"- `{func_name}` - Function/method removed")
-        lines.append("")
+            sections.append(f"{_format_func_item(item)} - Function/method removed")
+        sections.append("")
 
     if changed_breaking:
-        lines.append("### Breaking Changes")
+        sections.append("### Breaking Changes")
         for item in changed_breaking:
-            lines.append(f"- {item}")
-        lines.append("")
+            sections.append(f"- {item}")
+        sections.append("")
 
-    return "\n".join(lines)
+    return "\n".join(sections)
 
 
 def generate_changelog(
@@ -1524,70 +1642,23 @@ def run_pipeline_git(
     Returns:
         Same as run_pipeline()
     """
-    import subprocess
 
     from .languages.lib.registry import get_extractor as _get_extractor
 
     def extract_commit_files(ref: str, dest: str) -> None:
         """Extract supported source files from a git commit to a directory."""
-        # Validate git ref
         if not _validate_git_ref(ref):
             print(f"  Error: Invalid git reference '{ref}'", file=sys.stderr)
             return
 
-        if files:
-            # Extract only specified files that have a known extractor
-            src_files = [
-                f
-                for f in files
-                if _get_extractor(f) is not None and _validate_git_path(f)
-            ]
-        else:
-            # Get list of ALL supported source files in the commit
-            try:
-                result = subprocess.run(
-                    ["git", "ls-tree", "-r", "--name-only", ref],
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                    timeout=30,
-                )
-            except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:
-                print(f"  Error: Failed to list files from {ref}: {e}", file=sys.stderr)
-                return
-
-            src_files = [
-                f
-                for f in result.stdout.splitlines()
-                if _get_extractor(f) is not None and _validate_git_path(f)
-            ]
+        src_files = _list_commit_files(ref, files, _get_extractor)
 
         if not src_files:
             print(f"  Warning: No supported source files found in {ref}")
             return
 
-        # Extract each file
         for src_file in src_files:
-            # Create subdirectory structure
-            dest_path = Path(dest) / src_file
-            dest_path.parent.mkdir(parents=True, exist_ok=True)
-
-            # Extract file content from git with timeout
-            try:
-                result = subprocess.run(
-                    ["git", "show", f"{ref}:{src_file}"],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                )
-            except subprocess.TimeoutExpired:
-                print(f"  Warning: Timeout extracting {src_file} from {ref}")
-                continue
-
-            if result.returncode == 0 and result.stdout:
-                dest_path.write_text(result.stdout)
-            else:
-                print(f"  Warning: Could not extract {src_file} from {ref}")
+            _extract_single_file(ref, src_file, dest)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         old_dir = f"{tmpdir}/old"
@@ -1623,6 +1694,25 @@ def run_pipeline_git(
         )
 
 
+def _classify_diff_line(line: str) -> str:
+    """Return the type of a unified-diff line for dispatch."""
+    if line.startswith("--- "):
+        return "old_file"
+    if line.startswith("+++ "):
+        return "new_file"
+    if line.startswith("@@"):
+        return "hunk"
+    if line.startswith("Binary files "):
+        return "binary"
+    if line.startswith("-"):
+        return "removed"
+    if line.startswith("+"):
+        return "added"
+    if line.startswith(" "):
+        return "context"
+    return "unknown"
+
+
 def _parse_unified_diff(diff_text: str) -> dict[str, tuple[str, str]]:
     """Parse a unified diff and return old/new content per supported source file.
 
@@ -1648,39 +1738,47 @@ def _parse_unified_diff(diff_text: str) -> dict[str, tuple[str, str]]:
         if name and _get_extractor(name) is not None and is_safe_path(name):
             files[name] = ("\n".join(old_lines), "\n".join(new_lines))
 
-    for line in diff_text.splitlines():
-        if line.startswith("--- "):
-            _save_current()
-            old_name = line[4:].split("\t")[0].strip()
-            if old_name.startswith("a/"):
-                old_name = old_name[2:]
-            if old_name == "/dev/null":
-                old_name = None
+    def _handle_old_file(line: str) -> None:
+        nonlocal old_name, new_name, old_lines, new_lines
+        _save_current()
+        old_name = line[4:].split("\t")[0].strip()
+        if old_name.startswith("a/"):
+            old_name = old_name[2:]
+        if old_name == "/dev/null":
+            old_name = None
+        new_name = None
+        old_lines = []
+        new_lines = []
+
+    def _handle_new_file(line: str) -> None:
+        nonlocal new_name
+        new_name = line[4:].split("\t")[0].strip()
+        if new_name.startswith("b/"):
+            new_name = new_name[2:]
+        if new_name == "/dev/null":
             new_name = None
-            old_lines = []
-            new_lines = []
-        elif line.startswith("+++ "):
-            new_name = line[4:].split("\t")[0].strip()
-            if new_name.startswith("b/"):
-                new_name = new_name[2:]
-            if new_name == "/dev/null":
-                new_name = None
-        elif line.startswith("@@"):
-            pass  # hunk header – no content to collect
-        elif line.startswith("-") and not line.startswith("---"):
-            old_lines.append(line[1:])
-        elif line.startswith("+") and not line.startswith("+++"):
-            new_lines.append(line[1:])
-        elif line.startswith(" "):
-            # context line – present in both versions
-            old_lines.append(line[1:])
-            new_lines.append(line[1:])
-        elif line.startswith("Binary files "):
-            name = new_name or old_name or ""
-            _log.warning(
-                "Binary file '%s' in diff — content is not parseable and will be skipped",
-                name,
-            )
+
+    def _handle_binary() -> None:
+        name = new_name or old_name or ""
+        _log.warning(
+            "Binary file '%s' in diff — content is not parseable and will be skipped",
+            name,
+        )
+
+    dispatch: dict[str, Any] = {
+        "old_file": _handle_old_file,
+        "new_file": _handle_new_file,
+        "hunk": lambda _: None,
+        "removed": lambda line: old_lines.append(line[1:]),
+        "added": lambda line: new_lines.append(line[1:]),
+        "context": lambda line: (old_lines.append(line[1:]), new_lines.append(line[1:])),
+        "binary": lambda _: _handle_binary(),
+    }
+
+    for line in diff_text.splitlines():
+        handler = dispatch.get(_classify_diff_line(line))
+        if handler is not None:
+            handler(line)
 
     _save_current()
     return files
@@ -1927,6 +2025,8 @@ def run_pipeline_commit(
         "config": config,
         "suggest_patch": suggest_patch,
         "show_patch": show_patch,
+        "generate_fixes": generate_fixes,
+        "apply_safe_fixes": apply_safe_fixes,
         "strict_extraction": strict_extraction,
         "max_parse_failures": max_parse_failures,
         "max_skipped_files": max_skipped_files,
@@ -1937,12 +2037,6 @@ def run_pipeline_commit(
         "use_call_graph": use_call_graph,
         "conservative": conservative,
     }
-    # Keep delegation kwargs minimal by forwarding new options only when they
-    # deviate from defaults.
-    if not generate_fixes:
-        kwargs["generate_fixes"] = generate_fixes
-    if apply_safe_fixes:
-        kwargs["apply_safe_fixes"] = apply_safe_fixes
     return run_pipeline_git(**kwargs)
 
 

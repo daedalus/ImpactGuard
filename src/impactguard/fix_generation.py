@@ -127,7 +127,6 @@ def build_change_events(
 def generate_fix_candidates(report_item: dict[str, Any]) -> list[dict[str, Any]]:
     """Generate fix candidates from normalized risk/change metadata."""
     from .cst_patch import patch_function
-    from .patch_generator import patch_add_default
 
     change_type = str(
         report_item.get("change_type") or report_item.get("change") or ""
@@ -255,6 +254,48 @@ def enrich_risk_with_fix_candidates(
     return enriched, all_fixes
 
 
+def _is_applicable_fix(fix: dict[str, Any]) -> bool:
+    """Return True when a fix dict is a valid, auto-applicable CST patch."""
+    if not isinstance(fix, dict):
+        return False
+    if fix.get("type") != "cst_patch":
+        return False
+    if not bool(fix.get("auto_applicable", False)):
+        return False
+    file_path = str(fix.get("file", "")).strip()
+    return bool(file_path)
+
+
+def _apply_single_fix(file_path: str, fix: dict[str, Any]) -> dict[str, Any] | None:
+    """Apply a single CST fix to *file_path* after creating a backup.
+
+    Returns an applied-fix record dict, or *None* on failure.
+    """
+    patch_content = fix.get("patch")
+    if not isinstance(patch_content, str) or not patch_content:
+        return None
+
+    path = Path(file_path)
+    if not path.exists():
+        return None
+
+    backup_path = path.with_suffix(path.suffix + ".bak")
+    try:
+        backup_path.write_text(path.read_text())
+    except OSError as exc:
+        _log.warning("Failed to create backup for '%s': %s", file_path, exc)
+        return None
+
+    path.write_text(patch_content)
+    return {
+        "file": file_path,
+        "backup": str(backup_path),
+        "function": fix.get("function", ""),
+        "type": fix.get("type", ""),
+        "confidence_level": fix.get("confidence_level", ""),
+    }
+
+
 def apply_safe_fixes(risk_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Apply high-confidence CST fixes conservatively (one fix per file).
 
@@ -264,15 +305,9 @@ def apply_safe_fixes(risk_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     grouped: dict[str, list[dict[str, Any]]] = {}
     for item in risk_items:
         for fix in item.get("fix_candidates", []):
-            if not isinstance(fix, dict):
-                continue
-            if fix.get("type") != "cst_patch":
-                continue
-            if not bool(fix.get("auto_applicable", False)):
+            if not _is_applicable_fix(fix):
                 continue
             file_path = str(fix.get("file", "")).strip()
-            if not file_path:
-                continue
             grouped.setdefault(file_path, []).append(fix)
 
     applied: list[dict[str, Any]] = []
@@ -284,28 +319,7 @@ def apply_safe_fixes(risk_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         if len(fixes) != 1:
             continue
-        fix = fixes[0]
-        patch_content = fix.get("patch")
-        if not isinstance(patch_content, str) or not patch_content:
-            continue
-        path = Path(file_path)
-        if not path.exists():
-            continue
-        # Create backup before applying
-        backup_path = path.with_suffix(path.suffix + ".bak")
-        try:
-            backup_path.write_text(path.read_text())
-        except OSError as exc:
-            _log.warning("Failed to create backup for '%s': %s", file_path, exc)
-            continue
-        path.write_text(patch_content)
-        applied.append(
-            {
-                "file": file_path,
-                "backup": str(backup_path),
-                "function": fix.get("function", ""),
-                "type": fix.get("type", ""),
-                "confidence_level": fix.get("confidence_level", ""),
-            }
-        )
+        result = _apply_single_fix(file_path, fixes[0])
+        if result is not None:
+            applied.append(result)
     return applied
