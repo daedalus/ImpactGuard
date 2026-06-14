@@ -147,30 +147,10 @@ def generate_fix_candidates(report_item: dict[str, Any]) -> list[dict[str, Any]]
 
     # CST patching is Python-only; skip non-Python files
     if not file_path.endswith(".py"):
-        fallback_patch = patch_add_default(
-            {
-                "file": file_path,
-                "lineno": int(report_item.get("lineno", 0) or 0),
-                "name": func_name,
-            },
-            param_name,
+        return _make_text_fallback(
+            file_path, func_name, param_name, report_item, 0.7, 0.8, 0.7,
+            error="CST patching is Python-only; text patch provided instead",
         )
-        if not fallback_patch:
-            return []
-        level, factors = classify_with_factors(0.7, 0.8, 0.7, 1.0)
-        return [
-            {
-                "type": "text_patch",
-                "patch": fallback_patch,
-                "function": func_name,
-                "file": file_path,
-                "param_name": param_name,
-                "confidence": factors,
-                "confidence_level": level,
-                "auto_applicable": False,
-                "error": "CST patching is Python-only; text patch provided instead",
-            }
-        ]
 
     source = source_path.read_text()
     cst_error: str | None = None
@@ -193,6 +173,26 @@ def generate_fix_candidates(report_item: dict[str, Any]) -> list[dict[str, Any]]
             }
         ]
 
+    return _make_text_fallback(
+        file_path, func_name, param_name, report_item, 0.7, 0.8, 0.7,
+        error=cst_error,
+    )
+
+
+def _make_text_fallback(
+    file_path: str,
+    func_name: str,
+    param_name: str,
+    report_item: dict[str, Any],
+    target: float,
+    structural: float,
+    semantic: float,
+    *,
+    error: str | None = None,
+) -> list[dict[str, Any]]:
+    """Create a text-based fallback patch when CST patching fails."""
+    from .patch_generator import patch_add_default
+
     fallback_patch = patch_add_default(
         {
             "file": file_path,
@@ -203,7 +203,7 @@ def generate_fix_candidates(report_item: dict[str, Any]) -> list[dict[str, Any]]
     )
     if not fallback_patch:
         return []
-    level, factors = classify_with_factors(0.7, 0.8, 0.7, 1.0)
+    level, factors = classify_with_factors(target, structural, semantic, 1.0)
     return [
         {
             "type": "text_patch",
@@ -214,7 +214,7 @@ def generate_fix_candidates(report_item: dict[str, Any]) -> list[dict[str, Any]]
             "confidence": factors,
             "confidence_level": level,
             "auto_applicable": False,
-            "error": cst_error,
+            "error": error,
         }
     ]
 

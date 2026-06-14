@@ -846,6 +846,94 @@ def _resolve_project_root(new_files: list[str] | None) -> str:
     return str(cwd.resolve())
 
 
+def _extract_call_sites(
+    calls_path: str | None,
+    new_files: list[str] | None,
+    old_files: list[str] | None,
+    output_dir: str,
+    runtime_path: str | None,
+    config: dict[str, Any] | None,
+    use_call_graph: bool | None,
+    stats: dict[str, int],
+    events: list[dict[str, str]],
+    analyze_module: Any,
+) -> str:
+    """Extract call sites using call graph or fallback extraction."""
+    use_cg = use_call_graph or (
+        use_call_graph is None
+        and config
+        and config.get("call_graph", {}).get("enabled", False)
+    )
+    if use_cg:
+        from .call_graph import CallGraphDB
+
+        project_root = _resolve_project_root(new_files)
+        cg_config = (config or {}).get("call_graph", {})
+        cg_db = CallGraphDB(project_root)
+        if cg_config.get("auto_sync", True):
+            all_files = list(set((new_files or []) + (old_files or [])))
+            max_stale = cg_config.get("max_staleness_seconds", 3600)
+            if cg_db.is_stale(max_stale):
+                _log.warning(
+                    "Call graph is stale (last built >%ds ago); forcing full rebuild",
+                    max_stale,
+                )
+                cg_db.build(all_files)
+            else:
+                cg_db.sync(all_files)
+        out_path = str(Path(output_dir) / "calls.json")
+        cg_export = cg_db.get_call_sites()
+        with open(out_path, "w") as f:
+            json.dump(cg_export, f)
+        _log.info("Call graph: exported %d call sites", len(cg_export))
+        return out_path
+    return _extract_calls_to_path(
+        calls_path,
+        new_files=new_files,
+        output_dir=output_dir,
+        runtime_path=runtime_path,
+        stats=stats,
+        events=events,
+        analyze_module=analyze_module,
+    )
+
+
+def _resolve_conservative_mode(config: dict[str, Any] | None) -> bool:
+    """Resolve conservative mode from config or global settings."""
+    if config and "conservative_mode" in config.get("risk", {}):
+        return bool(config["risk"]["conservative_mode"])
+    from .config import get as cfg_get
+    return bool(cfg_get("risk", "conservative_mode", False))
+
+
+def _apply_conservative_mode(
+    impact: list[dict[str, Any]],
+    result: dict[str, Any],
+    comparison: dict[str, Any],
+    new_sigs_path: str,
+    calls_path: str | None,
+) -> None:
+    """Flag changed functions with no call sites in conservative mode."""
+    from .impact_analysis import detect_uncalled_changes, load_calls, load_funcs
+
+    _log.debug("Conservative mode: checking for uncalled changed functions")
+    try:
+        funcs = load_funcs(new_sigs_path)
+        calls = load_calls(calls_path) if calls_path else []
+        uncalled = detect_uncalled_changes(
+            comparison["breaking"], funcs, calls
+        )
+        if uncalled:
+            impact.extend(uncalled)
+            result["impact"] = impact
+            _log.info(
+                "Conservative mode: %d changed function(s) with no call sites flagged",
+                len(uncalled),
+            )
+    except Exception:
+        _log.warning("Failed to detect uncalled changes", exc_info=True)
+
+
 def run_pipeline(
     old_files: list[str] | None = None,
     new_files: list[str] | None = None,
@@ -996,38 +1084,18 @@ def run_pipeline(
 
     # Step 3: Extract call sites (if not provided)
     _log.debug("Step 3: Extracting call sites")
-    if use_call_graph or (use_call_graph is None and config and config.get("call_graph", {}).get("enabled", False)):
-        from .call_graph import CallGraphDB
-
-        project_root = _resolve_project_root(new_files)
-        cg_config = (config or {}).get("call_graph", {})
-        cg_db = CallGraphDB(project_root)
-        if cg_config.get("auto_sync", True):
-            all_files = list(set((new_files or []) + (old_files or [])))
-            max_stale = cg_config.get("max_staleness_seconds", 3600)
-            if cg_db.is_stale(max_stale):
-                _log.warning(
-                    "Call graph is stale (last built >%ds ago); forcing full rebuild",
-                    max_stale,
-                )
-                cg_db.build(all_files)
-            else:
-                cg_db.sync(all_files)
-        calls_path = str(Path(output_dir) / "calls.json")
-        cg_export = cg_db.get_call_sites()
-        with open(calls_path, "w") as f:
-            json.dump(cg_export, f)
-        _log.info("Call graph: exported %d call sites", len(cg_export))
-    else:
-        calls_path = _extract_calls_to_path(
-            calls_path,
-            new_files=new_files,
-            output_dir=output_dir,
-            runtime_path=runtime_path,
-            stats=reliability_stats,
-            events=analysis_events,
-            analyze_module=analyze_module,
-        )
+    calls_path = _extract_call_sites(
+        calls_path=calls_path,
+        new_files=new_files,
+        old_files=old_files,
+        output_dir=output_dir,
+        runtime_path=runtime_path,
+        config=config,
+        use_call_graph=use_call_graph,
+        stats=reliability_stats,
+        events=analysis_events,
+        analyze_module=analyze_module,
+    )
     result["runtime_path"] = runtime_path
 
     # Step 4: Analyze impact
@@ -1037,30 +1105,11 @@ def run_pipeline(
     _log.debug("Impact analysis found %d issue(s)", len(impact))
 
     if conservative is None:
-        if config and "conservative_mode" in config.get("risk", {}):
-            conservative = bool(config["risk"]["conservative_mode"])
-        else:
-            from .config import get as cfg_get
-            conservative = bool(cfg_get("risk", "conservative_mode", False))
+        conservative = _resolve_conservative_mode(config)
     if conservative and comparison.get("breaking"):
-        from .impact_analysis import detect_uncalled_changes, load_calls, load_funcs
-
-        _log.debug("Conservative mode: checking for uncalled changed functions")
-        try:
-            funcs = load_funcs(new_sigs_path)
-            calls = load_calls(calls_path) if calls_path else []
-            uncalled = detect_uncalled_changes(
-                comparison["breaking"], funcs, calls
-            )
-            if uncalled:
-                impact.extend(uncalled)
-                result["impact"] = impact
-                _log.info(
-                    "Conservative mode: %d changed function(s) with no call sites flagged",
-                    len(uncalled),
-                )
-        except Exception:
-            _log.warning("Failed to detect uncalled changes", exc_info=True)
+        _apply_conservative_mode(
+            impact, result, comparison, new_sigs_path, calls_path
+        )
 
     # Step 5: Assess risk
     _log.debug("Step 5: Assessing risk")
@@ -1087,35 +1136,10 @@ def run_pipeline(
 
     # Add file/lineno from signatures to risk items for patch generation
     if suggest_patch or show_patch:
-        try:
-            with open(old_sigs_path) as f:
-                old_sigs_list = json.load(f)
-        except Exception as e:
-            print(f"Warning: Could not load old signatures: {e}", file=sys.stderr)
-            old_sigs_list = []
-
-        if old_sigs_list:
-            # Create mapping from fqname to actual file path
-            fqname_to_file: dict[str, str] = {}
-            for sig in old_sigs_list:
-                fq = sig.get("fqname", "")
-                file_path = sig.get("file", "")
-                if old_files:
-                    for of in old_files:
-                        if of.endswith(file_path):
-                            fqname_to_file[fq] = of
-                            break
-
-            # Add file/lineno to risk items
-            for risk_item in risk:
-                fqname = risk_item.get("function", "")
-                if fqname in fqname_to_file:
-                    risk_item["file"] = fqname_to_file[fqname]
-                elif file_path in risk_item.get("function", ""):
-                    # Try to extract file path from fqname
-                    pass
-
-    # Step 6: Generate HTML report
+        _attach_patch_source_info(
+            risk, old_sigs_path=old_sigs_path, old_files=old_files,
+            stats=reliability_stats, events=analysis_events,
+        )
 
     # Step 6: Generate HTML report
     _log.debug("Step 6: Generating HTML report")
@@ -1124,12 +1148,7 @@ def run_pipeline(
     )
 
     # Step 7: Suggest fixes with confidence
-    fixes = list(default_fixes)
-    if generate_fixes and not fixes:
-        for item in risk:
-            if "function" in item:
-                fixes.extend(enrich_with_fixes(item, [item]))
-
+    fixes = _collect_fixes(default_fixes, risk, generate_fixes, enrich_with_fixes)
     _calibrate_feedback(reliability_stats, analysis_events, skip_write=skip_feedback_calibration)
 
     result["fixes"] = fixes
@@ -1171,6 +1190,21 @@ def run_pipeline(
 
     _log.info("Pipeline complete: semver=%s", result["semver"].get("bump", "patch"))
     return result
+
+
+def _collect_fixes(
+    default_fixes: list[dict[str, Any]],
+    risk: list[dict[str, Any]],
+    generate_fixes: bool,
+    enrich_with_fixes: Any,
+) -> list[dict[str, Any]]:
+    """Collect fix suggestions from default fixes and risk items."""
+    fixes = list(default_fixes)
+    if generate_fixes and not fixes:
+        for item in risk:
+            if "function" in item:
+                fixes.extend(enrich_with_fixes(item, [item]))
+    return fixes
 
 
 def quick_check(

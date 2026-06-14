@@ -15,6 +15,48 @@ def _summary_stats(report_data: list[dict[str, Any]]) -> dict[str, int]:
     return stats
 
 
+def _render_table_row(item: dict[str, Any]) -> str:
+    """Render a single table row for the HTML report."""
+    level = item.get("risk", "UNKNOWN")
+    func = item.get("function", "unknown")
+    change = item.get("raw_change") or item.get("change", "")
+    exp = item.get("exposure", 0)
+    conf = item.get("confidence", 0)
+    details = item.get("details", "")
+    fixes = item.get("fixes", [])
+    patches = item.get("patches", [])
+    is_transitive = item.get("transitive", False)
+    transitive_tag = (
+        '<span class="tag-transitive">(indirect)</span>' if is_transitive else ""
+    )
+
+    safe_level = _html.escape(str(level))
+    safe_func = _html.escape(str(func))
+    safe_change = _html.escape(str(change))
+
+    details_html = _html.escape(str(details)) if details else ""
+    if fixes:
+        details_html += (
+            "<ul>"
+            + "".join(f"<li>{_html.escape(str(f))}</li>" for f in fixes)
+            + "</ul>"
+        )
+    if patches:
+        for p in patches:
+            details_html += f"<pre>{_html.escape(str(p))}</pre>"
+
+    return (
+        f'        <tr data-risk="{safe_level}" data-text="{safe_func.lower()} {safe_change.lower()}">'
+        f'<td><span class="risk-{safe_level}">{safe_level}</span></td>'
+        f"<td>{safe_func}{transitive_tag}</td>"
+        f"<td>{safe_change}</td>"
+        f"<td>{exp:.2%}</td>"
+        f"<td>{conf:.2f}</td>"
+        f"<td>{details_html}</td>"
+        f"</tr>"
+    )
+
+
 def generate_html(report_data: list[dict[str, Any]]) -> str:
     report_data = [item for item in report_data if isinstance(item, dict)]
     stats = _summary_stats(report_data)
@@ -110,45 +152,7 @@ def generate_html(report_data: list[dict[str, Any]]) -> str:
 """)
 
     for item in report_data:
-        level = item.get("risk", "UNKNOWN")
-        func = item.get("function", "unknown")
-        change = item.get("raw_change") or item.get("change", "")
-        exp = item.get("exposure", 0)
-        conf = item.get("confidence", 0)
-        details = item.get("details", "")
-        fixes = item.get("fixes", [])
-        patches = item.get("patches", [])
-        is_transitive = item.get("transitive", False)
-        transitive_tag = (
-            '<span class="tag-transitive">(indirect)</span>' if is_transitive else ""
-        )
-
-        # Escape all user-controlled strings before inserting into HTML to prevent XSS.
-        safe_level = _html.escape(str(level))
-        safe_func = _html.escape(str(func))
-        safe_change = _html.escape(str(change))
-
-        details_html = _html.escape(str(details)) if details else ""
-        if fixes:
-            details_html += (
-                "<ul>"
-                + "".join(f"<li>{_html.escape(str(f))}</li>" for f in fixes)
-                + "</ul>"
-            )
-        if patches:
-            for p in patches:
-                details_html += f"<pre>{_html.escape(str(p))}</pre>"
-
-        html.append(
-            f"""        <tr data-risk="{safe_level}" data-text="{safe_func.lower()} {safe_change.lower()}">
-            <td><span class="risk-{safe_level}">{safe_level}</span></td>
-            <td>{safe_func}{transitive_tag}</td>
-            <td>{safe_change}</td>
-            <td>{exp:.2%}</td>
-            <td>{conf:.2f}</td>
-            <td>{details_html}</td>
-        </tr>"""
-        )
+        html.append(_render_table_row(item))
 
     html.append("""
         </tbody>
