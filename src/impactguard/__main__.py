@@ -9,6 +9,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from ._logging import get_logger
+
+_log = get_logger(__name__)
+
 
 def cmd_extract(args: argparse.Namespace) -> int:
     """Extract function signatures from source files.

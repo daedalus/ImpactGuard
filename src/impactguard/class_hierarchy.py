@@ -11,6 +11,9 @@ from pathlib import Path
 from typing import Any
 
 from ._ast_cache import cached_ast_parse, cached_read_text
+from ._logging import get_logger
+
+_log = get_logger(__name__)
 
 # ── Data structures ───────────────────────────────────────────────────────────
 

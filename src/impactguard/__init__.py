@@ -8,7 +8,6 @@ using static and runtime techniques.
 """
 from ._logging import configure_logging, get_logger
 from .analyze_module import analyze as analyze_module
-from .cache import BloomFilter, Cache, get_cache, get_cache_metrics_snapshot, reset_cache_metrics
 from .analyze_module import analyze_calls
 from .baseline import (
     baseline_exists,
@@ -20,6 +19,13 @@ from .baseline import (
     load_tagged_baseline,
     save_baseline,
     save_tagged_baseline,
+)
+from .cache import (
+    BloomFilter,
+    Cache,
+    get_cache,
+    get_cache_metrics_snapshot,
+    reset_cache_metrics,
 )
 from .class_hierarchy import (
     extract_class_hierarchy,

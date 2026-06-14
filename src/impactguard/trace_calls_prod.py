@@ -22,6 +22,10 @@ from collections.abc import Callable
 from functools import wraps
 from typing import Any
 
+from ._logging import get_logger
+
+_log = get_logger(__name__)
+
 SAMPLE_RATE = 0.01  # 1% of calls
 FLUSH_INTERVAL = 10  # seconds
 
@@ -42,7 +46,7 @@ _flush_requested = False
 _rng = random.Random()
 
 
-def _signal_handler(signum: int, frame: object) -> None:
+def _signal_handler(signum: int, frame: object) -> None:  # noqa: ARG001
     global _flush_requested
     _flush_requested = True
 
@@ -110,7 +114,7 @@ def flush(path: str | None = None) -> None:
                 with open(path) as f:
                     existing = json.load(f)
             except (FileNotFoundError, json.JSONDecodeError):
-                _log.debug("No existing trace data to merge from '%s'", trace_path)
+                _log.debug("No existing trace data to merge from '%s'", path)
 
             for k, v in data.items():
                 existing[k] = existing.get(k, 0) + v

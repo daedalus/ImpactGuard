@@ -1,9 +1,12 @@
 import sys
 from typing import Any
 
+from ._logging import get_logger
 from ._pathutils import is_safe_path
 from .fix_generation import generate_fix_candidates
 from .patch_confidence import classify_with_factors
+
+_log = get_logger(__name__)
 
 
 def suggest(func: dict[str, Any], issues: list[dict[str, Any]]) -> list[str]:
@@ -43,7 +46,7 @@ def get_line(file: str, lineno: int) -> str:
         if 0 <= lineno - 1 < len(lines):
             return lines[lineno - 1]
     except OSError:
-        _log.debug("Failed to read line %d from '%s'", lineno, file_path)
+        _log.debug("Failed to read line %d from '%s'", lineno, file)
     return ""
 
 

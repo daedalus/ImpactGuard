@@ -5,6 +5,10 @@ from collections.abc import Callable
 from functools import wraps
 from typing import Any
 
+from ._logging import get_logger
+
+_log = get_logger(__name__)
+
 COUNTS: dict[str, int] = defaultdict(int)
 DETAILS: dict[str, dict[str, Any]] = {}
 

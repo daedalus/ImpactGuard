@@ -1207,7 +1207,7 @@ def quick_check(
 
     # Collect files with a registered language extractor
     # Limit to 10,000 files to prevent performance issues with large directories
-    _MAX_COLLECT_FILES = 10_000
+    max_collect_files = 10_000
 
     def collect_files(path: str) -> list[str]:
         from .languages.lib.registry import get_extractor as _get_extractor
@@ -1218,11 +1218,11 @@ def quick_check(
         elif p.is_dir():
             files: list[str] = []
             for f in p.rglob("*"):
-                if len(files) >= _MAX_COLLECT_FILES:
+                if len(files) >= max_collect_files:
                     _log.warning(
                         "File collection limit reached (%d files) for '%s'; "
                         "some files may be excluded from analysis.",
-                        _MAX_COLLECT_FILES,
+                        max_collect_files,
                         path,
                     )
                     break

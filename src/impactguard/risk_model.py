@@ -1,5 +1,9 @@
 import math
 
+from ._logging import get_logger
+
+_log = get_logger(__name__)
+
 # Severity scores for different types of changes.
 #
 # Rationale (S × E × C model):
@@ -248,7 +252,7 @@ def classify(
 
     if effective_severity > 0.5 and exposure_val > med_exp_min:
         return "MEDIUM", exposure_val, confidence_val
-    
+
     return "LOW", exposure_val, confidence_val
 
 
