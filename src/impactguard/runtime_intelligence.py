@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any
 
 from ._logging import get_logger
 
@@ -13,7 +13,6 @@ _RUNTIME_COUNT_KEYS = ("count", "calls", "samples", "hits", "invocations")
 _RUNTIME_ARGC_KEYS = ("args_count", "argc", "arity")
 _RUNTIME_KWARGS_KEYS = ("kwargs", "keywords")
 _RUNTIME_CONTAINER_KEYS = ("runtime", "observations", "entries", "functions")
-_T = TypeVar("_T")
 
 
 def _coerce_non_negative_int(value: object) -> int | None:
@@ -90,7 +89,7 @@ def _coerce_kwargs(value: object) -> list[str] | None:
     return None
 
 
-def _first_not_none(values: list[_T | None]) -> _T | None:
+def _first_not_none[T](values: list[T | None]) -> T | None:
     for value in values:
         if value is not None:
             return value

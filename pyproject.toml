@@ -7,7 +7,7 @@ name = "impactguard"
 version = "0.1.19"
 description = "Lightweight API impact analyzer for Python projects"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 license = {text = "MIT"}
 authors = [
     {name = "Darío Clavijo", email = "clavijodario@gmail.com"}
@@ -85,7 +85,7 @@ include = ["src/impactguard"]
 
 [tool.ruff]
 line-length = 88
-target-version = "py311"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "ANN", "TCH", "N", "C4", "ARG"]
@@ -111,7 +111,7 @@ ignore = ["E501", "ANN401"]
 convention = "google"
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.13"
 strict = true
 warn_return_any = true
 warn_unused_ignores = true
