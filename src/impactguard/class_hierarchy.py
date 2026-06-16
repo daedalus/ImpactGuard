@@ -82,9 +82,8 @@ def extract_class_hierarchy(files: list[str]) -> Hierarchy:
             is_protocol, is_abc = _is_abstract(bases)
 
             methods: list[str] = []
-            for child in ast.walk(node):
+            for child in node.body:
                 if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
-                    # Only direct methods (not nested class methods)
                     methods.append(child.name)
 
             hierarchy[node.name] = {

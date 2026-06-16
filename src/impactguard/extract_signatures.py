@@ -48,61 +48,20 @@ def _has_ignore_comment(source_lines: list[str], lineno: int) -> bool:
     return False
 
 
-def _extract_all_names(tree: ast.Module) -> set[str] | None:
-    """Return the names listed in ``__all__``, or *None* when not defined.
+def _collect_all_names(node: ast.expr) -> tuple[set[str], bool]:
+    """Extract string names from a ``__all__`` value node.
 
-    Handles:
-    * ``__all__ = ["a", "b"]`` — simple assignment
-    * ``__all__ = ("a", "b")`` — tuple assignment
-    * ``__all__ += ["c"]`` — augmented assignment (extends)
-    * ``__all__.append("d")`` — append call
-    * ``__all__.extend(["e", "f"])`` — extend call
+    Returns ``(names, found_initial)`` where *found_initial* indicates
+    whether any names were successfully collected from the value.
     """
-    found_initial = False
     names: set[str] = set()
-
-    for node in ast.walk(tree):
-        # Initial assignment: __all__ = [...]
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "__all__":
-                    val = node.value
-                    if isinstance(val, ast.List | ast.Tuple):
-                        for elt in val.elts:
-                            if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
-                                names.add(elt.value)
-                        found_initial = True
-
-        # Augmented assignment: __all__ += [...]
-        if isinstance(node, ast.AugAssign):
-            if isinstance(node.target, ast.Name) and node.target.id == "__all__":
-                val = node.value
-                if isinstance(val, ast.List | ast.Tuple):
-                    for elt in val.elts:
-                        if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
-                            names.add(elt.value)
-                    found_initial = True
-
-        # Method calls: __all__.append(...) or __all__.extend(...)
-        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
-            call = node.value
-            if (isinstance(call.func, ast.Attribute)
-                    and isinstance(call.func.value, ast.Name)
-                    and call.func.value.id == "__all__"):
-                if call.func.attr == "append" and call.args:
-                    arg = call.args[0]
-                    if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
-                        names.add(arg.value)
-                        found_initial = True
-                elif call.func.attr == "extend" and call.args:
-                    arg = call.args[0]
-                    if isinstance(arg, ast.List | ast.Tuple):
-                        for elt in arg.elts:
-                            if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
-                                names.add(elt.value)
-                        found_initial = True
-
-    return names if found_initial else None
+    found = False
+    if isinstance(node, ast.List | ast.Tuple):
+        for elt in node.elts:
+            if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                names.add(elt.value)
+        found = True
+    return names, found
 
 
 def extract_reexports(files: list[str]) -> dict[str, str]:
@@ -275,13 +234,14 @@ def extract(
         else:
             fq_file = path.name
         source_lines = source_text.splitlines()
-        all_names: set[str] | None = _extract_all_names(tree)
 
-        # Use a proper visitor to track class context
+        # Single walk: collect __all__ names AND extract signatures in one pass
         class ContextVisitor(ast.NodeVisitor):
             def __init__(self) -> None:
                 self.current_class: str | None = None
                 self.functions: list[dict[str, Any]] = []
+                self._all_names: set[str] | None = None
+                self._all_found = False
 
             def visit_ClassDef(self, node: ast.ClassDef) -> None:
                 old_class = self.current_class
@@ -292,9 +252,9 @@ def extract(
             def _add(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
                 sig = serialize_function(node, fq_file, self.current_class)
                 sig["ignored"] = _has_ignore_comment(source_lines, node.lineno)
-                if all_names is not None:
+                if self._all_names is not None:
                     leaf = sig["name"].split(".")[-1]
-                    sig["exported"] = leaf in all_names
+                    sig["exported"] = leaf in self._all_names
                 else:
                     sig["exported"] = None
                 self.functions.append(sig)
@@ -305,6 +265,50 @@ def extract(
 
             def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
                 self._add(node)
+                self.generic_visit(node)
+
+            def visit_Assign(self, node: ast.Assign) -> None:
+                for target in node.targets:
+                    if isinstance(target, ast.Name) and target.id == "__all__":
+                        names, found = _collect_all_names(node.value)
+                        if found:
+                            if self._all_names is None:
+                                self._all_names = set()
+                            self._all_names.update(names)
+                            self._all_found = True
+                self.generic_visit(node)
+
+            def visit_AugAssign(self, node: ast.AugAssign) -> None:
+                if isinstance(node.target, ast.Name) and node.target.id == "__all__":
+                    names, found = _collect_all_names(node.value)
+                    if found:
+                        if self._all_names is None:
+                            self._all_names = set()
+                        self._all_names.update(names)
+                        self._all_found = True
+                self.generic_visit(node)
+
+            def visit_Expr(self, node: ast.Expr) -> None:
+                if isinstance(node.value, ast.Call):
+                    call = node.value
+                    if (isinstance(call.func, ast.Attribute)
+                            and isinstance(call.func.value, ast.Name)
+                            and call.func.value.id == "__all__"):
+                        if call.func.attr == "append" and call.args:
+                            arg = call.args[0]
+                            if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                                if self._all_names is None:
+                                    self._all_names = set()
+                                self._all_names.add(arg.value)
+                                self._all_found = True
+                        elif call.func.attr == "extend" and call.args:
+                            arg = call.args[0]
+                            names, found = _collect_all_names(arg)
+                            if found:
+                                if self._all_names is None:
+                                    self._all_names = set()
+                                self._all_names.update(names)
+                                self._all_found = True
                 self.generic_visit(node)
 
         visitor = ContextVisitor()
