@@ -68,6 +68,14 @@ def fast_walk(tree: ast.Module) -> list[ast.AST]:
     When the optional ``fast-walk`` Rust extension is installed, delegates
     to its CPython-inline traversal (~30x faster).  Otherwise falls back
     to a pure-Python implementation (~1.5x faster than stdlib).
+
+    .. note::
+
+       **Order is DFS, not BFS** — do not depend on parent-before-child
+       ordering.  ``ast.walk()`` is BFS; this function is stack-based DFS
+       (reversed).  The set of visited nodes is identical, but the
+       iteration order differs.  Current consumers (``extract_signatures``,
+       ``class_hierarchy``, ``call_graph``) are order-independent.
     """
     if _WALK_BACKEND == "rust":
         return _fast_walk_impl(tree)

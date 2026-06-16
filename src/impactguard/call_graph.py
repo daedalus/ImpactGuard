@@ -15,7 +15,7 @@ import sqlite3
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 from ._ast_cache import cached_ast_parse, fast_walk
 from ._logging import get_logger
@@ -181,23 +181,39 @@ class CallGraphDB:
         cache_dir.mkdir(parents=True, exist_ok=True)
         self.db_path = cache_dir / DB_FILENAME
 
-        self.con = sqlite3.connect(
-            str(self.db_path), check_same_thread=False, timeout=5,
-        )
-        self.con.row_factory = sqlite3.Row
-        self.con.execute("PRAGMA journal_mode=WAL")
-        self.con.execute("PRAGMA synchronous=NORMAL")
-        self.con.execute("PRAGMA busy_timeout=5000")
-        self.con.executescript(_SCHEMA_SQL)
+        self._thread_local = threading.local()
         self._write_lock = threading.Lock()
         # File-level lock for cross-process safety
         self._lock_path = cache_dir / ".call_graph.lock"
-        self._lock_fd: int | None = None
+        self._lock_fd: IO[str] | None = None
+
+        # Initialize schema on the default thread's connection
+        con = self._get_connection()
+        con.executescript(_SCHEMA_SQL)
+
+    def _get_connection(self) -> sqlite3.Connection:
+        """Return a thread-local SQLite connection, creating if needed."""
+        con = getattr(self._thread_local, "con", None)
+        if con is None:
+            con = sqlite3.connect(
+                str(self.db_path), check_same_thread=False, timeout=5,
+            )
+            con.row_factory = sqlite3.Row
+            con.execute("PRAGMA journal_mode=WAL")
+            con.execute("PRAGMA synchronous=NORMAL")
+            con.execute("PRAGMA busy_timeout=5000")
+            self._thread_local.con = con
+        return con
+
+    @property
+    def con(self) -> sqlite3.Connection:
+        """Backward-compatible accessor for the current thread's connection."""
+        return self._get_connection()
 
     def _acquire_file_lock(self) -> None:
         """Acquire an exclusive file-level lock for cross-process safety."""
         try:
-            fd = open(self._lock_path, "w")
+            fd = open(self._lock_path, "a")
             fcntl.flock(fd, fcntl.LOCK_EX)
             self._lock_fd = fd
         except OSError:
@@ -212,7 +228,7 @@ class CallGraphDB:
                 fcntl.flock(fd, fcntl.LOCK_UN)
                 fd.close()
             except OSError:
-                _log.debug("Failed to release file lock: %s", self._lock_path)
+                _log.warning("Failed to release file lock: %s", self._lock_path)
 
     # ------------------------------------------------------------------
     # Build / Sync
@@ -228,7 +244,9 @@ class CallGraphDB:
         """Full build: index all *files* into the call graph.
 
         Three-pass strategy ensures imports are available before
-        cross-file call target resolution runs.
+        cross-file call target resolution runs.  Each file is wrapped
+        in a SAVEPOINT so that a single-file failure doesn't leave
+        partial state in the DB.
 
         Args:
             files: Absolute paths to source files to index.
@@ -239,38 +257,51 @@ class CallGraphDB:
         self._acquire_file_lock()
         try:
             with self._write_lock:
+                con = self._get_connection()
                 count = 0
                 for f in files:
+                    con.execute("SAVEPOINT sp_index")
                     try:
                         self._index_file(f)
                         count += 1
                     except Exception:
                         _log.warning("Failed to index '%s'", f, exc_info=True)
-                self.con.commit()
+                        con.execute("ROLLBACK TO sp_index")
+                    else:
+                        con.execute("RELEASE sp_index")
+                con.commit()
                 for f in files:
+                    con.execute("SAVEPOINT sp_imports")
                     try:
                         self._index_file_imports(f)
                     except Exception:
                         _log.warning("Failed to index imports for '%s'", f, exc_info=True)
-                self.con.commit()
+                        con.execute("ROLLBACK TO sp_imports")
+                    else:
+                        con.execute("RELEASE sp_imports")
+                con.commit()
                 for f in files:
+                    con.execute("SAVEPOINT sp_calls")
                     try:
                         rel_path = self._relativize(f)
                         self._index_calls(f, rel_path)
                     except Exception:
                         _log.warning("Failed to index calls for '%s'", f, exc_info=True)
-                self.con.commit()
+                        con.execute("ROLLBACK TO sp_calls")
+                    else:
+                        con.execute("RELEASE sp_calls")
+                con.commit()
                 self._record_build()
                 return count
         finally:
             self._release_file_lock()
 
     def _record_build(self) -> None:
-        self.con.execute(
+        self._get_connection().execute(
             "INSERT OR REPLACE INTO metadata (key, value) VALUES ('built_at', ?)",
             (str(int(time.time())),),
         )
-        self.con.commit()
+        self._get_connection().commit()
 
     def is_stale(self, max_seconds: int = 3600) -> bool:
         """Return *True* when the DB was last built more than *max_seconds* ago.
@@ -280,7 +311,8 @@ class CallGraphDB:
         ``--use-call-graph`` runs.  Callers should force a full rebuild
         when this returns *True*.
         """
-        row = self.con.execute(
+        con = self._get_connection()
+        row = con.execute(
             "SELECT value FROM metadata WHERE key = 'built_at'"
         ).fetchone()
         if row is None:
@@ -296,7 +328,8 @@ class CallGraphDB:
 
         Three-pass strategy (signatures → imports → calls) mirrors
         :meth:`build` so that cross-file call resolution has access to
-        the ``file_imports`` table.
+        the ``file_imports`` table.  Each file is wrapped in a SAVEPOINT
+        so that a single-file failure doesn't leave partial state.
 
         Args:
             files: Absolute paths to candidate source files.
@@ -311,25 +344,38 @@ class CallGraphDB:
                 if not changed:
                     return 0
 
+                con = self._get_connection()
                 for f in changed:
+                    con.execute("SAVEPOINT sp_sync_index")
                     try:
                         self._index_file(f)
                     except Exception:
                         _log.warning("Failed to sync '%s'", f, exc_info=True)
-                self.con.commit()
+                        con.execute("ROLLBACK TO sp_sync_index")
+                    else:
+                        con.execute("RELEASE sp_sync_index")
+                con.commit()
                 for f in changed:
+                    con.execute("SAVEPOINT sp_sync_imports")
                     try:
                         self._index_file_imports(f)
                     except Exception:
                         _log.warning("Failed to sync imports for '%s'", f, exc_info=True)
-                self.con.commit()
+                        con.execute("ROLLBACK TO sp_sync_imports")
+                    else:
+                        con.execute("RELEASE sp_sync_imports")
+                con.commit()
                 for f in changed:
+                    con.execute("SAVEPOINT sp_sync_calls")
                     try:
                         rel_path = self._relativize(f)
                         self._index_calls(f, rel_path)
                     except Exception:
                         _log.warning("Failed to sync calls for '%s'", f, exc_info=True)
-                self.con.commit()
+                        con.execute("ROLLBACK TO sp_sync_calls")
+                    else:
+                        con.execute("RELEASE sp_sync_calls")
+                con.commit()
                 self._record_build()
                 return len(changed)
         finally:
@@ -346,7 +392,7 @@ class CallGraphDB:
             Number of stale files cleaned up.
         """
         with self._write_lock:
-            rows = self.con.execute("SELECT path FROM files").fetchall()
+            rows = self._get_connection().execute("SELECT path FROM files").fetchall()
             db_files = {row["path"] for row in rows}
             active = {self._relativize(p) for p in active_files}
             stale = db_files - active
@@ -354,10 +400,10 @@ class CallGraphDB:
                 return 0
             for f in stale:
                 self._remove_file(f)
-                self.con.execute(
+                self._get_connection().execute(
                     "DELETE FROM file_imports WHERE imported = ?", (f,)
                 )
-            self.con.commit()
+            self._get_connection().commit()
             return len(stale)
 
     def filter_stale(self, files: list[str]) -> list[str]:
@@ -426,7 +472,7 @@ class CallGraphDB:
         """
         if target_fqnames:
             placeholders = ",".join("?" for _ in target_fqnames)
-            rows = self.con.execute(
+            rows = self._get_connection().execute(
                 f"""SELECT source, target, source_file, lineno, col,
                            args, kwargs, has_starargs, has_kwargs
                     FROM edges
@@ -434,7 +480,7 @@ class CallGraphDB:
                 (EDGE_CALLS, *target_fqnames),
             ).fetchall()
         else:
-            rows = self.con.execute(
+            rows = self._get_connection().execute(
                 """SELECT source, target, source_file, lineno, col,
                           args, kwargs, has_starargs, has_kwargs
                    FROM edges WHERE kind = ?""",
@@ -491,7 +537,7 @@ class CallGraphDB:
             mtime = int(st.st_mtime)
             size = st.st_size
             rel_path = self._relativize(file_path)
-            row = self.con.execute(
+            row = self._get_connection().execute(
                 "SELECT modified_at, size FROM files WHERE path = ?",
                 (rel_path,),
             ).fetchone()
@@ -529,7 +575,7 @@ class CallGraphDB:
         self._index_signatures(file_path, rel_path)
 
         # -- File record --
-        self.con.execute(
+        self._get_connection().execute(
             """INSERT OR REPLACE INTO files
                (path, content_hash, language, size, modified_at, indexed_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
@@ -553,7 +599,7 @@ class CallGraphDB:
             fqname = sig.get("fqname", "")
             if not fqname:
                 continue
-            self.con.execute(
+            self._get_connection().execute(
                 """INSERT OR REPLACE INTO nodes
                    (id, kind, name, file_path, language, start_line, end_line, signature, updated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -572,7 +618,7 @@ class CallGraphDB:
 
     def _resolve_from_same_file(self, rel_path: str, name: str) -> str | None:
         """Resolve *name* within the same file."""
-        row = self.con.execute(
+        row = self._get_connection().execute(
             "SELECT id FROM nodes WHERE file_path = ? AND name = ?",
             (rel_path, name),
         ).fetchone()
@@ -580,12 +626,12 @@ class CallGraphDB:
 
     def _resolve_from_imports(self, rel_path: str, name: str) -> str | None:
         """Resolve *name* by scanning file_imports for matching nodes."""
-        imported = self.con.execute(
+        imported = self._get_connection().execute(
             "SELECT fi.imported FROM file_imports fi WHERE fi.importer = ?",
             (rel_path,),
         ).fetchall()
         for row in imported:
-            row2 = self.con.execute(
+            row2 = self._get_connection().execute(
                 "SELECT id FROM nodes WHERE file_path = ? AND name = ?",
                 (row["imported"], name),
             ).fetchone()
@@ -602,7 +648,7 @@ class CallGraphDB:
             return None
         mod_prefix, func_name = parts
         for cand in (f"{mod_prefix}.py", f"{mod_prefix}/__init__.py"):
-            row = self.con.execute(
+            row = self._get_connection().execute(
                 "SELECT id FROM nodes WHERE (file_path = ? OR file_path LIKE ?) AND name = ?",
                 (cand, f"%/{cand}", func_name),
             ).fetchone()
@@ -655,7 +701,7 @@ class CallGraphDB:
             else:
                 source = f"{effective_path}:<module>"
 
-            self.con.execute(
+            self._get_connection().execute(
                 """INSERT INTO edges
                    (source, target, kind, source_file, target_file, lineno, col,
                     args, kwargs, has_starargs, has_kwargs)
@@ -691,7 +737,7 @@ class CallGraphDB:
         module_names = _parse_imports_from_source(source)
 
         # Collect known files for resolution
-        known_rows = self.con.execute("SELECT path FROM files").fetchall()
+        known_rows = self._get_connection().execute("SELECT path FROM files").fetchall()
         known_files = {r["path"] for r in known_rows}
         known_files.add(file_path)
 
@@ -700,40 +746,88 @@ class CallGraphDB:
                 mod, known_files
             )
             for target_path in resolved:
-                self.con.execute(
+                self._get_connection().execute(
                     "INSERT OR IGNORE INTO file_imports (importer, imported) VALUES (?, ?)",
                     (file_path, target_path),
                 )
 
     def _remove_file(self, file_path: str) -> None:
-        self.con.execute("DELETE FROM nodes WHERE file_path = ?", (file_path,))
-        self.con.execute("DELETE FROM edges WHERE source_file = ?", (file_path,))
-        self.con.execute("DELETE FROM file_imports WHERE importer = ?", (file_path,))
-        self.con.execute("DELETE FROM files WHERE path = ?", (file_path,))
+        self._get_connection().execute("DELETE FROM nodes WHERE file_path = ?", (file_path,))
+        self._get_connection().execute("DELETE FROM edges WHERE source_file = ?", (file_path,))
+        self._get_connection().execute("DELETE FROM file_imports WHERE importer = ?", (file_path,))
+        self._get_connection().execute("DELETE FROM files WHERE path = ?", (file_path,))
 
     # ------------------------------------------------------------------
     # Internal: BFS helpers
     # ------------------------------------------------------------------
+
+    def _query_chunked(
+        self, sql: str, params: tuple, chunk_size: int = 999
+    ) -> list[tuple]:
+        """Execute *sql* with chunked IN-clause to respect SQLite variable limits.
+
+        *sql* must contain exactly one ``{{PLACEHOLDERS}}`` marker.
+        *params* is the full parameter tuple.  The method assumes ALL params
+        go into the IN clause.  Callers that need trailing parameters after
+        the IN clause should append them to the SQL directly or restructure.
+        """
+        if len(params) <= chunk_size:
+            placeholders = ",".join("?" for _ in params)
+            return self._get_connection().execute(
+                sql.replace("{{PLACEHOLDERS}}", placeholders),
+                params,
+            ).fetchall()
+        results: list[tuple] = []
+        for i in range(0, len(params), chunk_size):
+            batch = params[i : i + chunk_size]
+            placeholders = ",".join("?" for _ in batch)
+            rows = self._get_connection().execute(
+                sql.replace("{{PLACEHOLDERS}}", placeholders),
+                batch,
+            ).fetchall()
+            results.extend(rows)
+        return results
+
+    @staticmethod
+    def _chunk_frontier(frontier: set[str]) -> list[tuple[str, tuple]]:
+        """Chunk a frontier set into batches of ≤999.
+
+        Returns ``(placeholders_sql, bound_params)`` pairs.
+        """
+        limit = 999
+        values = list(frontier)
+        if len(values) <= limit:
+            return [(",".join("?" for _ in values), tuple(values))]
+        chunks: list[tuple[str, tuple]] = []
+        for i in range(0, len(values), limit):
+            batch = values[i : i + limit]
+            chunks.append((
+                ",".join("?" for _ in batch),
+                tuple(batch),
+            ))
+        return chunks
 
     def _bfs_backward(
         self, start: str, kind: str, depth: int
     ) -> dict[str, int]:
         result: dict[str, int] = {}
         frontier = {start}
+        con = self._get_connection()
         for hop in range(1, depth + 1):
             if not frontier:
                 break
-            placeholders = ",".join("?" for _ in frontier)
-            rows = self.con.execute(
-                f"SELECT DISTINCT source FROM edges WHERE target IN ({placeholders}) AND kind = ?",
-                (*frontier, kind),
-            ).fetchall()
-            next_frontier: set[str] = set()
-            for (source,) in rows:
-                if source not in result and source != start:
-                    result[source] = hop
-                    next_frontier.add(source)
-            frontier = next_frontier
+            seen: set[str] = set()
+            for placeholders, params in self._chunk_frontier(frontier):
+                rows = con.execute(
+                    f"SELECT DISTINCT source FROM edges WHERE target IN ({placeholders}) AND kind = ?",
+                    (*params, kind),
+                ).fetchall()
+                for (source,) in rows:
+                    if source not in result and source != start:
+                        seen.add(source)
+            for source in seen:
+                result[source] = hop
+            frontier = seen
         return result
 
     def _bfs_forward(
@@ -741,40 +835,44 @@ class CallGraphDB:
     ) -> dict[str, int]:
         result: dict[str, int] = {}
         frontier = {start}
+        con = self._get_connection()
         for hop in range(1, depth + 1):
             if not frontier:
                 break
-            placeholders = ",".join("?" for _ in frontier)
-            rows = self.con.execute(
-                f"SELECT DISTINCT target FROM edges WHERE source IN ({placeholders}) AND kind = ?",
-                (*frontier, kind),
-            ).fetchall()
-            next_frontier: set[str] = set()
-            for (target,) in rows:
-                if target not in result and target != start:
-                    result[target] = hop
-                    next_frontier.add(target)
-            frontier = next_frontier
+            seen: set[str] = set()
+            for placeholders, params in self._chunk_frontier(frontier):
+                rows = con.execute(
+                    f"SELECT DISTINCT target FROM edges WHERE source IN ({placeholders}) AND kind = ?",
+                    (*params, kind),
+                ).fetchall()
+                for (target,) in rows:
+                    if target not in result and target != start:
+                        seen.add(target)
+            for target in seen:
+                result[target] = hop
+            frontier = seen
         return result
 
     def _bfs_impact(self, start: str, depth: int) -> dict[str, int]:
         """BFS following ALL incoming edges (like CodeGraph getImpactRadius)."""
         result: dict[str, int] = {}
         frontier = {start}
+        con = self._get_connection()
         for hop in range(1, depth + 1):
             if not frontier:
                 break
-            placeholders = ",".join("?" for _ in frontier)
-            rows = self.con.execute(
-                f"SELECT DISTINCT source FROM edges WHERE target IN ({placeholders})",
-                (*frontier,),
-            ).fetchall()
-            next_frontier: set[str] = set()
-            for (source,) in rows:
-                if source not in result and source != start:
-                    result[source] = hop
-                    next_frontier.add(source)
-            frontier = next_frontier
+            seen: set[str] = set()
+            for placeholders, params in self._chunk_frontier(frontier):
+                rows = con.execute(
+                    f"SELECT DISTINCT source FROM edges WHERE target IN ({placeholders})",
+                    params,
+                ).fetchall()
+                for (source,) in rows:
+                    if source not in result and source != start:
+                        seen.add(source)
+            for source in seen:
+                result[source] = hop
+            frontier = seen
         return result
 
     def _bfs_dependents(
@@ -782,20 +880,21 @@ class CallGraphDB:
     ) -> set[str]:
         result: set[str] = set()
         frontier = set(file_paths)
+        con = self._get_connection()
         for _hop in range(depth):
             if not frontier:
                 break
-            placeholders = ",".join("?" for _ in frontier)
-            rows = self.con.execute(
-                f"SELECT DISTINCT importer FROM file_imports WHERE imported IN ({placeholders})",
-                (*frontier,),
-            ).fetchall()
-            next_frontier: set[str] = set()
-            for (importer,) in rows:
-                if importer not in result and importer not in file_paths:
-                    result.add(importer)
-                    next_frontier.add(importer)
-            frontier = next_frontier
+            seen: set[str] = set()
+            for placeholders, params in self._chunk_frontier(frontier):
+                rows = con.execute(
+                    f"SELECT DISTINCT importer FROM file_imports WHERE imported IN ({placeholders})",
+                    params,
+                ).fetchall()
+                for (importer,) in rows:
+                    if importer not in result and importer not in file_paths:
+                        seen.add(importer)
+            result |= seen
+            frontier = seen
         return result
 
     # ------------------------------------------------------------------
@@ -804,27 +903,30 @@ class CallGraphDB:
 
     def close(self) -> None:
         with self._write_lock:
-            self.con.close()
+            con = getattr(self._thread_local, "con", None)
+            if con is not None:
+                con.close()
+                self._thread_local.con = None
 
     def clear(self) -> None:
         with self._write_lock:
-            self.con.executescript(
+            self._get_connection().executescript(
                 "DELETE FROM nodes; DELETE FROM edges; DELETE FROM file_imports; DELETE FROM files;"
             )
-            self.con.commit()
+            self._get_connection().commit()
 
     @property
     def node_count(self) -> int:
-        row = self.con.execute("SELECT COUNT(*) AS c FROM nodes").fetchone()
+        row = self._get_connection().execute("SELECT COUNT(*) AS c FROM nodes").fetchone()
         return row["c"] if row else 0
 
     @property
     def edge_count(self) -> int:
-        row = self.con.execute("SELECT COUNT(*) AS c FROM edges").fetchone()
+        row = self._get_connection().execute("SELECT COUNT(*) AS c FROM edges").fetchone()
         return row["c"] if row else 0
 
     def stats(self) -> dict[str, Any]:
-        dangling = self.con.execute(
+        dangling = self._get_connection().execute(
             """SELECT COUNT(*) AS c FROM edges e
                LEFT JOIN nodes n ON e.target = n.id
                WHERE n.id IS NULL"""
@@ -841,7 +943,7 @@ class CallGraphDB:
             "nodes": self.node_count,
             "edges": self.edge_count,
             "dangling_edge_targets": dangling,
-            "files": self.con.execute(
+            "files": self._get_connection().execute(
                 "SELECT COUNT(*) AS c FROM files"
             ).fetchone()["c"],
             "db_path": str(self.db_path),
