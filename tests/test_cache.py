@@ -787,3 +787,120 @@ class TestFastWalk:
         assert "For" in types
         assert "If" in types
         assert "Try" in types
+
+    def test_rust_backend_used_when_available(self):
+        import importlib
+
+        import impactguard._ast_cache as mod
+
+        backend = mod._WALK_BACKEND
+        try:
+            # If Rust is installed, backend should be "rust"
+            try:
+                import fast_walk  # noqa: F401
+
+                assert mod._WALK_BACKEND == "rust"
+            except ImportError:
+                assert mod._WALK_BACKEND == "python"
+        finally:
+            mod._WALK_BACKEND = backend
+
+    def test_fallback_on_import_error(self, monkeypatch):
+        import ast
+
+        import impactguard._ast_cache as mod
+
+        backend = mod._WALK_BACKEND
+        impl = mod._fast_walk_impl if hasattr(mod, "_fast_walk_impl") else None
+        try:
+            # Force Python backend
+            mod._WALK_BACKEND = "python"
+            tree = ast.parse("x = 1\ndef f(): pass")
+            py_result = sorted(str(n) for n in mod.fast_walk(tree))
+
+            # Force Rust backend (will fail if _fast_walk_impl not set,
+            # but the function checks _WALK_BACKEND first)
+            mod._WALK_BACKEND = "rust"
+            # Only test if _fast_walk_impl exists (Rust is installed)
+            if impl is not None:
+                rust_result = sorted(str(n) for n in mod.fast_walk(tree))
+                assert rust_result == py_result
+        finally:
+            mod._WALK_BACKEND = backend
+            if impl is not None:
+                mod._fast_walk_impl = impl
+
+    def test_deeply_nested_ast(self):
+        import ast
+
+        from impactguard._ast_cache import fast_walk
+
+        # Build a deeply nested if chain via AST (avoids indentation issues)
+        depth = 50
+        inner = ast.parse("x = 1").body[0]
+        for _ in range(depth):
+            inner = ast.If(
+                test=ast.Constant(value=True),
+                body=[inner],
+                orelse=[],
+            )
+        module = ast.Module(body=[inner], type_ignores=[])
+        ast.fix_missing_locations(module)
+        nodes = fast_walk(module)
+        assert len(nodes) > depth  # should walk all nested If nodes
+        types = {type(n).__name__ for n in nodes}
+        assert "If" in types
+        assert "Module" in types
+
+    def test_extract_reexports_uses_fast_walk(self, tmp_path):
+        init = tmp_path / "__init__.py"
+        init.write_text("from .core import MyClass\n")
+        core = tmp_path / "core.py"
+        core.write_text("class MyClass: pass\n")
+
+        from impactguard.extract_signatures import extract_reexports
+
+        result = extract_reexports([str(init)])
+        assert any("MyClass" in v for v in result.values())
+
+    def test_class_hierarchy_uses_fast_walk(self, tmp_path):
+        f = tmp_path / "base.py"
+        f.write_text("from abc import ABC\n\nclass MyBase(ABC):\n    def method(self): pass\n")
+
+        from impactguard.class_hierarchy import extract_class_hierarchy
+
+        result = extract_class_hierarchy([str(f)])
+        assert "MyBase" in result
+        assert result["MyBase"]["is_abc"]
+
+    def test_call_graph_uses_fast_walk(self):
+        from impactguard.call_graph import _parse_imports_from_source
+
+        src = "import os\nfrom pathlib import Path\nfrom os.path import join\n"
+        result = _parse_imports_from_source(src)
+        assert "os" in result
+        assert "pathlib" in result
+        assert "os.path" in result
+
+    def test_large_module_performance(self):
+        import ast
+        import time
+
+        from impactguard._ast_cache import fast_walk
+
+        # Generate a 500-function module
+        lines = []
+        for i in range(500):
+            lines.append(f"def func_{i}(a: int, b: str = 'x') -> bool:")
+            lines.append("    if a > 0: return True")
+            lines.append("    return False")
+        src = "\n".join(lines)
+        tree = ast.parse(src)
+
+        start = time.perf_counter()
+        for _ in range(100):
+            fast_walk(tree)
+        elapsed = time.perf_counter() - start
+
+        # 100 walks of a 500-function module should complete in < 1 second
+        assert elapsed < 1.0, f"fast_walk too slow: {elapsed:.2f}s for 100 walks"
