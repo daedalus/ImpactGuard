@@ -10,7 +10,7 @@ import ast
 from pathlib import Path
 from typing import Any
 
-from ._ast_cache import cached_ast_parse, cached_read_text
+from ._ast_cache import cached_ast_parse, cached_read_text, fast_walk
 from ._logging import get_logger
 
 _log = get_logger(__name__)
@@ -74,7 +74,7 @@ def extract_class_hierarchy(files: list[str]) -> Hierarchy:
         except (SyntaxError, OSError, UnicodeDecodeError):
             continue
 
-        for node in ast.walk(tree):
+        for node in fast_walk(tree):
             if not isinstance(node, ast.ClassDef):
                 continue
 

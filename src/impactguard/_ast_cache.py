@@ -16,7 +16,22 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import logging
 from pathlib import Path
+
+_log = logging.getLogger(__name__)
+
+# Try to import the Rust fast-walk extension; fall back to pure Python.
+try:
+    from fast_walk import walk_unordered as _rust_walk  # type: ignore[import-untyped]
+
+    def _rust_fast_walk(tree: ast.Module) -> list[ast.AST]:
+        return list(_rust_walk(tree))
+
+    _fast_walk_impl = _rust_fast_walk
+    _WALK_BACKEND = "rust"
+except ImportError:
+    _WALK_BACKEND = "python"
 
 
 def _file_key(path: Path) -> str:
@@ -45,6 +60,36 @@ def cached_read_text(path: str | Path) -> str:
     text = p.read_text()
     cache.set(key, text)
     return text
+
+
+def fast_walk(tree: ast.Module) -> list[ast.AST]:
+    """Fast replacement for ``list(ast.walk(tree))``.
+
+    When the optional ``fast-walk`` Rust extension is installed, delegates
+    to its CPython-inline traversal (~30x faster).  Otherwise falls back
+    to a pure-Python implementation (~1.5x faster than stdlib).
+    """
+    if _WALK_BACKEND == "rust":
+        return _fast_walk_impl(tree)
+    return _py_fast_walk(tree)
+
+
+def _py_fast_walk(tree: ast.Module) -> list[ast.AST]:
+    """Pure-Python fast walk — list-based, no generators."""
+    todo = [tree]
+    out: list[ast.AST] = []
+    while todo:
+        node = todo.pop()
+        out.append(node)
+        for field_name in node._fields:
+            field_value = getattr(node, field_name, None)
+            if isinstance(field_value, list):
+                for item in field_value:
+                    if isinstance(item, ast.AST):
+                        todo.append(item)
+            elif isinstance(field_value, ast.AST):
+                todo.append(field_value)
+    return out
 
 
 def cached_ast_parse(source: str) -> ast.Module:

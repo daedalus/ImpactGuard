@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from ._ast_cache import cached_ast_parse
+from ._ast_cache import cached_ast_parse, fast_walk
 from ._logging import get_logger
 
 _log = get_logger(__name__)
@@ -124,7 +124,7 @@ def _parse_imports_from_source(source: str) -> list[str]:
         return []
 
     modules: set[str] = set()
-    for node in ast.walk(tree):
+    for node in fast_walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
                 modules.add(alias.name)

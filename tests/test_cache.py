@@ -28,12 +28,13 @@ from impactguard.cache import (
     SENTINEL,
     BloomFilter,
     Cache,
+    _record_cache_hit,
+    _record_cache_miss,
     get_cache,
     get_cache_metrics_snapshot,
     is_cache_miss,
     reset_cache_metrics,
 )
-from impactguard.cache import _record_cache_hit, _record_cache_miss
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # BloomFilter
@@ -733,3 +734,56 @@ def test_cache_metrics_lock_no_deadlock():
     if errors:
         raise errors[0]
     assert len(results) == 6
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# fast_walk
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestFastWalk:
+    def test_matches_stdlib_walk(self):
+        import ast
+
+        from impactguard._ast_cache import fast_walk
+        src = "import os\nclass Foo:\n    def bar(self): pass\ndef baz(): pass"
+        tree = ast.parse(src)
+        stdlib = sorted(str(n) for n in ast.walk(tree))
+        fast = sorted(str(n) for n in fast_walk(tree))
+        assert stdlib == fast
+
+    def test_empty_module(self):
+        import ast
+
+        from impactguard._ast_cache import fast_walk
+        tree = ast.parse("")
+        assert len(fast_walk(tree)) == 1  # just Module
+
+    def test_python_fallback_matches_rust(self):
+        import ast
+
+        import impactguard._ast_cache as mod
+        src = "x = 1\ndef f(): pass\nclass C: pass"
+        tree = ast.parse(src)
+        backend = mod._WALK_BACKEND
+        try:
+            mod._WALK_BACKEND = "rust"
+            rust_result = sorted(str(n) for n in mod.fast_walk(tree))
+            mod._WALK_BACKEND = "python"
+            py_result = sorted(str(n) for n in mod.fast_walk(tree))
+            assert rust_result == py_result
+        finally:
+            mod._WALK_BACKEND = backend
+
+    def test_walk_unordered_is_valid(self):
+        import ast
+
+        from impactguard._ast_cache import fast_walk
+        src = "for i in range(10): pass\nif True: x = 1\ntry: pass\nexcept: pass"
+        tree = ast.parse(src)
+        nodes = fast_walk(tree)
+        types = {type(n).__name__ for n in nodes}
+        assert "Module" in types
+        assert "For" in types
+        assert "If" in types
+        assert "Try" in types
