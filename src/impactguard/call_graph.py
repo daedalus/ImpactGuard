@@ -183,16 +183,22 @@ class CallGraphDB:
 
         self._thread_local = threading.local()
         self._write_lock = threading.Lock()
+        self._all_connections: list[sqlite3.Connection] = []
+        self._conn_lock = threading.Lock()
         # File-level lock for cross-process safety
         self._lock_path = cache_dir / ".call_graph.lock"
         self._lock_fd: IO[str] | None = None
 
         # Initialize schema on the default thread's connection
-        con = self._get_connection()
-        con.executescript(_SCHEMA_SQL)
+        self._get_connection()
 
     def _get_connection(self) -> sqlite3.Connection:
-        """Return a thread-local SQLite connection, creating if needed."""
+        """Return a thread-local SQLite connection, creating if needed.
+
+        Each new connection gets the schema applied (idempotent via
+        ``CREATE TABLE IF NOT EXISTS``) and is tracked in
+        ``_all_connections`` so :meth:`close` can tear them all down.
+        """
         con = getattr(self._thread_local, "con", None)
         if con is None:
             con = sqlite3.connect(
@@ -202,7 +208,10 @@ class CallGraphDB:
             con.execute("PRAGMA journal_mode=WAL")
             con.execute("PRAGMA synchronous=NORMAL")
             con.execute("PRAGMA busy_timeout=5000")
+            con.executescript(_SCHEMA_SQL)
             self._thread_local.con = con
+            with self._conn_lock:
+                self._all_connections.append(con)
         return con
 
     @property
@@ -297,11 +306,12 @@ class CallGraphDB:
             self._release_file_lock()
 
     def _record_build(self) -> None:
-        self._get_connection().execute(
+        con = self._get_connection()
+        con.execute(
             "INSERT OR REPLACE INTO metadata (key, value) VALUES ('built_at', ?)",
             (str(int(time.time())),),
         )
-        self._get_connection().commit()
+        con.commit()
 
     def is_stale(self, max_seconds: int = 3600) -> bool:
         """Return *True* when the DB was last built more than *max_seconds* ago.
@@ -471,14 +481,17 @@ class CallGraphDB:
             ``impact_analysis.load_calls``.
         """
         if target_fqnames:
-            placeholders = ",".join("?" for _ in target_fqnames)
-            rows = self._get_connection().execute(
-                f"""SELECT source, target, source_file, lineno, col,
-                           args, kwargs, has_starargs, has_kwargs
-                    FROM edges
-                    WHERE kind = ? AND target IN ({placeholders})""",
-                (EDGE_CALLS, *target_fqnames),
-            ).fetchall()
+            rows: list = []
+            for placeholders, params in self._chunk_frontier(target_fqnames):
+                rows.extend(
+                    self._get_connection().execute(
+                        f"""SELECT source, target, source_file, lineno, col,
+                                   args, kwargs, has_starargs, has_kwargs
+                            FROM edges
+                            WHERE kind = ? AND target IN ({placeholders})""",
+                        (EDGE_CALLS, *params),
+                    ).fetchall()
+                )
         else:
             rows = self._get_connection().execute(
                 """SELECT source, target, source_file, lineno, col,
@@ -761,33 +774,6 @@ class CallGraphDB:
     # Internal: BFS helpers
     # ------------------------------------------------------------------
 
-    def _query_chunked(
-        self, sql: str, params: tuple, chunk_size: int = 999
-    ) -> list[tuple]:
-        """Execute *sql* with chunked IN-clause to respect SQLite variable limits.
-
-        *sql* must contain exactly one ``{{PLACEHOLDERS}}`` marker.
-        *params* is the full parameter tuple.  The method assumes ALL params
-        go into the IN clause.  Callers that need trailing parameters after
-        the IN clause should append them to the SQL directly or restructure.
-        """
-        if len(params) <= chunk_size:
-            placeholders = ",".join("?" for _ in params)
-            return self._get_connection().execute(
-                sql.replace("{{PLACEHOLDERS}}", placeholders),
-                params,
-            ).fetchall()
-        results: list[tuple] = []
-        for i in range(0, len(params), chunk_size):
-            batch = params[i : i + chunk_size]
-            placeholders = ",".join("?" for _ in batch)
-            rows = self._get_connection().execute(
-                sql.replace("{{PLACEHOLDERS}}", placeholders),
-                batch,
-            ).fetchall()
-            results.extend(rows)
-        return results
-
     @staticmethod
     def _chunk_frontier(frontier: set[str]) -> list[tuple[str, tuple]]:
         """Chunk a frontier set into batches of ≤999.
@@ -902,18 +888,20 @@ class CallGraphDB:
     # ------------------------------------------------------------------
 
     def close(self) -> None:
-        with self._write_lock:
-            con = getattr(self._thread_local, "con", None)
-            if con is not None:
-                con.close()
-                self._thread_local.con = None
+        with self._conn_lock:
+            for con in self._all_connections:
+                try:
+                    con.close()
+                except Exception:
+                    pass
+            self._all_connections.clear()
+        self._thread_local.con = None
 
     def clear(self) -> None:
         with self._write_lock:
             self._get_connection().executescript(
                 "DELETE FROM nodes; DELETE FROM edges; DELETE FROM file_imports; DELETE FROM files;"
             )
-            self._get_connection().commit()
 
     @property
     def node_count(self) -> int:
