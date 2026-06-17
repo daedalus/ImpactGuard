@@ -103,11 +103,13 @@ def _py_fast_walk(tree: ast.Module) -> list[ast.AST]:
 def cached_ast_parse(source: str) -> ast.Module:
     """Parse *source* into an AST, caching the result.
 
-    The cache key is ``ast:<sha256(source)>``, so repeatedly parsing the
-    same source (across runs) reuses the pickled AST tree.
+    The cache key is ``ast2:<sha256(source)>`` so repeatedly parsing the
+    same source (across runs) reuses the cached AST tree.  The ``2``
+    suffix orphans entries written by earlier versions that used
+    ``ast.dump()`` serialisation (which produced broken round-trips).
     """
     digest = hashlib.sha256(source.encode("utf-8")).hexdigest()
-    key = f"ast:{digest}"
+    key = f"ast2:{digest}"
     from .cache import get_cache
 
     cache = get_cache()
