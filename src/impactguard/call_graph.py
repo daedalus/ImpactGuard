@@ -202,11 +202,12 @@ class CallGraphDB:
 
         Raises :class:`RuntimeError` if the instance has been closed.
         """
+        con = getattr(self._thread_local, "con", None)
+        if con is not None:
+            return con
         with self._conn_lock:
             if self._closed:
                 raise RuntimeError("CallGraphDB has been closed")
-        con = getattr(self._thread_local, "con", None)
-        if con is None:
             con = sqlite3.connect(
                 str(self.db_path), check_same_thread=False, timeout=5,
             )
@@ -216,8 +217,7 @@ class CallGraphDB:
             con.execute("PRAGMA busy_timeout=5000")
             con.executescript(_SCHEMA_SQL)
             self._thread_local.con = con
-            with self._conn_lock:
-                self._all_connections.append(con)
+            self._all_connections.append(con)
         return con
 
     @property
