@@ -185,6 +185,7 @@ class CallGraphDB:
         self._write_lock = threading.Lock()
         self._all_connections: list[sqlite3.Connection] = []
         self._conn_lock = threading.Lock()
+        self._closed = False
         # File-level lock for cross-process safety
         self._lock_path = cache_dir / ".call_graph.lock"
         self._lock_fd: IO[str] | None = None
@@ -198,7 +199,11 @@ class CallGraphDB:
         Each new connection gets the schema applied (idempotent via
         ``CREATE TABLE IF NOT EXISTS``) and is tracked in
         ``_all_connections`` so :meth:`close` can tear them all down.
+
+        Raises :class:`RuntimeError` if the instance has been closed.
         """
+        if self._closed:
+            raise RuntimeError("CallGraphDB has been closed")
         con = getattr(self._thread_local, "con", None)
         if con is None:
             con = sqlite3.connect(
@@ -892,9 +897,10 @@ class CallGraphDB:
             for con in self._all_connections:
                 try:
                     con.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _log.warning("Failed to close connection: %s", exc)
             self._all_connections.clear()
+            self._closed = True
         self._thread_local.con = None
 
     def clear(self) -> None:

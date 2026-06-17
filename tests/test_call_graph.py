@@ -660,7 +660,9 @@ class TestCallGraphLifecycle:
 
         cg = CallGraphDB(tmp_path)
         cg.close()
-        assert cg.con is not None
+        assert cg._closed
+        with pytest.raises(RuntimeError, match="closed"):
+            _ = cg.con
 
     def test_clear(self, tmp_path):
         from impactguard.call_graph import CallGraphDB
