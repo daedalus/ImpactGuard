@@ -35,7 +35,6 @@ test = [
 lint = [
     "ruff",
     "prospector",
-    "semgrep",
     "mypy",
     "vulture",
 ]

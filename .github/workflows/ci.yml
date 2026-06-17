@@ -73,8 +73,13 @@ jobs:
       - name: Run prospector
         run: uv run prospector src/
 
-      - name: Run semgrep
-        run: uv run semgrep --config=auto --severity=ERROR src/
+      - name: Install opengrep
+        run: |
+          curl -sSL https://github.com/opengrep/opengrep/releases/latest/download/opengrep-linux-x64 -o /usr/local/bin/opengrep
+          chmod +x /usr/local/bin/opengrep
+
+      - name: Run opengrep
+        run: opengrep scan --config=auto --severity=ERROR src/
 
       - name: Run mypy
         run: uv run mypy src/

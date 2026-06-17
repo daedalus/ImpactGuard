@@ -612,7 +612,7 @@ The hooks use these entry points (automatically configured):
 The CI pipeline is defined in `.github/workflows/ci.yml` and executes on all pushes and pull requests targeting the `master` branch. It consists of three parallel jobs:
 
 - **Test Matrix:** Executes `pytest` across Python versions 3.11, 3.12, and 3.13
-- **Static Analysis (Linting):** Runs `ruff`, `prospector`, `semgrep`, and `mypy`
+- **Static Analysis (Linting):** Runs `ruff`, `prospector`, `opengrep`, and `mypy`
 - **Build Verification:** Ensures the package can be successfully built via `twine check`
 
 ### Packaging and Release
@@ -624,7 +624,7 @@ ImpactGuard uses modern Python packaging standards with `hatchling` as the build
 |-------|---------|-----------|
 | `dev` | General development | `hatch`, `pip-api` |
 | `test` | Automated testing | `pytest`, `hypothesis` |
-| `lint` | Static analysis | `ruff`, `mypy`, `semgrep` |
+| `lint` | Static analysis | `ruff`, `mypy` |
 
 **Release Automation:**
 

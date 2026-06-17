@@ -382,7 +382,7 @@ def cmd_trace(args: argparse.Namespace) -> int:
             return 1
 
         try:
-            # nosemgrep: python.lang.security.audit.non-literal-import.non-literal-import
+            # noopengrep: python.lang.security.audit.non-literal-import.non-literal-import
             module = importlib.import_module(args.module)
             # Verify the imported module name matches exactly (prevents submodule bypass)
             if getattr(module, "__name__", None) != args.module:
