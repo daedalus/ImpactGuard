@@ -120,6 +120,31 @@ All 19 failure modes from the project audit are MITIGATED:
 
 ---
 
+## Session Bug Prevention Checklist
+
+Before committing any change involving:
+
+### Serialisation / Caching
+- [ ] Round-trip test: serialise → deserialise → compare original
+- [ ] Verify the serialised format is valid for the deserialiser (e.g. `ast.parse` expects Python source, not `ast.dump` repr)
+
+### Threading / Locking
+- [ ] Draw critical section diagram for all threads — verify no lock is acquired twice without RLock (deadlock) and no window exists between check and mutate
+- [ ] Verify shared state is inaccessible after `close()`/cleanup (thread-local stale references need a guard flag)
+- [ ] Run concurrent stress test (multiple threads + close)
+
+### Connection / Resource Lifecycle
+- [ ] Resources released for ALL threads, not just the calling thread
+- [ ] `_closed` guard prevents use-after-close
+- [ ] `close()` logs errors, never silently swallows
+
+### Code Hygiene
+- [ ] `grep -r '<removed_function>' src/` — no dangling references after refactor
+- [ ] Tests updated to match new postconditions (raises where it didn't before, different return values)
+- [ ] `ruff check` — 0 lint errors
+
+---
+
 ## Release Process
 
 ```bash
