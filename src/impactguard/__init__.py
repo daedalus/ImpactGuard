@@ -169,7 +169,7 @@ def analyze_impact(
     return analyze(sigs_path, calls_path, runtime_path)
 
 
-__version__ = "0.1.20"
+__version__ = "0.1.21"
 
 __all__ = [
     # Signature extraction
