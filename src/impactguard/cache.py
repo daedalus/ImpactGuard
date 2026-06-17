@@ -190,11 +190,11 @@ def _wrap_value(value: Any) -> str:
         json.dumps(value)
         return json.dumps({"_t": "json", "v": value}, default=str)
     except (TypeError, ValueError, OverflowError):
-        # Check if this is an AST tree — use safe ast.dump instead of pickle
+        # Check if this is an AST tree — use ast.unparse for safe round-trip
         import ast as _ast
         if isinstance(value, _ast.Module):
-            dumped = _ast.dump(value)
-            return json.dumps({"_t": "ast_dump", "v": dumped})
+            source = _ast.unparse(value)
+            return json.dumps({"_t": "ast_dump", "v": source})
         pickled = pickle.dumps(value)
         b64 = base64.b64encode(pickled).decode("ascii")
         return json.dumps({"_t": "pickle", "v": b64})
