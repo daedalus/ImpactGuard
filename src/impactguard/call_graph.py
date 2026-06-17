@@ -557,12 +557,22 @@ class CallGraphDB:
             size = st.st_size
             rel_path = self._relativize(file_path)
             row = self._get_connection().execute(
-                "SELECT modified_at, size FROM files WHERE path = ?",
+                "SELECT modified_at, size, content_hash FROM files WHERE path = ?",
                 (rel_path,),
             ).fetchone()
             if row is None:
                 return True
-            return row["modified_at"] != mtime or row["size"] != size
+            if row["modified_at"] != mtime or row["size"] != size:
+                return True
+            # mtime + size match, but on filesystems with 1-second mtime
+            # granularity (FAT, some NFS) a same-second edit can be missed.
+            # Content hash tiebreak catches this at the cost of a read.
+            try:
+                content = path.read_bytes()
+            except OSError:
+                return True
+            current_hash = hashlib.sha256(content).hexdigest()
+            return current_hash != row["content_hash"]
         except OSError:
             return True
 
@@ -667,9 +677,12 @@ class CallGraphDB:
             return None
         mod_prefix, func_name = parts
         for cand in (f"{mod_prefix}.py", f"{mod_prefix}/__init__.py"):
+            # Exact match (root-level) then LIKE for nested paths.
+            # LIKE '%/...' cannot use the index but is necessary for
+            # arbitrary nesting depths.
             row = self._get_connection().execute(
-                "SELECT id FROM nodes WHERE (file_path = ? OR file_path LIKE ?) AND name = ?",
-                (cand, f"%/{cand}", func_name),
+                "SELECT id FROM nodes WHERE (file_path = ? OR file_path LIKE ? OR file_path LIKE ?) AND name = ?",
+                (cand, f"/{cand}", f"%/{cand}", func_name),
             ).fetchone()
             if row:
                 return row["id"]
