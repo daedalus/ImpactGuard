@@ -37,6 +37,11 @@ from .config import get as get_config_value
 from .config import get_config, load_config, reload_config, validate_config
 from .constraint_check import check_subsumption, classify_type_change
 from .cst_patch import patch_call, patch_function
+from .decay_model import DecayScore, FileImpact, compute_file_impact
+from .decay_model import enforce as enforce_decay
+from .decay_model import score_change as score_decay
+from .decay_model import render_json as render_decay_json
+from .decay_model import render_text as render_decay_text
 from .enforce_gate import enforce, enforce_report
 from .extract_signatures import extract, extract_reexports, serialize_function
 from .feedback import (

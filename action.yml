@@ -1,0 +1,130 @@
+name: "impactguard"
+description: "Gate a pull request on breaking-API risk and structural decay with ImpactGuard."
+branding:
+  icon: "shield"
+  color: "blue"
+
+inputs:
+  base:
+    description: "Base ref to diff against. Defaults to the PR base (origin/<base_ref>) or the repo's default branch."
+    default: ""
+  mode:
+    description: "What decay scoring diffs: range (default, for CI), staged, or worktree."
+    default: "range"
+  enforcement:
+    description: "Decay gate mode: off, warn, or block."
+    default: "warn"
+  warn-at:
+    description: "Decay impact above which to warn."
+    default: "5000"
+  block-at:
+    description: "Decay impact above which to block (enforcement=block only)."
+    default: "20000"
+  block-unknown:
+    description: "Also block on UNKNOWN-risk breaking changes in the risk gate (true/false)."
+    default: "false"
+  working-directory:
+    description: "Path to the repository to analyze."
+    default: "."
+  post-comment:
+    description: "Post/update a sticky PR comment with the combined report (true/false)."
+    default: "true"
+  github-token:
+    description: "Token used to post the PR comment. Defaults to the workflow token."
+    default: ""
+
+outputs:
+  decay-impact:
+    description: "The structural decay impact score for this change."
+    value: ${{ steps.impactguard.outputs.decay-impact }}
+  blocked:
+    description: "true if either gate blocked the change."
+    value: ${{ steps.impactguard.outputs.blocked }}
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-python@v6
+      with:
+        python-version: "3.13"
+
+    - name: Install ImpactGuard
+      shell: bash
+      run: pip install "${{ github.action_path }}"
+
+    - name: Run ImpactGuard gates
+      id: impactguard
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        INPUT_BASE: ${{ inputs.base }}
+        INPUT_MODE: ${{ inputs.mode }}
+        INPUT_ENFORCEMENT: ${{ inputs.enforcement }}
+        INPUT_WARN_AT: ${{ inputs.warn-at }}
+        INPUT_BLOCK_AT: ${{ inputs.block-at }}
+        INPUT_BLOCK_UNKNOWN: ${{ inputs.block-unknown }}
+        INPUT_POST_COMMENT: ${{ inputs.post-comment }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        GITHUB_TOKEN: ${{ inputs.github-token || github.token }}
+      run: |
+        set +e   # don't abort on a blocking exit code; gate explicitly at the end
+
+        BASE="$INPUT_BASE"
+        if [ -z "$BASE" ]; then
+          if [ -n "$GITHUB_BASE_REF" ]; then
+            BASE="origin/$GITHUB_BASE_REF"
+          else
+            BASE="origin/$DEFAULT_BRANCH"
+          fi
+        fi
+        git fetch --no-tags --depth=1 origin "${BASE#origin/}" 2>/dev/null || true
+
+        report="$RUNNER_TEMP/impactguard-report.md"
+        overall_exit=0
+
+        {
+          echo "## ImpactGuard report"
+          echo
+          echo "### Structural decay"
+          echo '```'
+        } > "$report"
+
+        decay_args=(decay . --mode "$INPUT_MODE" --base "$BASE" \
+          --enforcement "$INPUT_ENFORCEMENT" --warn-at "$INPUT_WARN_AT" \
+          --block-at "$INPUT_BLOCK_AT" --output "$RUNNER_TEMP/decay.json")
+        impactguard "${decay_args[@]}" >> "$report" 2>&1
+        decay_exit=$?
+        [ "$decay_exit" -eq 2 ] && overall_exit=2
+
+        {
+          echo '```'
+          echo
+          echo "### Breaking-API risk"
+          echo '```'
+        } >> "$report"
+
+        risk_args=(check-commits "$BASE" HEAD --enforce-gate)
+        if [ "$INPUT_BLOCK_UNKNOWN" = "true" ]; then
+          risk_args+=(--block-unknown)
+        fi
+        impactguard "${risk_args[@]}" >> "$report" 2>&1
+        risk_exit=$?
+        [ "$risk_exit" -ge 1 ] && overall_exit=2
+
+        echo '```' >> "$report"
+        cat "$report" >> "$GITHUB_STEP_SUMMARY"
+
+        decay_impact=$(python3 -c "import json;print(json.load(open('$RUNNER_TEMP/decay.json')).get('impact',0))" 2>/dev/null || echo 0)
+        echo "decay-impact=$decay_impact" >> "$GITHUB_OUTPUT"
+        if [ "$overall_exit" -ne 0 ]; then
+          echo "blocked=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "blocked=false" >> "$GITHUB_OUTPUT"
+        fi
+
+        if [ "$INPUT_POST_COMMENT" = "true" ] && [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+          impactguard comment --body-file "$report" \
+            || echo "::warning::impactguard could not post the PR comment. Grant 'pull-requests: write' to the workflow."
+        fi
+
+        exit "$overall_exit"

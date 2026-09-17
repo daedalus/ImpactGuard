@@ -302,6 +302,100 @@ def cmd_enforce(args: argparse.Namespace) -> int:
                 _log.debug("Failed to clean up temp file: %s", _tmp_path)
 
 
+def cmd_decay(args: argparse.Namespace) -> int:
+    """Score structural decay (complexity accretion) for a change and
+    optionally gate on it. Complements `risk`/`enforce`, which score
+    breaking-API risk: this scores whether a change piles complexity onto
+    an already-heavy container, independent of whether any signature broke.
+    """
+    from . import decay_model
+
+    score = decay_model.score_change(
+        repo_path=getattr(args, "repo_path", ".") or ".",
+        mode=args.mode,
+        base=args.base,
+        max_diff_lines=args.max_diff_lines,
+        rename_jaccard=args.rename_jaccard,
+    )
+
+    if args.format == "json":
+        print(json.dumps(decay_model.render_json(score), indent=2))
+    else:
+        print(decay_model.render_text(score, top_n=args.top))
+
+    if args.output:
+        with open(args.output, "w", encoding="utf-8") as fh:
+            json.dump(decay_model.render_json(score), fh, indent=2)
+
+    blocked, exit_code = decay_model.enforce(
+        score, warn_at=args.warn_at, block_at=args.block_at, enforcement=args.enforcement
+    )
+    if blocked:
+        print(
+            f"\nBLOCKED: structural decay impact {score.impact} >= "
+            f"--block-at {args.block_at} (enforcement=block)",
+            file=sys.stderr,
+        )
+    elif decay_model.is_warning(score, args.warn_at):
+        print(
+            f"\nWARNING: structural decay impact {score.impact} >= "
+            f"--warn-at {args.warn_at}",
+            file=sys.stderr,
+        )
+    return exit_code
+
+
+def cmd_comment(args: argparse.Namespace) -> int:
+    """Upsert a sticky PR comment carrying a report (GitHub only for now)."""
+    import os
+
+    from . import pr_comment
+
+    if args.body_file:
+        with open(args.body_file, encoding="utf-8") as fh:
+            body = fh.read()
+    else:
+        if sys.stdin.isatty():
+            print("Error: provide --body-file or pipe the report on stdin", file=sys.stderr)
+            return 1
+        body = sys.stdin.read()
+
+    repo_slug = args.repo_slug or os.environ.get("GITHUB_REPOSITORY")
+    token = args.token or os.environ.get("GITHUB_TOKEN")
+    pr_number = args.pr
+
+    if pr_number is None:
+        event_path = os.environ.get("GITHUB_EVENT_PATH")
+        if event_path:
+            try:
+                with open(event_path, encoding="utf-8") as fh:
+                    event = json.load(fh)
+                pr_number = (
+                    event.get("pull_request", {}).get("number")
+                    or event.get("number")
+                )
+            except (OSError, json.JSONDecodeError) as exc:
+                _log.debug("could not read GITHUB_EVENT_PATH: %s", exc)
+
+    if not repo_slug or not token or not pr_number:
+        print(
+            "Error: need --repo-slug/--token/--pr (or GITHUB_REPOSITORY / "
+            "GITHUB_TOKEN / a pull_request event) to post a comment",
+            file=sys.stderr,
+        )
+        return 1
+
+    target = pr_comment.CommentTarget(repo_slug=repo_slug, pr_number=int(pr_number), token=token)
+    try:
+        url = pr_comment.upsert_comment(target, body)
+    except pr_comment.GitHubAPIError as exc:
+        print(f"Error posting PR comment: {exc}", file=sys.stderr)
+        return 1
+
+    print(f"Posted PR comment: {url}" if url else "Posted PR comment.")
+    return 0
+
+
 def cmd_extract_calls(args: argparse.Namespace) -> int:
     """Extract call sites from source files.
 
@@ -2290,6 +2384,106 @@ def main() -> int:
     )
     hooks_parser.set_defaults(func=cmd_install_hooks)
 
+    # decay subcommand
+    decay_parser = subparsers.add_parser(
+        "decay",
+        help="Score structural decay (complexity accretion) for a change",
+    )
+    decay_parser.add_argument(
+        "repo_path",
+        nargs="?",
+        default=".",
+        help="Path to git repository (default: current directory)",
+    )
+    decay_parser.add_argument(
+        "--mode",
+        choices=["staged", "worktree", "range"],
+        default="staged",
+        help="What to diff: staged changes vs HEAD (default, for pre-commit), "
+        "worktree edits vs HEAD, or merge-base(--base, HEAD) for CI/PR review",
+    )
+    decay_parser.add_argument(
+        "--base",
+        default="origin/main",
+        help="Base ref for --mode range (default: origin/main)",
+    )
+    decay_parser.add_argument(
+        "--max-diff-lines",
+        type=int,
+        default=200_000,
+        help="Skip (don't score) any file whose diff exceeds this many lines "
+        "(default: 200000; guards against generated/vendored dumps)",
+    )
+    decay_parser.add_argument(
+        "--rename-jaccard",
+        type=float,
+        default=0.6,
+        help="Token-Jaccard threshold for best-effort rename matching (default: 0.6)",
+    )
+    decay_parser.add_argument(
+        "--warn-at",
+        type=int,
+        default=5_000,
+        help="Impact threshold above which a warning is printed (default: 5000)",
+    )
+    decay_parser.add_argument(
+        "--block-at",
+        type=int,
+        default=20_000,
+        help="Impact threshold above which the gate blocks when --enforcement=block "
+        "(default: 20000)",
+    )
+    decay_parser.add_argument(
+        "--enforcement",
+        choices=["off", "warn", "block"],
+        default="warn",
+        help="Gate mode: off (score only), warn (never blocks), or block "
+        "(exit 2 at --block-at) (default: warn)",
+    )
+    decay_parser.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Console output format (default: text)",
+    )
+    decay_parser.add_argument(
+        "--top",
+        type=int,
+        default=10,
+        help="Number of files to list in the refactoring-candidates ranking (default: 10)",
+    )
+    decay_parser.add_argument(
+        "--output",
+        metavar="PATH",
+        help="Also write the full JSON report to PATH",
+    )
+    decay_parser.set_defaults(func=cmd_decay)
+
+    # comment subcommand
+    comment_parser = subparsers.add_parser(
+        "comment",
+        help="Upsert a sticky PR comment with a report (CI; GitHub only for now)",
+    )
+    comment_parser.add_argument(
+        "--body-file",
+        metavar="PATH",
+        help="Markdown/text file to post (default: read stdin)",
+    )
+    comment_parser.add_argument(
+        "--repo-slug",
+        help="GitHub owner/name (default: $GITHUB_REPOSITORY)",
+    )
+    comment_parser.add_argument(
+        "--pr",
+        type=int,
+        help="PR number (default: read from $GITHUB_EVENT_PATH)",
+    )
+    comment_parser.add_argument(
+        "--token",
+        help="API token (default: $GITHUB_TOKEN)",
+    )
+    comment_parser.set_defaults(func=cmd_comment)
+
     # generate-changelog subcommand
     changelog_parser = subparsers.add_parser(
         "generate-changelog", help="Generate changelog from signature diffs"
@@ -2546,6 +2740,8 @@ def main() -> int:
             "check-diff",
             "check-commit",
             "install-hooks",
+            "decay",
+            "comment",
             "enforce",
             "extract-calls",
             "generate-changelog",
