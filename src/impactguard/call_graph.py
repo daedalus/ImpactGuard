@@ -202,6 +202,10 @@ class CallGraphDB:
 
         Raises :class:`RuntimeError` if the instance has been closed.
         """
+        if self._closed:
+            # Checked before the thread-local fast path: other threads may
+            # still hold a reference to a connection close() already closed.
+            raise RuntimeError("CallGraphDB has been closed")
         con = getattr(self._thread_local, "con", None)
         if con is not None:
             return con
@@ -676,13 +680,18 @@ class CallGraphDB:
         if len(parts) != 2:
             return None
         mod_prefix, func_name = parts
-        for cand in (f"{mod_prefix}.py", f"{mod_prefix}/__init__.py"):
+        mod_path = mod_prefix.replace(".", "/")
+        for cand in (f"{mod_path}.py", f"{mod_path}/__init__.py"):
             # Exact match (root-level) then LIKE for nested paths.
             # LIKE '%/...' cannot use the index but is necessary for
-            # arbitrary nesting depths.
+            # arbitrary nesting depths.  ``_`` and ``%`` are LIKE
+            # wildcards, so escape them in the path.
+            escaped = (
+                cand.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            )
             row = self._get_connection().execute(
-                "SELECT id FROM nodes WHERE (file_path = ? OR file_path LIKE ? OR file_path LIKE ?) AND name = ?",
-                (cand, f"/{cand}", f"%/{cand}", func_name),
+                "SELECT id FROM nodes WHERE (file_path = ? OR file_path LIKE ? ESCAPE '\\') AND name = ?",
+                (cand, f"%/{escaped}", func_name),
             ).fetchone()
             if row:
                 return row["id"]

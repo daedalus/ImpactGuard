@@ -81,7 +81,15 @@ class TestASTRoundTrips:
         tree = ast.parse("x = 1")
         wrapped = _wrap_value(tree)
         parsed = json.loads(wrapped)
-        assert parsed["_t"] == "ast_dump"
+        assert parsed["_t"] == "ast_json"
+
+    def test_ast_round_trip_preserves_line_numbers(self) -> None:
+        source = "# comment\n\n\ndef f(a, b=b'x', *c, **d):\n    return a + 1j  # tail\n\n\nclass K:\n    x: int = ...\n"
+        tree = ast.parse(source)
+        restored = _unwrap_value(_wrap_value(tree))
+        assert ast.dump(restored, include_attributes=True) == ast.dump(
+            tree, include_attributes=True
+        )
 
     def test_ast_not_pickle(self) -> None:
         tree = ast.parse("def f(): pass")

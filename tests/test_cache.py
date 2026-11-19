@@ -297,7 +297,7 @@ class TestCache:
     def test_get_returns_in_memory_hit_without_sqlite(self, temp_db):
         c = Cache(db_path=temp_db)
         c.set("hot", "value")
-        c._mem["hot"] = "cached_in_memory"
+        c._mem["hot"] = ("cached_in_memory", None)
         assert c.get("hot") == "cached_in_memory"
         c.close()
 

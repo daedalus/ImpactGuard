@@ -358,9 +358,12 @@ def _load_raw(path: str) -> list[dict[str, Any]]:
         return []
     try:
         data = json.loads(p.read_text())
-        return data if isinstance(data, list) else []
     except (json.JSONDecodeError, OSError):
         return []
+    if not isinstance(data, list):
+        return []
+    # Drop malformed entries so callers can rely on ``dict`` methods.
+    return [entry for entry in data if isinstance(entry, dict)]
 
 
 def _save_raw(path: str, outcomes: list[dict[str, Any]]) -> None:

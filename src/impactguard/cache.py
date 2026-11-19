@@ -184,17 +184,77 @@ def _default_db_path() -> str:
     return str(_DEFAULT_CACHE_DIR / _DEFAULT_DB_NAME)
 
 
+def _ast_to_json(node: Any) -> Any:
+    """Encode an AST (or AST field value) as JSON-safe data, keeping positions.
+
+    Unlike ``ast.unparse`` this preserves ``lineno``/``col_offset`` etc., so a
+    tree restored from the cache reports the same line numbers as a fresh
+    parse.  No pickle is involved.
+    """
+    import ast as _ast
+
+    if isinstance(node, _ast.AST):
+        out: dict[str, Any] = {"_n": type(node).__name__}
+        for name in (*node._fields, *node._attributes):
+            if hasattr(node, name):
+                out[name] = _ast_to_json(getattr(node, name))
+        return out
+    if isinstance(node, list):
+        return [_ast_to_json(item) for item in node]
+    if isinstance(node, tuple):
+        return {"_tuple": [_ast_to_json(item) for item in node]}
+    if isinstance(node, bytes):
+        return {"_bytes": base64.b64encode(node).decode("ascii")}
+    if isinstance(node, complex):
+        return {"_complex": [node.real, node.imag]}
+    if node is Ellipsis:
+        return {"_ellipsis": True}
+    if isinstance(node, frozenset):
+        return {"_frozenset": [_ast_to_json(item) for item in node]}
+    return node
+
+
+def _ast_from_json(obj: Any) -> Any:
+    """Inverse of :func:`_ast_to_json`."""
+    import ast as _ast
+
+    if isinstance(obj, list):
+        return [_ast_from_json(item) for item in obj]
+    if not isinstance(obj, dict):
+        return obj
+    if "_n" in obj:
+        cls = getattr(_ast, str(obj["_n"]), None)
+        if not (isinstance(cls, type) and issubclass(cls, _ast.AST)):
+            raise ValueError(f"Unknown AST node type in cache: {obj['_n']!r}")
+        node = cls()
+        for name, value in obj.items():
+            if name != "_n":
+                setattr(node, name, _ast_from_json(value))
+        return node
+    if "_tuple" in obj:
+        return tuple(_ast_from_json(item) for item in obj["_tuple"])
+    if "_bytes" in obj:
+        return base64.b64decode(obj["_bytes"])
+    if "_complex" in obj:
+        real, imag = obj["_complex"]
+        return complex(real, imag)
+    if "_ellipsis" in obj:
+        return Ellipsis
+    if "_frozenset" in obj:
+        return frozenset(_ast_from_json(item) for item in obj["_frozenset"])
+    return obj
+
+
 def _wrap_value(value: Any) -> str:
     """Serialise *value* to a JSON string, using pickle fallback for non-trivial types."""
     try:
         json.dumps(value)
         return json.dumps({"_t": "json", "v": value}, default=str)
     except (TypeError, ValueError, OverflowError):
-        # Check if this is an AST tree — use ast.unparse for safe round-trip
+        # AST trees: structural JSON encoding (keeps line numbers, no pickle)
         import ast as _ast
         if isinstance(value, _ast.Module):
-            source = _ast.unparse(value)
-            return json.dumps({"_t": "ast_dump", "v": source})
+            return json.dumps({"_t": "ast_json", "v": _ast_to_json(value)})
         pickled = pickle.dumps(value)
         b64 = base64.b64encode(pickled).decode("ascii")
         return json.dumps({"_t": "pickle", "v": b64})
@@ -204,7 +264,10 @@ def _unwrap_value(raw: str) -> Any:
     wrapped = json.loads(raw)
     if not isinstance(wrapped, dict) or "_t" not in wrapped:
         return wrapped
+    if wrapped["_t"] == "ast_json":
+        return _ast_from_json(wrapped["v"])
     if wrapped["_t"] == "ast_dump":
+        # Legacy format (unparsed source): line numbers are not preserved.
         import ast as _ast
         return _ast.parse(wrapped["v"])
     if wrapped["_t"] == "pickle":
@@ -221,6 +284,9 @@ class Cache:
     ) -> None:
         self.db_path = db_path if db_path is not None else _default_db_path()
         self.max_entries = max_entries
+        # Per-instance L1 cache: canonical key -> (value, expires_at).
+        # (Previously a class attribute shared by every Cache instance.)
+        self._mem: dict[str, tuple[Any, float | None]] = {}
         self.con = sqlite3.connect(self.db_path, check_same_thread=False)
         self.con.execute("PRAGMA journal_mode=WAL")
         self.con.execute("PRAGMA synchronous=NORMAL")
@@ -323,13 +389,27 @@ class Cache:
             self.con.commit()
 
     # ── In-memory L1 cache ────────────────────────────────────────────────
-    _mem: dict[str, Any] = {}
+
+    def _mem_lookup(self, canonical_key: str) -> Any:
+        """Return the L1 value for *canonical_key*, or SENTINEL if absent/expired."""
+        entry = self._mem.get(canonical_key)
+        if entry is None:
+            return SENTINEL
+        if not isinstance(entry, tuple) or len(entry) != 2:
+            # Tolerate raw values placed directly into ``_mem``.
+            return entry
+        value, expires_at = entry
+        if expires_at is not None and expires_at <= time.time():
+            del self._mem[canonical_key]
+            return SENTINEL
+        return value
 
     def get(self, key: str) -> Any:
         canonical_key = self.canonicalize_key(key)
-        if canonical_key in self._mem:
+        mem_value = self._mem_lookup(canonical_key)
+        if mem_value is not SENTINEL:
             _record_cache_hit(canonical_key)
-            return self._mem[canonical_key]
+            return mem_value
         if not self._bloom.query(canonical_key):
             _record_cache_miss(canonical_key)
             return None
@@ -344,7 +424,10 @@ class Cache:
                     _record_cache_miss(canonical_key)
                     return None
                 value = _unwrap_value(row[0])
-                self._mem[canonical_key] = value
+                self._mem[canonical_key] = (
+                    value,
+                    float(expires_at) if expires_at is not None else None,
+                )
                 _record_cache_hit(canonical_key)
                 return value
         except sqlite3.OperationalError:
@@ -354,9 +437,10 @@ class Cache:
 
     def get_or_sentinel(self, key: str) -> Any:
         canonical_key = self.canonicalize_key(key)
-        if canonical_key in self._mem:
+        mem_value = self._mem_lookup(canonical_key)
+        if mem_value is not SENTINEL:
             _record_cache_hit(canonical_key)
-            return self._mem[canonical_key]
+            return mem_value
         if not self._bloom.query(canonical_key):
             _record_cache_miss(canonical_key)
             return SENTINEL
@@ -370,7 +454,10 @@ class Cache:
                 _record_cache_miss(canonical_key)
                 return SENTINEL
             value = _unwrap_value(row[0])
-            self._mem[canonical_key] = value
+            self._mem[canonical_key] = (
+                value,
+                float(expires_at) if expires_at is not None else None,
+            )
             _record_cache_hit(canonical_key)
             return value
         _record_cache_miss(canonical_key)
@@ -402,12 +489,13 @@ class Cache:
             self._entry_count += 1
 
     def set(self, key: str, value: Any, *, ttl_seconds: int | None = None) -> None:
-        canonical_key = self.canonicalize_key(key)
-        self._mem[canonical_key] = value
-        self._bloom.add(canonical_key)
         if ttl_seconds is not None and ttl_seconds <= 0:
             raise ValueError("ttl_seconds must be positive (greater than zero)")
+        canonical_key = self.canonicalize_key(key)
         expires_at = time.time() + ttl_seconds if ttl_seconds is not None else None
+        # Track expiry in L1 too, so an expired value is not served from memory.
+        self._mem[canonical_key] = (value, expires_at)
+        self._bloom.add(canonical_key)
         try:
             self._persist_entry(canonical_key, value, expires_at)
             self._writes_since_maintenance += 1

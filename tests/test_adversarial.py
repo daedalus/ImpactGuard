@@ -750,19 +750,16 @@ class TestEnforceGateAdversarial:
             os.unlink(p)
 
     def test_report_is_not_a_list(self):
-        """A JSON object (not array) at the top level causes enforce_report to raise.
+        """A JSON object (not array) at the top level is rejected cleanly.
 
-        The function iterates over the report with ``for item in report``, which
-        on a dict yields string keys.  Calling ``.get()`` on a string then raises
-        ``AttributeError``.  This documents the current behaviour so that any
-        future defensive fix is visible.
+        ``enforce_report`` returns exit code 2 (unreadable report) instead of
+        crashing with ``AttributeError`` while iterating dict keys.
         """
         from impactguard.enforce_gate import enforce_report
 
         p = _write_tmp_json({"function": "m.py:foo", "risk": "HIGH"})
         try:
-            with pytest.raises(AttributeError):
-                enforce_report(p)
+            assert enforce_report(p) == 2
         finally:
             os.unlink(p)
 

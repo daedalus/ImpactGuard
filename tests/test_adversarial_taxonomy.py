@@ -334,8 +334,8 @@ class TestSemanticPerturbation:
         from impactguard.compare_signatures import _type_change_kind
 
         k = _type_change_kind("int | str", "str | int")
-        # Both are 'changed' since the tool treats them textually equal or both changed
-        assert k in ("widening", "narrowing", "changed")
+        # Same member set in a different order: not a type change at all.
+        assert k is None
 
     def test_type_change_none_to_optional(self):
         from impactguard.compare_signatures import _type_change_kind

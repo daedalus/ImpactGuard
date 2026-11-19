@@ -112,6 +112,8 @@ class Analyzer(ast.NodeVisitor):
             typ = self._type_name(node.annotation)
             if typ:
                 self.scope.set(node.target.id, typ)
+        # Visit the value so calls like ``x: int = foo()`` are recorded.
+        self.generic_visit(node)
 
     def visit_Assign(self, node: ast.Assign) -> None:
         # x = MyClass() or x = y (alias/reassignment)
@@ -132,6 +134,8 @@ class Analyzer(ast.NodeVisitor):
                 for target in node.targets:
                     if isinstance(target, ast.Name):
                         self.scope.set(target.id, typ2)
+        # Visit the value so calls like ``x = foo()`` are recorded.
+        self.generic_visit(node)
 
     # --------------- calls ---------------
 

@@ -255,7 +255,7 @@ def _type_change_kind(
         ``"changed"``   – types overlap or differ with no clear direction
             (treated as breaking).
     """
-    if old_type == new_type:
+    if old_type == new_type or "".join(old_type.split()) == "".join(new_type.split()):
         return None
 
     # ── Z3-backed proof (Python types only) ─────────────────────────────
@@ -276,6 +276,9 @@ def _type_change_kind(
     parse = union_parser if union_parser is not None else _parse_union_members
     old_members = parse(old_type)
     new_members = parse(new_type)
+    if new_members == old_members:
+        # e.g. ``Optional[int]`` vs ``int | None`` — same type, different spelling
+        return None
     if new_members > old_members:
         return "widening"
     if new_members < old_members:
@@ -583,10 +586,14 @@ def _compare_shared_signatures(
 ) -> None:
     """Compare signatures that exist in both snapshots."""
     for fqname, old_sig in old_sigs.items():
-        if fqname not in new_sigs or is_suppressed(fqname, old_sig):
+        if fqname not in new_sigs:
+            continue
+        new_sig = new_sigs[fqname]
+        # An ignore comment on either side suppresses the comparison —
+        # in particular one added in the new version alongside the change.
+        if is_suppressed(fqname, old_sig) or is_suppressed(fqname, new_sig):
             continue
 
-        new_sig = new_sigs[fqname]
         _compare_positional_args(fqname, old_sig, new_sig, breaking, nonbreaking)
         old_kw, new_kw = _compare_kwonly_args(
             fqname, old_sig, new_sig, breaking, nonbreaking

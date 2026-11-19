@@ -3,7 +3,12 @@ import sys
 from typing import Any
 
 from ._logging import get_logger
-from .risk_model import _effective_severity_scores, classify, get_severity
+from .risk_model import (
+    _effective_severity_scores,
+    _is_unconditional_high,
+    classify,
+    get_severity,
+)
 from .runtime_intelligence import (
     build_runtime_index,
     load_runtime_observations,
@@ -81,30 +86,46 @@ def _should_skip_change(change_type: str, fqname: str, seen: set[str]) -> bool:
     return False
 
 
+def _select_worst_changes(
+    normalized_changes: list[dict[str, Any]],
+) -> list[tuple[str, str, float]]:
+    """Pick the single most severe known change per function.
+
+    A function can have several breaking changes (e.g. ``DECORATOR_REMOVED``
+    and ``REQUIRED_POSITIONAL_ADDED``).  Only one report row is produced per
+    function, so it must be the worst one — otherwise an alphabetically
+    earlier but milder change would mask a definitionally-breaking one.
+
+    Returns ``(fqname, change_type, severity)`` tuples in first-seen order.
+    """
+    known_prefixes = tuple(_effective_severity_scores().keys())
+    best: dict[str, tuple[tuple[bool, float], str, float]] = {}
+    for change in normalized_changes:
+        change_type = str(change["change"]).strip()
+        fqname = str(change["function"]).strip()
+        if _should_skip_change(change_type, fqname, set()):
+            continue
+        severity = get_severity(change_type)
+        if severity == _UNKNOWN_SEVERITY and not any(
+            change_type.startswith(k) for k in known_prefixes
+        ):
+            continue
+        rank = (_is_unconditional_high(change_type), severity)
+        current = best.get(fqname)
+        if current is None or rank > current[0]:
+            best[fqname] = (rank, change_type, severity)
+    return [(fq, ct, sev) for fq, (_rank, ct, sev) in best.items()]
+
+
 def _build_risk_report(
     normalized_changes: list[dict[str, Any]],
     runtime: dict[str, int],
     max_count: int,
     lambda_: float,
 ) -> list[dict[str, Any]]:
-    seen: set[str] = set()
-    known_prefixes = tuple(_effective_severity_scores().keys())
     report: list[dict[str, Any]] = []
 
-    for change in normalized_changes:
-        change_type = str(change["change"]).strip()
-        fqname = str(change["function"]).strip()
-
-        if _should_skip_change(change_type, fqname, seen):
-            continue
-        seen.add(fqname)
-
-        severity = get_severity(change_type)
-        if severity == _UNKNOWN_SEVERITY and not any(
-            change_type.startswith(k) for k in known_prefixes
-        ):
-            continue
-
+    for fqname, change_type, severity in _select_worst_changes(normalized_changes):
         count = lookup_runtime_count(runtime, fqname)
         risk, exp, conf = classify(
             severity, count, max_count, count, lambda_, change_type

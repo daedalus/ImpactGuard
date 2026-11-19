@@ -1694,6 +1694,9 @@ def run_pipeline_git(
         )
 
 
+_HUNK_HEADER_RE = re.compile(r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@")
+
+
 def _classify_diff_line(line: str) -> str:
     """Return the type of a unified-diff line for dispatch."""
     if line.startswith("--- "):
@@ -1758,8 +1761,10 @@ def _parse_unified_diff(diff_text: str) -> dict[str, tuple[str, str]]:
         if new_name == "/dev/null":
             new_name = None
 
-    def _handle_binary() -> None:
-        name = new_name or old_name or ""
+    def _handle_binary(line: str) -> None:
+        m = re.match(r"Binary files (?:a/)?(.+?) and (?:b/)?(.+?) differ", line)
+        name = (m.group(2) if m and m.group(2) != "/dev/null" else
+                m.group(1) if m else "") or new_name or old_name or ""
         _log.warning(
             "Binary file '%s' in diff — content is not parseable and will be skipped",
             name,
@@ -1776,11 +1781,45 @@ def _parse_unified_diff(diff_text: str) -> dict[str, tuple[str, str]]:
         "removed": lambda line: old_lines.append(line[1:]),
         "added": lambda line: new_lines.append(line[1:]),
         "context": _handle_context,
-        "binary": lambda _: _handle_binary(),
+        "binary": _handle_binary,
     }
 
+    # Remaining old/new line counts of the current hunk.  While inside a
+    # hunk, lines are classified by their first character only, so a removed
+    # line such as ``-- comment`` (rendered ``--- comment``) or an added
+    # ``++x`` is never mistaken for a file header.
+    old_left = 0
+    new_left = 0
     for line in diff_text.splitlines():
-        handler = dispatch.get(_classify_diff_line(line))
+        if old_left > 0 or new_left > 0:
+            tag = line[:1]
+            if tag == "-":
+                old_lines.append(line[1:])
+                old_left -= 1
+                continue
+            if tag == "+":
+                new_lines.append(line[1:])
+                new_left -= 1
+                continue
+            if tag in (" ", ""):
+                # Some tools strip the leading space of blank context lines.
+                _handle_context(line)
+                old_left -= 1
+                new_left -= 1
+                continue
+            if tag == "\\":  # "\ No newline at end of file"
+                continue
+            # Malformed hunk: fall back to header-based classification.
+            old_left = new_left = 0
+
+        kind = _classify_diff_line(line)
+        if kind == "hunk":
+            m = _HUNK_HEADER_RE.match(line)
+            if m:
+                old_left = int(m.group(1)) if m.group(1) is not None else 1
+                new_left = int(m.group(2)) if m.group(2) is not None else 1
+            continue
+        handler = dispatch.get(kind)
         if handler is not None:
             handler(line)
 
