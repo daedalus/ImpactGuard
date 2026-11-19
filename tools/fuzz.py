@@ -254,7 +254,12 @@ def _hunk(old_path: str, new_path: str, old: str, new: str) -> str:
 # (diff text, expected file keys or None to only check "no crash")
 DIFF_CASES: dict[str, tuple[str, set[str] | None]] = {
     "quoted_unicode": (
-        _hunk('"a/caf\\303\\251.py"', '"b/caf\\303\\251.py"', "def f(a): pass", "def f(a, b): pass"),
+        _hunk(
+            '"a/caf\\303\\251.py"',
+            '"b/caf\\303\\251.py"',
+            "def f(a): pass",
+            "def f(a, b): pass",
+        ),
         {"café.py"},
     ),
     "quoted_space": (
@@ -266,7 +271,12 @@ DIFF_CASES: dict[str, tuple[str, set[str] | None]] = {
         {"my mod.py"},
     ),
     "traversal": (
-        _hunk('"a/../../etc/x.py"', '"b/../../etc/x.py"', "def f(a): pass", "def f(): pass"),
+        _hunk(
+            '"a/../../etc/x.py"',
+            '"b/../../etc/x.py"',
+            "def f(a): pass",
+            "def f(): pass",
+        ),
         set(),
     ),
     "absolute": (
@@ -284,7 +294,10 @@ DIFF_CASES: dict[str, tuple[str, set[str] | None]] = {
         None,
     ),
     "binary": ("Binary files a/x.py and b/x.py differ\n", set()),
-    "garbage_hunk": ("--- a/x.py\n+++ b/x.py\n@@ -99999999999 +1,-5 @@\n-x\n+y\n", None),
+    "garbage_hunk": (
+        "--- a/x.py\n+++ b/x.py\n@@ -99999999999 +1,-5 @@\n-x\n+y\n",
+        None,
+    ),
     "dash_comment": (
         "--- a/x.hs\n+++ b/x.hs\n@@ -1,2 +1,2 @@\n--- comment\n-f a = a\n+-- comment\n+f a b = a\n",
         None,
@@ -300,13 +313,20 @@ def fuzz_diff(_workdir: Path, _opts: argparse.Namespace) -> list[Failure]:
         try:
             parsed = _parse_unified_diff(text)
             if expected is not None and set(parsed) != expected:
-                fails.append((f"diff {label}", f"got files {sorted(parsed)}, expected {sorted(expected)}"))
+                fails.append(
+                    (
+                        f"diff {label}",
+                        f"got files {sorted(parsed)}, expected {sorted(expected)}",
+                    )
+                )
             _extract_diff_files(parsed)
         except Exception as exc:  # noqa: BLE001
             fails.append((f"diff {label}", _err(exc)))
     same = _parse_unified_diff(DIFF_CASES["same_file_twice"][0]).get("x.py", ("", ""))
     if "def f(a): pass" not in same[0]:
-        fails.append(("diff same_file_twice", "first section of repeated file was lost"))
+        fails.append(
+            ("diff same_file_twice", "first section of repeated file was lost")
+        )
     return fails
 
 
@@ -323,24 +343,103 @@ REPO = Path(__file__).resolve().parent.parent
 
 # Tokens that historically broke parsers or line accounting.
 INTERESTING_TEXT = [
-    "\x00", "\f", "\v", "\r", "\r\n", " ", "\x85", "﻿", "\t",
-    '"', "'", "`", "\\", "(", ")", "[", "]", "{", "}", "<", ">", ";", ",",
-    "/*", "*/", "//", "#", "--", "\n\n", " ", "é", "\U0001f600",
-    "# impactguard: ignore\n", "// impactguard: ignore\n", "-- impactguard: ignore\n",
-    "def ", "function ", "fn ", "func ", "class ", "export ", "pub ", "static ",
-    "@deprecated\n", "...", "=", "=>", "->", "::", "*", "**", "&", "|", "?",
+    "\x00",
+    "\f",
+    "\v",
+    "\r",
+    "\r\n",
+    " ",
+    "\x85",
+    "﻿",
+    "\t",
+    '"',
+    "'",
+    "`",
+    "\\",
+    "(",
+    ")",
+    "[",
+    "]",
+    "{",
+    "}",
+    "<",
+    ">",
+    ";",
+    ",",
+    "/*",
+    "*/",
+    "//",
+    "#",
+    "--",
+    "\n\n",
+    " ",
+    "é",
+    "\U0001f600",
+    "# impactguard: ignore\n",
+    "// impactguard: ignore\n",
+    "-- impactguard: ignore\n",
+    "def ",
+    "function ",
+    "fn ",
+    "func ",
+    "class ",
+    "export ",
+    "pub ",
+    "static ",
+    "@deprecated\n",
+    "...",
+    "=",
+    "=>",
+    "->",
+    "::",
+    "*",
+    "**",
+    "&",
+    "|",
+    "?",
 ]
 INTERESTING_VALUES: list[Any] = [
-    None, True, False, 0, -1, 2**63, 1.5, float("nan"), float("inf"), "", "x",
-    "a" * 10_000, [], [None], ["x"], {}, {"name": None}, {"name": "a"},
+    None,
+    True,
+    False,
+    0,
+    -1,
+    2**63,
+    1.5,
+    float("nan"),
+    float("inf"),
+    "",
+    "x",
+    "a" * 10_000,
+    [],
+    [None],
+    ["x"],
+    {},
+    {"name": None},
+    {"name": "a"},
 ]
 DIFF_INTERESTING_LINES = [
-    "--- a/x.py", "+++ b/x.py", "--- /dev/null", "+++ /dev/null",
-    '--- "a/caf\\303\\251.py"', '+++ "b/../../etc/evil.py"', "+++ /etc/passwd.py",
-    "@@ -1 +1 @@", "@@ -0,0 +1,3 @@", "@@ -1,99999 +1,99999 @@", "@@ garbage @@",
-    "Binary files a/x.py and b/x.py differ", "\\ No newline at end of file",
-    "diff --git a/x.py b/x.py", "rename from x.py", "rename to ../y.py",
-    "-", "+", " ", "--- ", "+++ ",
+    "--- a/x.py",
+    "+++ b/x.py",
+    "--- /dev/null",
+    "+++ /dev/null",
+    '--- "a/caf\\303\\251.py"',
+    '+++ "b/../../etc/evil.py"',
+    "+++ /etc/passwd.py",
+    "@@ -1 +1 @@",
+    "@@ -0,0 +1,3 @@",
+    "@@ -1,99999 +1,99999 @@",
+    "@@ garbage @@",
+    "Binary files a/x.py and b/x.py differ",
+    "\\ No newline at end of file",
+    "diff --git a/x.py b/x.py",
+    "rename from x.py",
+    "rename to ../y.py",
+    "-",
+    "+",
+    " ",
+    "--- ",
+    "+++ ",
 ]
 
 
@@ -385,7 +484,13 @@ def _mutate_text(rng: random.Random, text: str, seeds: list[str]) -> str:
         other = rng.choice(seeds)
         return text[:pos] + other[rng.randint(0, len(other)) :]
     if op == 8 and n:  # replace a char with a random code point
-        cp = rng.choice([rng.randint(0, 0x7F), rng.randint(0x80, 0xFFFF), rng.randint(0x10000, 0x10FFFF)])
+        cp = rng.choice(
+            [
+                rng.randint(0, 0x7F),
+                rng.randint(0x80, 0xFFFF),
+                rng.randint(0x10000, 0x10FFFF),
+            ]
+        )
         ch = chr(cp) if not 0xD800 <= cp <= 0xDFFF else "?"
         return text[: pos % n] + ch + text[pos % n + 1 :]
     if op == 9:  # change line endings
@@ -393,7 +498,11 @@ def _mutate_text(rng: random.Random, text: str, seeds: list[str]) -> str:
     if op == 10:  # strip indentation / whitespace
         return text.replace(rng.choice(["    ", "\t", " "]), "", rng.randint(1, 50))
     # op 11 (or fall-through): identifier/number clobber
-    return text[:pos] + rng.choice(["0", "9" * 40, "_", "a" * 300, "self", "None"]) + text[pos:]
+    return (
+        text[:pos]
+        + rng.choice(["0", "9" * 40, "_", "a" * 300, "self", "None"])
+        + text[pos:]
+    )
 
 
 def _mutate_bytes(rng: random.Random, data: bytes) -> bytes:
@@ -406,7 +515,9 @@ def _mutate_bytes(rng: random.Random, data: bytes) -> bytes:
     if op == 0:
         buf[i] ^= 1 << rng.randrange(8)
     elif op == 1:
-        buf[i:i] = rng.choice([b"\xff", b"\xc3", b"\xe2\x80", b"\xed\xa0\x80", b"\x00", b"\xef\xbb\xbf"])
+        buf[i:i] = rng.choice(
+            [b"\xff", b"\xc3", b"\xe2\x80", b"\xed\xa0\x80", b"\x00", b"\xef\xbb\xbf"]
+        )
     else:
         buf[i] = rng.randrange(256)
     return bytes(buf)
@@ -472,7 +583,9 @@ def _load_source_seeds() -> dict[str, list[str]]:
     from impactguard.languages.lib.registry import get_extractor, list_languages
 
     seeds: dict[str, list[str]] = {lang: [] for lang in list_languages()}
-    candidates = list((REPO / "examples").rglob("*")) + list((REPO / "src").rglob("*.py"))
+    candidates = list((REPO / "examples").rglob("*")) + list(
+        (REPO / "src").rglob("*.py")
+    )
     for path in sorted(candidates):
         if not path.is_file() or path.stat().st_size > 200_000:
             continue
@@ -488,10 +601,10 @@ def _load_source_seeds() -> dict[str, list[str]]:
         "javascript": "export function f(a, b = 1) { return g(a); }\n",
         "typescript": "export function f(a: number, b?: string): number { return g(a); }\n",
         "java": "class A { public int f(int a) { return g(a); } }\n",
-        "kotlin": "fun f(a: Int, b: String = \"x\"): Int = g(a)\n",
+        "kotlin": 'fun f(a: Int, b: String = "x"): Int = g(a)\n',
         "go": "package p\nfunc F(a int, b string) int { return g(a) }\n",
         "rust": "pub fn f(a: i32, b: &str) -> i32 { g(a) }\n",
-        "swift": "func f(a: Int, b: String = \"x\") -> Int { return g(a) }\n",
+        "swift": 'func f(a: Int, b: String = "x") -> Int { return g(a) }\n',
         "c": "int f(int a, const char *b) { return g(a); }\n",
         "cpp": "namespace n { int f(int a, int b = 1) { return g(a); } }\n",
         "csharp": "class A { public int F(int a, int b = 1) { return G(a); } }\n",
@@ -569,13 +682,19 @@ def _run_compare_target(path: Path) -> str | None:
     except ValueError:
         return None  # documented rejection of an invalid file
     if result["breaking"]:
-        return f"identical snapshots reported breaking changes: {result['breaking'][:3]}"
+        return (
+            f"identical snapshots reported breaking changes: {result['breaking'][:3]}"
+        )
     return None
 
 
 def _crash_key(exc: BaseException) -> str:
     """Deduplicate crashes by exception type and innermost ImpactGuard frame."""
-    frames = [f for f in traceback.extract_tb(exc.__traceback__) if "impactguard" in f.filename]
+    frames = [
+        f
+        for f in traceback.extract_tb(exc.__traceback__)
+        if "impactguard" in f.filename
+    ]
     where = f"{Path(frames[-1].filename).name}:{frames[-1].lineno}" if frames else "?"
     return f"{type(exc).__name__}@{where}"
 
@@ -609,14 +728,44 @@ LANG_TEMPLATES: dict[str, tuple[str, str, str, str]] = {
     "ruby": ("#", "def {name}(x, y = 1)\n  g(x)\nend\n", "", ""),
     "c": ("//", "int {name}(int x, int y) {{ return g(x); }}\n", "", ""),
     "cpp": ("//", "int {name}(int x, int y) {{ return g(x); }}\n", "", ""),
-    "go": ("//", "func {name}(x int, y int) int {{ return g(x) }}\n", "package p\n", ""),
+    "go": (
+        "//",
+        "func {name}(x int, y int) int {{ return g(x) }}\n",
+        "package p\n",
+        "",
+    ),
     "rust": ("//", "pub fn {name}(x: i32, y: i32) -> i32 {{ g(x) }}\n", "", ""),
-    "javascript": ("//", "export function {name}(x, y = 1) {{ return g(x); }}\n", "", ""),
-    "typescript": ("//", "export function {name}(x: number, y?: number): number {{ return g(x); }}\n", "", ""),
-    "java": ("//", "  public int {name}(int x, int y) {{ return g(x); }}\n", "class A {\n", "}\n"),
-    "csharp": ("//", "  public int {name}(int x, int y) {{ return G(x); }}\n", "class A {\n", "}\n"),
+    "javascript": (
+        "//",
+        "export function {name}(x, y = 1) {{ return g(x); }}\n",
+        "",
+        "",
+    ),
+    "typescript": (
+        "//",
+        "export function {name}(x: number, y?: number): number {{ return g(x); }}\n",
+        "",
+        "",
+    ),
+    "java": (
+        "//",
+        "  public int {name}(int x, int y) {{ return g(x); }}\n",
+        "class A {\n",
+        "}\n",
+    ),
+    "csharp": (
+        "//",
+        "  public int {name}(int x, int y) {{ return G(x); }}\n",
+        "class A {\n",
+        "}\n",
+    ),
     "kotlin": ("//", "fun {name}(x: Int, y: Int = 1): Int {{ return g(x) }}\n", "", ""),
-    "swift": ("//", "func {name}(x: Int, y: Int = 1) -> Int {{ return g(x) }}\n", "", ""),
+    "swift": (
+        "//",
+        "func {name}(x: Int, y: Int = 1) -> Int {{ return g(x) }}\n",
+        "",
+        "",
+    ),
     "zig": ("//", "pub fn {name}(x: i32, y: i32) i32 {{ return g(x); }}\n", "", ""),
 }
 
@@ -680,7 +829,9 @@ def _extract_with(lang: str, path: Path) -> list[dict[str, Any]]:
 
 
 def _sig_view(sigs: list[dict[str, Any]]) -> list[tuple[str, int, bool]]:
-    return sorted((s["fqname"], s.get("lineno", 0), bool(s.get("ignored"))) for s in sigs)
+    return sorted(
+        (s["fqname"], s.get("lineno", 0), bool(s.get("ignored"))) for s in sigs
+    )
 
 
 def _reg_ignore_separator(rng: random.Random, workdir: Path) -> RegressionCheck:
@@ -702,7 +853,9 @@ def _reg_ignore_separator(rng: random.Random, workdir: Path) -> RegressionCheck:
     # Baseline gets the same comment lines without the separator so that
     # line numbers are comparable.
     plain = "\n".join(
-        ln.replace("page", "page ").translate({ord(s): None for s in seps}) if ln.startswith(f"{comment} page") else ln
+        ln.replace("page", "page ").translate({ord(s): None for s in seps})
+        if ln.startswith(f"{comment} page")
+        else ln
         for ln in lines
     )
     ext = _ext_for(lang)
@@ -712,7 +865,10 @@ def _reg_ignore_separator(rng: random.Random, workdir: Path) -> RegressionCheck:
         a.write_text(plain, encoding="utf-8")
         b.write_text(mutated, encoding="utf-8")
         before = _sig_view(_extract_with(lang, a))
-        after = [(f.replace("mut", "base", 1), ln, ig) for f, ln, ig in _sig_view(_extract_with(lang, b))]
+        after = [
+            (f.replace("mut", "base", 1), ln, ig)
+            for f, ln, ig in _sig_view(_extract_with(lang, b))
+        ]
         if before != after:
             return f"{lang}: separator changed signatures/ignore flags: {before} != {after}"
         return None
@@ -737,7 +893,9 @@ def _reg_long_chain(rng: random.Random, workdir: Path) -> RegressionCheck:
     base = _build_source(lang, names, set())
     header, footer = LANG_TEMPLATES[lang][2], LANG_TEMPLATES[lang][3]
     chain = CHAIN_FUNCS[lang].format(expr=" + ".join(["1"] * rng.randint(500, 4000)))
-    body = base[len(header) : len(base) - len(footer)] if footer else base[len(header) :]
+    body = (
+        base[len(header) : len(base) - len(footer)] if footer else base[len(header) :]
+    )
     mutated = header + body + chain + footer
     ext = _ext_for(lang)
 
@@ -749,10 +907,26 @@ def _reg_long_chain(rng: random.Random, workdir: Path) -> RegressionCheck:
         after = {s["name"] for s in _extract_with(lang, b)}
         expected = before | {n for n in after if n.split(".")[-1] == "chainfn"}
         if after != expected or not any(n.split(".")[-1] == "chainfn" for n in after):
-            return f"{lang}: chain changed signatures: {sorted(before)} -> {sorted(after)}"
+            return (
+                f"{lang}: chain changed signatures: {sorted(before)} -> {sorted(after)}"
+            )
         return None
 
     return check
+
+
+def _has_grammar(lang: str) -> bool:
+    """True when *lang*'s tree-sitter grammar is installed (else the
+    extractor runs its regex fallback)."""
+    import importlib.util
+
+    module = {"csharp": "tree_sitter_c_sharp"}.get(lang, f"tree_sitter_{lang}")
+    try:
+        return importlib.util.find_spec("tree_sitter") is not None and (
+            importlib.util.find_spec(module) is not None
+        )
+    except (ImportError, ValueError):
+        return False
 
 
 def _reg_chained_callee(rng: random.Random, workdir: Path) -> RegressionCheck:
@@ -769,7 +943,12 @@ def _reg_chained_callee(rng: random.Random, workdir: Path) -> RegressionCheck:
         extractor = get_extractor_by_language(lang)
         assert extractor is not None
         names = {c["name"] for c in extractor.extract_calls(path)}
-        if names - {"g"}:
+        allowed = {"g"}
+        if not _has_grammar(lang):
+            # Without the tree-sitter grammar the regex fallback also
+            # (lossily, by design) reports the ``outer(`` definition.
+            allowed.add("outer")
+        if names - allowed or "g" not in names:
             return f"{lang}: unexpected call names {sorted(names)[:5]}"
         return None
 
@@ -814,7 +993,9 @@ def _reg_group_isolation(rng: random.Random, workdir: Path) -> RegressionCheck:
         expected.add(name)
     bad = workdir / f"zz_bad{ext}"
     depth = rng.randint(20_000, 60_000)
-    bad_src = rng.choice(["(" * depth + ")" * depth, "x = " + "(" * depth + "1" + ")" * depth])
+    bad_src = rng.choice(
+        ["(" * depth + ")" * depth, "x = " + "(" * depth + "1" + ")" * depth]
+    )
     files = [*healthy, str(bad)]
     rng.shuffle(files)
 
@@ -828,7 +1009,9 @@ def _reg_group_isolation(rng: random.Random, workdir: Path) -> RegressionCheck:
         result = _extract_group(extractor, files, str(workdir), False, {}, [])
         found = {s["name"].split(".")[-1] for s in result}
         missing = expected - found
-        return f"{lang}: healthy signatures lost: {sorted(missing)}" if missing else None
+        return (
+            f"{lang}: healthy signatures lost: {sorted(missing)}" if missing else None
+        )
 
     return check
 
@@ -850,7 +1033,9 @@ def _git_quote(path: str) -> str:
     return '"' + "".join(out) + '"'
 
 
-def _make_diff(old_name: str, new_name: str, old: str, new: str, context: int = 3) -> str:
+def _make_diff(
+    old_name: str, new_name: str, old: str, new: str, context: int = 3
+) -> str:
     return "".join(
         difflib.unified_diff(
             old.splitlines(keepends=True),
@@ -875,7 +1060,10 @@ def _rand_changed_python(rng: random.Random, n_funcs: int) -> tuple[str, str]:
 def _reg_diff_quoted_path(rng: random.Random, _workdir: Path) -> RegressionCheck:
     """Session bug: git-quoted paths were silently dropped.  Oracle: the
     quoted diff parses to the same content, keyed by the decoded path."""
-    stem = "".join(rng.choice(_NAME_CHARS + "".join(_PATH_SPECIALS)) for _ in range(rng.randint(3, 10)))
+    stem = "".join(
+        rng.choice(_NAME_CHARS + "".join(_PATH_SPECIALS))
+        for _ in range(rng.randint(3, 10))
+    )
     path = f"pkg{rng.choice(_PATH_SPECIALS)}dir/m{stem}.py"
     old, new = _rand_changed_python(rng, rng.randint(1, 3))
     quoted = _make_diff(_git_quote(f"a/{path}"), _git_quote(f"b/{path}"), old, new)
@@ -928,9 +1116,13 @@ def _reg_diff_dash_lines(rng: random.Random, _workdir: Path) -> RegressionCheck:
     Oracle: no phantom files, and the content is kept verbatim."""
     lang_ext = rng.choice([".hs", ".py"])
     name = f"m{_rand_ident(rng)}{lang_ext}"
-    marker = rng.choice(["-- note", "-- impactguard: ignore", "--- x", "-- a/evil.py", "++ b/evil.py"])
+    marker = rng.choice(
+        ["-- note", "-- impactguard: ignore", "--- x", "-- a/evil.py", "++ b/evil.py"]
+    )
     old = f"{marker}\nfoo x = x\n" if lang_ext == ".hs" else f"x = 1\n{marker}\ny = 2\n"
-    new = old.replace(marker, rng.choice(["-- other", "++ z", "+++ b/z.py", "--- a/z.py"]), 1)
+    new = old.replace(
+        marker, rng.choice(["-- other", "++ z", "+++ b/z.py", "--- a/z.py"]), 1
+    )
     text = _make_diff(f"a/{name}", f"b/{name}", old, new, context=rng.randint(0, 3))
 
     def check() -> str | None:
@@ -946,7 +1138,9 @@ def _reg_diff_dash_lines(rng: random.Random, _workdir: Path) -> RegressionCheck:
     return check
 
 
-def _reg_adversarial_noise(rng: random.Random, _workdir: Path) -> RegressionCheck | None:
+def _reg_adversarial_noise(
+    rng: random.Random, _workdir: Path
+) -> RegressionCheck | None:
     """Existing regressions (tests/adversarial_generator.py): camouflaged
     breaking changes.  Mutation: surround them with harmless noise --
     unrelated identical functions, shuffled order, duplicates and malformed
@@ -959,18 +1153,37 @@ def _reg_adversarial_noise(rng: random.Random, _workdir: Path) -> RegressionChec
     for _ in range(rng.randint(0, 20)):  # unrelated, unchanged functions
         name = _rand_ident(rng, "noise_")
         sig = {
-            "fqname": f"noise.py:{name}", "name": name,
-            "positional": [{"name": "a", "has_default": False, "type": rng.choice([None, "int", "str | None"])}],
-            "kwonly": [], "vararg": False, "kwarg": False, "decorators": [],
+            "fqname": f"noise.py:{name}",
+            "name": name,
+            "positional": [
+                {
+                    "name": "a",
+                    "has_default": False,
+                    "type": rng.choice([None, "int", "str | None"]),
+                }
+            ],
+            "kwonly": [],
+            "vararg": False,
+            "kwarg": False,
+            "decorators": [],
         }
         old.append(copy.deepcopy(sig))
         new.append(copy.deepcopy(sig))
     for side in (old, new):
         for _ in range(rng.randint(0, 3)):  # malformed junk the loader must skip
             side.append(copy.deepcopy(rng.choice(INTERESTING_VALUES)))
-            side.append({"fqname": f"junk.py:{_rand_ident(rng)}", "positional": rng.choice([None, 1.5, "x"])})
+            side.append(
+                {
+                    "fqname": f"junk.py:{_rand_ident(rng)}",
+                    "positional": rng.choice([None, 1.5, "x"]),
+                }
+            )
         if side and rng.random() < 0.3:  # exact duplicate of a real entry
-            side.append(copy.deepcopy(rng.choice([s for s in side if isinstance(s, dict)] or [{}])))
+            side.append(
+                copy.deepcopy(
+                    rng.choice([s for s in side if isinstance(s, dict)] or [{}])
+                )
+            )
         rng.shuffle(side)
 
     def check() -> str | None:
@@ -992,7 +1205,9 @@ def _adversarial_generator() -> Any:
     return adversarial_generator
 
 
-def _reg_malformed_neighbour(rng: random.Random, _workdir: Path) -> RegressionCheck | None:
+def _reg_malformed_neighbour(
+    rng: random.Random, _workdir: Path
+) -> RegressionCheck | None:
     """Session bug: one malformed entry crashed compare().  Oracle: a real
     breaking change is still reported next to a malformed sibling."""
     gen = _adversarial_generator()
@@ -1002,8 +1217,14 @@ def _reg_malformed_neighbour(rng: random.Random, _workdir: Path) -> RegressionCh
     old, new = copy.deepcopy(pair.old_signatures), copy.deepcopy(pair.new_signatures)
     bad_fields = list(SIGNATURE_MUTATIONS.values())
     target = rng.choice([old, new])
-    victim = {"fqname": f"other.py:{_rand_ident(rng)}", "name": "x", "positional": [], "kwonly": [],
-              "vararg": False, "kwarg": False}
+    victim = {
+        "fqname": f"other.py:{_rand_ident(rng)}",
+        "name": "x",
+        "positional": [],
+        "kwonly": [],
+        "vararg": False,
+        "kwarg": False,
+    }
     rng.choice(bad_fields)(victim)
     target.insert(rng.randint(0, len(target)), victim)
 
@@ -1011,7 +1232,9 @@ def _reg_malformed_neighbour(rng: random.Random, _workdir: Path) -> RegressionCh
         from impactguard.compare_signatures import compare
 
         ok, failures = pair.verify(compare(old, new, include_private=True))
-        return None if ok else f"{pair.strategy_name} next to {victim!r:.80}: {failures}"
+        return (
+            None if ok else f"{pair.strategy_name} next to {victim!r:.80}: {failures}"
+        )
 
     return check
 
@@ -1020,8 +1243,18 @@ def _reg_union_reorder(rng: random.Random, _workdir: Path) -> RegressionCheck:
     """Existing regression (test_reordered_union_is_not_a_type_change).
     Oracle: permuting union members (incl. nested generics, Optional) is not
     reported as any kind of change."""
-    pool = ["int", "str", "None", "bytes", "float", "list[int]", "dict[str, int]",
-            "tuple[int, str]", "Callable[[int], str]", "Path"]
+    pool = [
+        "int",
+        "str",
+        "None",
+        "bytes",
+        "float",
+        "list[int]",
+        "dict[str, int]",
+        "tuple[int, str]",
+        "Callable[[int], str]",
+        "Path",
+    ]
     members = rng.sample(pool, rng.randint(2, 5))
     shuffled = members[:]
     while shuffled == members:
@@ -1032,13 +1265,22 @@ def _reg_union_reorder(rng: random.Random, _workdir: Path) -> RegressionCheck:
         return " | ".join(ms) if style == "pipe" else f"Union[{', '.join(ms)}]"
 
     def sig(t: str) -> dict[str, Any]:
-        return {"fqname": "m.py:f", "name": "f", "kwonly": [], "vararg": False, "kwarg": False,
-                "positional": [{"name": "a", "has_default": False, "type": t}], "return_type": t}
+        return {
+            "fqname": "m.py:f",
+            "name": "f",
+            "kwonly": [],
+            "vararg": False,
+            "kwarg": False,
+            "positional": [{"name": "a", "has_default": False, "type": t}],
+            "return_type": t,
+        }
 
     def check() -> str | None:
         from impactguard.compare_signatures import compare
 
-        result = compare([sig(fmt(members))], [sig(fmt(shuffled))], include_private=True)
+        result = compare(
+            [sig(fmt(members))], [sig(fmt(shuffled))], include_private=True
+        )
         if result["breaking"] or result["nonbreaking"]:
             return f"{fmt(members)} -> {fmt(shuffled)} reported {result['breaking'] + result['nonbreaking']}"
         return None
@@ -1050,10 +1292,19 @@ def _reg_ignore_added_in_new(rng: random.Random, _workdir: Path) -> RegressionCh
     """Existing regression (test_ignore_comment_added_in_new_version...).
     Oracle: any breaking change on a function ignored in the new version is
     suppressed, while an un-ignored sibling's break is still reported."""
+
     def sig(name: str, n_args: int, ignored: bool) -> dict[str, Any]:
-        return {"fqname": f"m.py:{name}", "name": name, "kwonly": [], "vararg": False, "kwarg": False,
-                "positional": [{"name": f"a{i}", "has_default": False} for i in range(n_args)],
-                "ignored": ignored}
+        return {
+            "fqname": f"m.py:{name}",
+            "name": name,
+            "kwonly": [],
+            "vararg": False,
+            "kwarg": False,
+            "positional": [
+                {"name": f"a{i}", "has_default": False} for i in range(n_args)
+            ],
+            "ignored": ignored,
+        }
 
     hidden, visible = _rand_ident(rng, "h"), _rand_ident(rng, "v")
     n = rng.randint(1, 4)
@@ -1090,12 +1341,18 @@ def _reg_cache_roundtrip(rng: random.Random, workdir: Path) -> RegressionCheck:
         path.write_text(src)
         first = extract([str(path)])
         second = extract([str(path)])  # served from the AST cache
-        return None if first == second else f"cache hit changed signatures: {first} != {second}"
+        return (
+            None
+            if first == second
+            else f"cache hit changed signatures: {first} != {second}"
+        )
 
     return check
 
 
-REGRESSION_MUTATORS: dict[str, Callable[[random.Random, Path], RegressionCheck | None]] = {
+REGRESSION_MUTATORS: dict[
+    str, Callable[[random.Random, Path], RegressionCheck | None]
+] = {
     # bugs found and fixed in this hardening pass
     "ignore_separator": _reg_ignore_separator,
     "long_chain": _reg_long_chain,
@@ -1183,10 +1440,16 @@ def fuzz_mutate(workdir: Path, opts: argparse.Namespace) -> list[Failure]:
             data = _mutate_source(rng, rng.choice(source_seeds[lang]), all_seed_texts)
             target, path = f"extract-{lang}", workdir / f"case{ext}"
             path.write_bytes(data)
-            run: Callable[[], str | None] = functools.partial(_run_extract_target, lang, path)
+            run: Callable[[], str | None] = functools.partial(
+                _run_extract_target, lang, path
+            )
         elif kind == "diff":
             text = _mutate_diff(rng, rng.choice(diff_seeds), all_seed_texts)
-            data, target, ext = text.encode("utf-8", errors="surrogatepass"), "diff", ".diff"
+            data, target, ext = (
+                text.encode("utf-8", errors="surrogatepass"),
+                "diff",
+                ".diff",
+            )
             run = functools.partial(_run_diff_target, text)
         else:
             mutated = sig_seed
@@ -1195,7 +1458,11 @@ def fuzz_mutate(workdir: Path, opts: argparse.Namespace) -> list[Failure]:
             raw = json.dumps(mutated)
             if rng.random() < 0.2:  # also mutate the JSON text itself
                 raw = _mutate_text(rng, raw, [])
-            data, target, ext = raw.encode("utf-8", errors="surrogatepass"), "compare", ".json"
+            data, target, ext = (
+                raw.encode("utf-8", errors="surrogatepass"),
+                "compare",
+                ".json",
+            )
             path = workdir / "case.json"
             path.write_bytes(data)
             run = functools.partial(_run_compare_target, path)
@@ -1232,7 +1499,9 @@ def replay(path: Path) -> int:
     if target.startswith("regress-"):
         case = json.loads(data)
         with tempfile.TemporaryDirectory(prefix="impactguard_replay_") as tmp:
-            problem = _run_regression(case["mutator"], int(case["case_seed"]), Path(tmp))
+            problem = _run_regression(
+                case["mutator"], int(case["case_seed"]), Path(tmp)
+            )
     elif target.startswith("extract-"):
         problem = _run_extract_target(target.removeprefix("extract-"), path)
     elif target == "diff":
@@ -1258,21 +1527,49 @@ SUITES: dict[str, Callable[[Path, argparse.Namespace], list[Failure]]] = {
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("suites", nargs="*", default=list(SUITES), help=f"suites to run: {', '.join(SUITES)} (default: all)")
-    parser.add_argument("--deep", type=int, default=50_000, help="nesting depth for deep payloads")
-    parser.add_argument("-v", "--verbose", action="store_true", help="show library warnings")
+    parser.add_argument(
+        "suites",
+        nargs="*",
+        default=list(SUITES),
+        help=f"suites to run: {', '.join(SUITES)} (default: all)",
+    )
+    parser.add_argument(
+        "--deep", type=int, default=50_000, help="nesting depth for deep payloads"
+    )
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="show library warnings"
+    )
     mut = parser.add_argument_group("mutate suite")
-    mut.add_argument("--iterations", type=int, default=2000, help="mutation cases to run (default: 2000)")
-    mut.add_argument("--seed", type=int, default=None, help="RNG seed (default: random, printed)")
-    mut.add_argument("--time-budget", type=float, default=0, help="stop mutating after N seconds (0 = no limit)")
-    mut.add_argument("--crash-dir", default="fuzz-crashes", help="where crashing inputs are saved")
+    mut.add_argument(
+        "--iterations",
+        type=int,
+        default=2000,
+        help="mutation cases to run (default: 2000)",
+    )
+    mut.add_argument(
+        "--seed", type=int, default=None, help="RNG seed (default: random, printed)"
+    )
+    mut.add_argument(
+        "--time-budget",
+        type=float,
+        default=0,
+        help="stop mutating after N seconds (0 = no limit)",
+    )
+    mut.add_argument(
+        "--crash-dir", default="fuzz-crashes", help="where crashing inputs are saved"
+    )
     mut.add_argument(
         "--kinds",
         default="extract,diff,compare,regress",
         help="comma-separated mutation families (default: all); 'regress' "
         "replays past bugs as targeted mutators with metamorphic oracles",
     )
-    mut.add_argument("--replay", type=Path, metavar="FILE", help="re-run one saved crash file and exit")
+    mut.add_argument(
+        "--replay",
+        type=Path,
+        metavar="FILE",
+        help="re-run one saved crash file and exit",
+    )
     args = parser.parse_args(argv)
     if args.seed is None:
         args.seed = random.SystemRandom().randrange(2**32)
@@ -1296,7 +1593,9 @@ def main(argv: list[str] | None = None) -> int:
             workdir.mkdir()
             started = time.monotonic()
             fails = SUITES[name](workdir, args)
-            print(f"[{name}] {len(fails)} failure(s) in {time.monotonic() - started:.1f}s")
+            print(
+                f"[{name}] {len(fails)} failure(s) in {time.monotonic() - started:.1f}s"
+            )
             for label, detail in fails:
                 print(f"  {label}: {detail}")
             total.extend(fails)

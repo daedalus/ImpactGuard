@@ -170,16 +170,12 @@ def _record_extraction_failure(
 def _run_extractor(
     extractor: Any,
     files: list[str],
-    base_path: str | None,
-    strict: bool,
+    kwargs: dict[str, Any],
     stats: dict[str, int] | None,
     events: list[dict[str, str]] | None,
 ) -> list[dict[str, Any]]:
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        kwargs: dict[str, Any] = {"_base_path": base_path}
-        if strict:
-            kwargs["strict"] = True
         extracted: list[dict[str, Any]] = extractor.extract_signatures(
             files, **kwargs
         )
@@ -204,10 +200,11 @@ def _extract_group(
             )
         except (TypeError, ValueError):
             supports_strict = False
+    kwargs: dict[str, Any] = {"_base_path": base_path}
+    if supports_strict:
+        kwargs["strict"] = True
     try:
-        return _run_extractor(
-            extractor, lang_files, base_path, supports_strict, stats, events
-        )
+        return _run_extractor(extractor, lang_files, kwargs, stats, events)
     except _EXTRACTION_ERRORS as exc:
         if len(lang_files) <= 1:
             _record_extraction_failure(extractor, lang_files, exc, stats, events)
@@ -224,9 +221,7 @@ def _extract_group(
     for file in lang_files:
         try:
             results.extend(
-                _run_extractor(
-                    extractor, [file], base_path, supports_strict, stats, events
-                )
+                _run_extractor(extractor, [file], kwargs, stats, events)
             )
         except _EXTRACTION_ERRORS as exc:
             _record_extraction_failure(extractor, [file], exc, stats, events)

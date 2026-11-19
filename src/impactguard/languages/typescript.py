@@ -674,7 +674,9 @@ def _extract_with_regex(
                 fq_file = path.name
         else:
             fq_file = path.name
-        lines = source.splitlines()
+        # split("\n") (not splitlines()) so indices match the "\n"-counted
+        # line numbers below even when the file contains form feeds etc.
+        lines = source.split("\n")
 
         for pattern, is_async_group in ((_FUNC_RE, "async"), (_ARROW_RE, "async")):
             for m in pattern.finditer(source):
@@ -682,7 +684,7 @@ def _extract_with_regex(
                 is_async = bool(m.group(is_async_group))
                 params_str = m.group("params") or ""
                 return_type: str | None = (m.group("return") or "").strip() or None
-                lineno = source[: m.start()].count("\n") + 1
+                lineno = source.count("\n", 0, m.start()) + 1
 
                 # exported detection via simple string check on the line
                 line_text = lines[lineno - 1] if lineno <= len(lines) else ""
@@ -731,7 +733,7 @@ def _extract_calls_with_regex(path: Path) -> list[dict[str, Any]]:
         arg_count = (
             len([a for a in _top_level_split(args_str) if a.strip()]) if args_str else 0
         )
-        lineno = source[: m.start()].count("\n") + 1
+        lineno = source.count("\n", 0, m.start()) + 1
         calls.append(
             {
                 "name": name,

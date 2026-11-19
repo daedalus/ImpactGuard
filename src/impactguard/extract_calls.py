@@ -75,7 +75,6 @@ def _collect_calls(tree: ast.AST, file: str) -> list[dict[str, Any]]:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             current_func = node.name
         elif isinstance(node, ast.Call):
-            helper._current_func = current_func
             name = helper.get_name(node.func)
             if name:
                 helper.calls.append(

@@ -217,7 +217,9 @@ def _extract_with_regex(
                 fq_file = path.name
         else:
             fq_file = path.name
-        lines = source.splitlines()
+        # split("\n") (not splitlines()) so indices match the "\n"-counted
+        # line numbers below even when the file contains form feeds etc.
+        lines = source.split("\n")
 
         # Collect type signatures
         type_sigs: dict[str, str] = {}
@@ -231,7 +233,7 @@ def _extract_with_regex(
                 continue
             seen.add(name)
             args_str = (m.group("args") or "").strip()
-            lineno = source[: m.start()].count("\n") + 1
+            lineno = source.count("\n", 0, m.start()) + 1
 
             positional: list[dict[str, Any]] = []
             if args_str:
@@ -300,7 +302,7 @@ def _extract_calls_with_regex(path: Path) -> list[dict[str, Any]]:
         arg_count = len([a for a in args_str.split() if a and a[0] not in "=->|\\"])
         if arg_count == 0:
             continue
-        lineno = source[: m.start()].count("\n") + 1
+        lineno = source.count("\n", 0, m.start()) + 1
         calls.append(
             {
                 "name": name,
