@@ -483,8 +483,11 @@ class TestMutationFuzzerFindings:
         assert py.extract_calls(src) == []
 
     def test_python_signatures_with_long_chain_in_body(self, tmp_path: Path) -> None:
-        """Found by the ``long_chain`` regression mutator: the signature
-        visitor recursed through expressions, not just statements."""
+        """A long chain in a function body must not break signature extraction.
+
+        Found by the ``long_chain`` regression mutator: the signature visitor
+        recursed through expressions, not just statements.
+        """
         src = tmp_path / "body.py"
         src.write_text(
             "__all__ = ['f']\n"

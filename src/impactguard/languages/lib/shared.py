@@ -49,10 +49,10 @@ def has_ignore_comment_fallback(lines: Sequence[str], lineno: int) -> bool:
 
 @functools.lru_cache(maxsize=16)
 def _source_lines(source_bytes: bytes) -> tuple[str, ...]:
-    """Split *source_bytes* into lines the way tree-sitter numbers rows.
+    r"""Split *source_bytes* into lines the way tree-sitter numbers rows.
 
-    Tree-sitter counts rows by ``\\n`` only, whereas ``str.splitlines()`` also
-    breaks on form feeds, vertical tabs, ``\\x1c``-``\\x1e``, NEL and
+    Tree-sitter counts rows by ``\n`` only, whereas ``str.splitlines()`` also
+    breaks on form feeds, vertical tabs, ``\x1c``-``\x1e``, NEL and
     U+2028/2029 -- which would shift every subsequent line and make ignore
     comments match the wrong function.  The result is cached because
     extractors call :func:`has_ignore_comment` once per function with the same
