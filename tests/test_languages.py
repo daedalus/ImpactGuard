@@ -1166,6 +1166,62 @@ class TestJavaExtractorRegexFallback:
             calls = ext.extract_calls(f)
         assert any(c["name"] == "foo" for c in calls)
 
+    # Unterminated parameter list: every word was a regex start position that
+    # scanned to end of input (quadratic). 20k params took ~95s.
+    _LONG_PARAM_COUNT = 20_000
+    _LONG_PARAM_MAX_SECONDS = 5.0
+
+    @pytest.mark.parametrize("sep", [",", ", int "])
+    def test_regression_long_params_not_quadratic(
+        self, tmp_path: Path, ext, sep: str
+    ) -> None:
+        import time
+
+        params = sep.join(f"a{i}" for i in range(self._LONG_PARAM_COUNT))
+        f = _write(tmp_path, "Long.java", f"def f({params}): pass\n")
+        started = time.monotonic()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            sigs = ext.extract_signatures([str(f)])
+        assert time.monotonic() - started < self._LONG_PARAM_MAX_SECONDS
+        assert sigs == []
+
+    def test_regression_long_params_keeps_methods(self, tmp_path: Path, ext) -> None:
+        garbage = ",".join(f"a{i}" for i in range(self._LONG_PARAM_COUNT))
+        src = (
+            f"def f({garbage}): pass\n"
+            "public Map<String, List<Integer>> m(int x, String y) {}\n"
+        )
+        f = _write(tmp_path, "Mixed.java", src)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            sigs = ext.extract_signatures([str(f)])
+        got = [(s["name"], s["return_type"], s["lineno"], s["exported"]) for s in sigs]
+        assert got == [("m", "Map<String, List<Integer>>", 2, True)]
+
+    @pytest.mark.parametrize(
+        "src",
+        [
+            "x" * _LONG_PARAM_COUNT,
+            "a." * _LONG_PARAM_COUNT,
+            "public " * _LONG_PARAM_COUNT,
+            "x<a, " * _LONG_PARAM_COUNT,
+        ],
+        ids=["long_word", "long_dotted", "many_modifiers", "unclosed_generics"],
+    )
+    def test_regression_no_quadratic_inputs(
+        self, tmp_path: Path, ext, src: str
+    ) -> None:
+        import time
+
+        f = _write(tmp_path, "Adv.java", src)
+        started = time.monotonic()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            sigs = ext.extract_signatures([str(f)])
+        assert time.monotonic() - started < self._LONG_PARAM_MAX_SECONDS
+        assert sigs == []
+
 
 # ── Go extractor ──────────────────────────────────────────────────────────────
 
