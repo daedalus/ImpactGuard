@@ -365,6 +365,9 @@ def split_pipe_union_members(type_str: str) -> frozenset[str]:
     return frozenset({s})
 
 
+_MAX_CALL_NAME_DESCENT = 256
+
+
 def _extract_call_name(
     node: Any,
     source: bytes,
@@ -382,20 +385,26 @@ def _extract_call_name(
     """
     member_map = member_map or {}
     target = ident_type or "identifier"
-    if node.type == target:
-        return node_text(node, source)
-    if node.type in member_map:
-        rhs_field = member_map[node.type]
-        if rhs_field is not None:
-            for child in node.named_children:
-                if child.type == rhs_field:
-                    return node_text(child, source)
+    # Iterative descent down the first-named-child chain.  Each call site
+    # walks this chain, so for nested/chained calls (``f(g(h(...)))``,
+    # ``a()()()``) an unbounded walk is O(depth) per call -- O(n^2) overall --
+    # and a recursive one can overflow the stack.  A callee name buried
+    # deeper than _MAX_CALL_NAME_DESCENT levels is not meaningful anyway.
+    for _ in range(_MAX_CALL_NAME_DESCENT):
+        if node.type == target:
+            return node_text(node, source)
+        if node.type in member_map:
+            rhs_field = member_map[node.type]
+            if rhs_field is not None:
+                for child in node.named_children:
+                    if child.type == rhs_field:
+                        return node_text(child, source)
+                return None
+            return ".".join(node_text(c, source) for c in node.named_children)
+        children = node.named_children
+        if not children:
             return None
-        return ".".join(node_text(c, source) for c in node.named_children)
-    if node.named_children:
-        return _extract_call_name(
-            node.named_children[0], source, member_map, ident_type
-        )
+        node = children[0]
     return None
 
 

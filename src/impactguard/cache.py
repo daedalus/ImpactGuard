@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import atexit
 import base64
+import binascii
 import hashlib
 import json
 import logging
@@ -245,6 +246,21 @@ def _ast_from_json(obj: Any) -> Any:
     return obj
 
 
+# Errors raised when (de)serialising a cache value that is too deep, corrupt
+# or otherwise unrepresentable.  Never fatal: the cache is an optimisation.
+_UNSERIALISABLE_ERRORS: tuple[type[BaseException], ...] = (
+    RecursionError,
+    SyntaxError,  # legacy "ast_dump" entries are re-parsed on read
+    TypeError,
+    ValueError,
+    KeyError,
+    AttributeError,
+    EOFError,
+    pickle.PickleError,
+    binascii.Error,
+)
+
+
 def _wrap_value(value: Any) -> str:
     """Serialise *value* to a JSON string, using pickle fallback for non-trivial types."""
     try:
@@ -423,7 +439,10 @@ class Cache:
                     self._delete_key(canonical_key)
                     _record_cache_miss(canonical_key)
                     return None
-                value = _unwrap_value(row[0])
+                value = self._decode_or_evict(canonical_key, row[0])
+                if value is SENTINEL:
+                    _record_cache_miss(canonical_key)
+                    return None
                 self._mem[canonical_key] = (
                     value,
                     float(expires_at) if expires_at is not None else None,
@@ -453,7 +472,10 @@ class Cache:
                 self._delete_key(canonical_key)
                 _record_cache_miss(canonical_key)
                 return SENTINEL
-            value = _unwrap_value(row[0])
+            value = self._decode_or_evict(canonical_key, row[0])
+            if value is SENTINEL:
+                _record_cache_miss(canonical_key)
+                return SENTINEL
             self._mem[canonical_key] = (
                 value,
                 float(expires_at) if expires_at is not None else None,
@@ -503,6 +525,25 @@ class Cache:
             self._maybe_grow_bloom()
         except sqlite3.OperationalError:
             logger.debug("Cache set skipped due to locked database: %s", canonical_key)
+        except _UNSERIALISABLE_ERRORS as exc:
+            # Caching is an optimisation: a value that cannot be serialised
+            # (e.g. an AST thousands of levels deep) stays in the in-memory
+            # L1 cache only, instead of failing the caller's analysis.
+            logger.debug("Cache set not persisted for %s: %s", canonical_key, exc)
+
+    def _decode_or_evict(self, canonical_key: str, raw: Any) -> Any:
+        """Decode a persisted value; evict it and return SENTINEL if corrupt."""
+        try:
+            return _unwrap_value(raw)
+        except _UNSERIALISABLE_ERRORS as exc:
+            logger.warning(
+                "Discarding unreadable cache entry %s: %s", canonical_key, exc
+            )
+            try:
+                self._delete_key(canonical_key)
+            except sqlite3.OperationalError:
+                pass
+            return SENTINEL
 
     def clear(self) -> None:
         self.con.execute("DELETE FROM cache")

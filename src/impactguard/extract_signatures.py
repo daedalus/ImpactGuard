@@ -249,6 +249,17 @@ def extract(
                 self._all_names: set[str] | None = None
                 self._all_found = False
 
+            def generic_visit(self, node: ast.AST) -> None:
+                # Only statements can hold definitions or ``__all__``
+                # updates, and expressions never contain statements, so do
+                # not descend into expression subtrees.  Besides being
+                # cheaper, this keeps a long ``a + b + ...`` chain inside a
+                # function body from overflowing the stack (statement
+                # nesting itself is capped by CPython at 100 levels).
+                for child in ast.iter_child_nodes(node):
+                    if not isinstance(child, ast.expr):
+                        self.visit(child)
+
             def visit_ClassDef(self, node: ast.ClassDef) -> None:
                 old_class = self.current_class
                 self.current_class = node.name

@@ -164,7 +164,9 @@ def _python_units(source: str) -> list:
     container "<module>"; methods get their class's name."""
     try:
         tree = ast.parse(source)
-    except SyntaxError as exc:
+    except (SyntaxError, RecursionError, MemoryError) as exc:
+        # MemoryError/RecursionError: CPython's parser-stack overflow on
+        # pathologically nested source.
         _log.debug("decay_model: failed to parse Python source: %s", exc)
         return []
 

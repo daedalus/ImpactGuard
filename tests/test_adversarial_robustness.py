@@ -364,3 +364,139 @@ class TestGetLine:
         monkeypatch.chdir(tmp_path)
         Path("ff.py").write_text("a = 1\n\f\nb = 2\n")
         assert get_line("ff.py", 3) == "b = 2"
+
+
+# ── Python call extraction and the persistent cache ─────────────────────────
+
+
+class TestPythonDeepCallsAndCache:
+    def test_python_long_chain_calls(self, tmp_path: Path) -> None:
+        src = tmp_path / "chain.py"
+        src.write_text("def f():\n    g(1)\n    x = " + " + ".join(["1"] * 3000) + "\n")
+        py = get_extractor_by_language("python")
+        assert py is not None
+        calls = py.extract_calls(src)
+        assert [(c["name"], c["caller"]) for c in calls] == [("g", "f")]
+
+    def test_collect_calls_matches_recursive_visitor(self) -> None:
+        import ast
+
+        from impactguard.extract_calls import CallVisitor, _collect_calls
+
+        source = (
+            "def outer(a):\n    foo(a, k=1, *b, **c)\n"
+            "    def inner():\n        bar(baz(1))\n    obj.meth()\n"
+            "async def co():\n    await qux()\nlambda: top()\n"
+        )
+        tree = ast.parse(source)
+        visitor = CallVisitor("m.py")
+        visitor.visit(tree)
+        assert _collect_calls(tree, "m.py") == visitor.calls
+
+    def test_unserialisable_value_is_not_fatal(self, tmp_path: Path) -> None:
+        import ast
+
+        from impactguard.cache import Cache
+
+        cache = Cache(str(tmp_path / "c.db"))
+        deep = ast.parse("x = " + " + ".join(["1"] * 3000))
+        cache.set("deep", deep)  # must not raise
+        assert cache.get("deep") is deep  # still served from memory
+        cache.close()
+
+    def test_corrupt_entry_is_evicted(self, tmp_path: Path) -> None:
+        from impactguard.cache import Cache
+
+        db = str(tmp_path / "c.db")
+        cache = Cache(db)
+        cache.set("k", {"v": 1})
+        cache.con.execute(
+            "UPDATE cache SET value = ?",
+            ('{"_t": "ast_json", "v": {"_n": "NotANode"}}',),
+        )
+        cache.con.commit()
+        cache._mem.clear()
+        assert cache.get("k") is None
+        assert cache.con.execute("SELECT COUNT(*) FROM cache").fetchone()[0] == 0
+        cache.close()
+
+
+# ── Findings from the mutation fuzzer (tools/fuzz.py mutate) ────────────────
+
+
+class TestMutationFuzzerFindings:
+    @pytest.mark.parametrize("bad", [1.5, True, "abc", {"a": 1}])
+    def test_schema_non_list_args_reported_not_raised(self, bad: object) -> None:
+        from impactguard.schema import validate_signatures
+
+        valid, errors = validate_signatures([_sig(positional=bad)])
+        assert not valid
+        assert any("positional: expected a JSON array" in e for e in errors)
+
+    def test_compare_file_with_non_list_args(self, tmp_path: Path) -> None:
+        f = tmp_path / "s.json"
+        f.write_text(json.dumps([_sig(kwonly=True), _sig("m.py:g")]))
+        assert list(load(str(f))) == ["m.py:g"]
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            pytest.param("x = " + "-" * 20_000 + "1\n", id="parser-stack-MemoryError"),
+            pytest.param("x = " + " + ".join(["1"] * 20_000) + "\n", id="RecursionError"),
+        ],
+    )
+    def test_parser_overflow_is_syntax_error(self, tmp_path: Path, source: str) -> None:
+        from impactguard._ast_cache import cached_ast_parse
+
+        with pytest.raises(SyntaxError, match="too deeply nested"):
+            cached_ast_parse(source)
+        src = tmp_path / "deep.py"
+        src.write_text(source)
+        py = get_extractor_by_language("python")
+        assert py is not None
+        assert py.extract_calls(src) == []
+
+    def test_python_signatures_with_long_chain_in_body(self, tmp_path: Path) -> None:
+        """Found by the ``long_chain`` regression mutator: the signature
+        visitor recursed through expressions, not just statements."""
+        src = tmp_path / "body.py"
+        src.write_text(
+            "__all__ = ['f']\n"
+            "def f(a, b=1):\n    s = " + " + ".join(["1"] * 4000) + "\n"
+            "    def inner(c):\n        return c\n    return a\n"
+        )
+        sigs = {s["name"]: s for s in extract_python([str(src)])}
+        assert set(sigs) == {"f", "inner"}
+        assert sigs["f"]["exported"] is True
+
+    def test_chained_call_callee_does_not_overflow(self, tmp_path: Path) -> None:
+        """``g()()()...``: each call's callee is another call."""
+        src = tmp_path / "chain.js"
+        src.write_text("export function a(x) { return g" + "()" * 4000 + "; }\n")
+        js = get_extractor_by_language("javascript")
+        assert js is not None
+        calls = js.extract_calls(src)
+        assert calls and all(c["name"] == "g" for c in calls)
+
+    def test_mutation_fuzzer_smoke(self, tmp_path: Path) -> None:
+        """Run a short, deterministic mutation campaign so the tool can't rot."""
+        import importlib.util
+        import io
+        from contextlib import redirect_stdout
+
+        tool = Path(__file__).resolve().parent.parent / "tools" / "fuzz.py"
+        spec = importlib.util.spec_from_file_location("ig_fuzz_tool", tool)
+        assert spec is not None and spec.loader is not None
+        fuzz = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(fuzz)
+        out = io.StringIO()
+        with redirect_stdout(out):
+            fuzz.main(
+                ["mutate", "--iterations", "150", "--seed", "7",
+                 "--crash-dir", str(tmp_path / "crashes"), "--verbose"]
+            )
+        report = out.getvalue()
+        assert "ran 150 cases" in report
+        # Crashes (as opposed to slowness on a loaded CI box) are regressions.
+        crash_lines = [ln for ln in report.splitlines() if ln.startswith("  mutate") and ":slow" not in ln]
+        assert crash_lines == [], report

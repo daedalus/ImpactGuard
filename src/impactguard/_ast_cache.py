@@ -117,6 +117,16 @@ def cached_ast_parse(source: str) -> ast.Module:
     result = cache.get(key)
     if result is not None:
         return result
-    tree = ast.parse(source)
+    try:
+        tree = ast.parse(source)
+    except (MemoryError, RecursionError) as exc:
+        # On pathologically nested source CPython's parser raises
+        # MemoryError ("Parser stack overflowed - Python source too complex
+        # to parse") or RecursionError (e.g. a 20k-term ``a + b + ...``),
+        # which callers do not expect.  Surface it as the SyntaxError it
+        # effectively is; a genuine out-of-memory error still propagates.
+        if isinstance(exc, MemoryError) and "too complex" not in str(exc):
+            raise
+        raise SyntaxError(f"source too deeply nested to parse: {exc}") from exc
     cache.set(key, tree)
     return tree
