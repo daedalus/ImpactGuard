@@ -119,11 +119,26 @@ _PRIMITIVE_PRED_MAP: dict[str, str] = {
 }
 
 
-def _make_predicate(type_str: str, z3: Any) -> Callable[[Any], Any]:
-    """Return a callable ``(z3.Const) → z3.BoolRef`` for *type_str*."""
-    s = type_str.strip()
+_TOP_TYPES = frozenset({"Any", "object", "typing.Any"})
 
-    if s == "Any":
+
+def _normalize_type(type_str: str) -> str:
+    """Canonicalise *type_str* so cosmetic differences don't create new types."""
+    return "".join(type_str.split())
+
+
+def _make_predicate(type_str: str, z3: Any) -> Callable[[Any], Any]:
+    """Return a callable ``(z3.Const) → z3.BoolRef`` for *type_str*.
+
+    Only ``Any``/``object`` are modelled as the universal type.  Every other
+    non-primitive type (classes, generics, tuples, callables, ...) gets its
+    own opaque predicate keyed on the normalised type string, so that e.g.
+    ``str -> MyClass`` or ``list[int] -> int`` is never mistaken for a
+    widening.
+    """
+    s = _normalize_type(type_str)
+
+    if s in _TOP_TYPES:
         return lambda _: z3.BoolVal(True)
 
     members = _parse_union_members(s)
@@ -131,28 +146,12 @@ def _make_predicate(type_str: str, z3: Any) -> Callable[[Any], Any]:
         preds = [_make_predicate(m, z3) for m in members]
         return lambda v: z3.Or([p(v) for p in preds])
 
-    base, args = _strip_generic(s)
+    if s in _PRIMITIVE_PRED_MAP:
+        prim = _predicate(f"is_{_PRIMITIVE_PRED_MAP[s]}", z3)
+        return lambda v: prim(v)
 
-    if base in _PRIMITIVE_PRED_MAP:
-        fn = _predicate(f"is_{_PRIMITIVE_PRED_MAP[base]}", z3)
-        return lambda v: fn(v)
-
-    if base == "list":
-        elem_pred = _make_predicate(args[0], z3) if args else (lambda _: z3.BoolVal(True))
-        return lambda v, _p=elem_pred: _p(v)
-
-    if base == "dict":
-        val_pred = _make_predicate(args[1], z3) if len(args) > 1 else (lambda _: z3.BoolVal(True))
-        return lambda v, _p=val_pred: _p(v)
-
-    if base in ("set", "frozenset"):
-        elem_pred = _make_predicate(args[0], z3) if args else (lambda _: z3.BoolVal(True))
-        return lambda v, _p=elem_pred: _p(v)
-
-    if base == "tuple":
-        return lambda _: z3.BoolVal(True)
-
-    return lambda _: z3.BoolVal(True)
+    opaque = _predicate(f"is_<{s}>", z3)
+    return lambda v: opaque(v)
 
 
 # ── Union / generic helpers ──────────────────────────────────────────────────
@@ -165,26 +164,15 @@ def _parse_union_members(type_str: str) -> list[str]:
         return [m.group(1).strip(), "None"]
     m2 = re.fullmatch(r"Union\[(.+)\]", s)
     if m2:
-        return [p.strip() for p in m2.group(1).split(",")]
+        return [p.strip() for p in _split_generic_args(m2.group(1))]
     if "|" in s:
-        return [p.strip() for p in s.split("|")]
+        parts = [p.strip() for p in _split_generic_args(s, sep="|")]
+        if len(parts) > 1:
+            return parts
     return [s]
 
 
-def _strip_generic(type_str: str) -> tuple[str, list[str]]:
-    m = re.fullmatch(r"(\w+)\[(.+)\]", type_str.strip())
-    if m:
-        base = m.group(1)
-        inside = m.group(2)
-        if base == "tuple" and "," in inside:
-            args = [a.strip() for a in _split_generic_args(inside)]
-        else:
-            args = [inside.strip()]
-        return base, args
-    return type_str.strip(), []
-
-
-def _split_generic_args(s: str) -> list[str]:
+def _split_generic_args(s: str, sep: str = ",") -> list[str]:
     depth = 0
     parts: list[str] = []
     current: list[str] = []
@@ -195,7 +183,7 @@ def _split_generic_args(s: str) -> list[str]:
         elif ch in ("]", ")"):
             depth -= 1
             current.append(ch)
-        elif ch == "," and depth == 0:
+        elif ch == sep and depth == 0:
             parts.append("".join(current).strip())
             current = []
         else:
@@ -231,6 +219,10 @@ def _classify_results(widening_result: Any, narrowing_result: Any, z3: Any) -> s
         return "unknown"
     is_widening_ce = widening_result == z3.sat
     is_narrowing_ce = narrowing_result == z3.sat
+    if not is_widening_ce and not is_narrowing_ce:
+        # Each type subsumes the other: semantically equivalent
+        # (e.g. ``Optional[int]`` vs ``int | None``) — no change.
+        return None
     if is_widening_ce and is_narrowing_ce:
         return "changed"
     if is_widening_ce:

@@ -2938,19 +2938,21 @@ def post_commit_hook() -> int:
 
     os.environ["SKIP_SIGNATURE_HOOK"] = "1"
     try:
-        files = subprocess.run(
-            ["git", "ls-files", "*.py"],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.splitlines()
-    except subprocess.CalledProcessError:
-        return 0
+        # Every early return below goes through ``finally`` so the env var
+        # is always restored.
+        try:
+            files = subprocess.run(
+                ["git", "ls-files", "*.py"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.splitlines()
+        except (OSError, subprocess.CalledProcessError):
+            return 0
 
-    if not files:
-        return 0
+        if not files:
+            return 0
 
-    try:
         result = subprocess.run(
             [sys.executable, "-m", "impactguard", "extract", *files],
             capture_output=True,

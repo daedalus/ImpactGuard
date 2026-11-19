@@ -171,10 +171,17 @@ def enforce_report(report_path: str, block_unknown: bool | None = None) -> int:
         print(f"⚠️ Could not parse report (invalid JSON): {exc}", file=sys.stderr)
         return 2
 
+    if not isinstance(report, list):
+        _log.error("Report '%s' is not a JSON array", report_path)
+        print("⚠️ Could not parse report: expected a JSON array", file=sys.stderr)
+        return 2
+
     has_high = False
     has_unknown = False
 
     for item in report:
+        if not isinstance(item, dict):
+            continue
         item_high, item_unknown = _print_risk_item_brief(item, block_unknown)
         has_high = has_high or item_high
         has_unknown = has_unknown or item_unknown

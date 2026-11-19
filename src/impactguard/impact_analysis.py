@@ -60,19 +60,35 @@ def load_calls(path: str) -> list[dict[str, Any]]:
 # ── Transitive impact helpers ─────────────────────────────────────────────────
 
 
-def build_call_graph(calls: list[dict[str, Any]]) -> dict[str, set[str]]:
+def build_call_graph(
+    calls: list[dict[str, Any]],
+    funcs: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, set[str]]:
     """Build a callee → set-of-callers inverted call graph.
 
     Args:
         calls: List of call-site dicts (as returned by extract_calls / analyze_module).
+        funcs: Optional signature map.  When given, callee and caller names
+            are resolved to signature fqnames (``file.py:func``) so the graph
+            can be walked starting from the fqnames reported by
+            :func:`compare_signatures.compare`.
 
     Returns:
         Dict mapping each called function name to the set of functions that call it.
     """
     graph: dict[str, set[str]] = {}
+    dotted = _dotted_keys(funcs) if funcs else None
     for call in calls:
         callee = call.get("fqname") or call.get("name", "")
         caller_identity = call.get("caller") or call.get("file", "")
+        if funcs:
+            if callee:
+                callee = _resolve_target(callee, funcs, dotted) or callee
+            if call.get("caller"):
+                caller_identity = (
+                    _resolve_target(caller_identity, funcs, dotted)
+                    or caller_identity
+                )
         if callee:
             graph.setdefault(callee, set()).add(caller_identity)
     return graph
@@ -129,7 +145,7 @@ def _fqname_to_runtime_key(fqname: str) -> str:
     if ":" in fqname:
         file_part, func_part = fqname.split(":", 1)
         # Convert file path to module path: remove .py, replace / with .
-        module_part = file_part.replace(".py", "").replace("/", ".")
+        module_part = file_part.replace("\\", "/").removesuffix(".py").replace("/", ".")
         return f"{module_part}.{func_part}"
     return fqname
 
@@ -150,13 +166,50 @@ def _load_runtime_data(runtime_path: str | None) -> dict[str, int]:
     return {}
 
 
-def _resolve_target(target: str, funcs: dict[str, dict[str, Any]]) -> str | None:
-    """Resolve a call target against loaded signatures."""
+def _dotted_keys(funcs: dict[str, dict[str, Any]]) -> dict[str, str]:
+    """Map each signature fqname to its dotted form (``path.module.func``)."""
+    return {f: _fqname_to_runtime_key(f) for f in funcs}
+
+
+def _resolve_target(
+    target: str,
+    funcs: dict[str, dict[str, Any]],
+    dotted: dict[str, str] | None = None,
+) -> str | None:
+    """Resolve a call target against loaded signatures.
+
+    Call sites name their target as ``func``, ``module.func`` or
+    ``Class.method`` while signatures use ``path/module.py:func``.  Resolution
+    order:
+
+    1. exact fqname match;
+    2. the signature's dotted form (``path.module.func``) equals or ends with
+       ``.<target>`` — unique match only;
+    3. method leaf-name match (``var.method`` with unknown ``var``) — unique
+       match only.
+
+    *dotted* is an optional precomputed :func:`_dotted_keys` map; pass it
+    when resolving many targets against the same *funcs*.
+    """
+    if not target:
+        return None
     if target in funcs:
         return target
-    matches = [f for f in funcs if f.endswith("." + target.split(".")[-1])]
+
+    if dotted is None:
+        dotted = _dotted_keys(funcs)
+    suffix = "." + target
+    matches = [f for f, key in dotted.items() if key == target or key.endswith(suffix)]
     if len(matches) == 1:
         return matches[0]
+
+    if not matches:
+        leaf = "." + target.split(".")[-1]
+        matches = [
+            f for f in funcs if "." in f.split(":")[-1] and f.endswith(leaf)
+        ]
+        if len(matches) == 1:
+            return matches[0]
     if len(matches) > 1:
         _log.warning(
             "Ambiguous target resolution for '%s': multiple candidates found (%s). "
@@ -164,6 +217,32 @@ def _resolve_target(target: str, funcs: dict[str, dict[str, Any]]) -> str | None
             target,
             ", ".join(matches[:5]),
         )
+    return None
+
+
+def _arity_problem(call: dict[str, Any], func: dict[str, Any]) -> str | None:
+    """Return ``"missing args"``, ``"too many args"`` or *None* when compatible.
+
+    Keyword arguments that name a positional parameter count towards
+    satisfying it, so ``f(1, b=2)`` is compatible with ``def f(a, b)``.
+    """
+    # Python call extractors use ``starargs``/``kwargs_any``; others use
+    # ``has_starargs``/``has_kwargs`` — accept both spellings.
+    if (
+        call.get("has_starargs")
+        or call.get("has_kwargs")
+        or call.get("starargs")
+        or call.get("kwargs_any")
+    ):
+        return None
+    positional = func.get("positional", [])
+    argc = call.get("args", 0) or 0
+    if argc > len(positional) and not func.get("vararg"):
+        return "too many args"
+    keywords = set(call.get("kwargs") or [])
+    for param in positional[argc:]:
+        if not param.get("has_default") and param.get("name") not in keywords:
+            return "missing args"
     return None
 
 
@@ -184,8 +263,7 @@ def _build_issue(
     call: dict[str, Any],
     target: str,
     func: dict[str, Any],
-    argc: int,
-    min_args: int,
+    problem: str,
     runtime: dict[str, int],
     max_count: int,
 ) -> dict[str, Any]:
@@ -194,11 +272,13 @@ def _build_issue(
     runtime_key = _fqname_to_runtime_key(target)
     count = lookup_runtime_count(runtime, target, func_name, runtime_key) or 1
     exp = exposure(count, max_count)
-    severity = 0.9 if argc < min_args else 0.3
+    missing = problem == "missing args"
+    severity = 0.9 if missing else 0.3
+    risk = "HIGH" if missing else _risk_level_for_mismatch(0, 0, severity, exp)
     return {
         "function": target,
-        "risk": _risk_level_for_mismatch(argc, min_args, severity, exp),
-        "change": "missing args" if argc < min_args else "too many args",
+        "risk": risk,
+        "change": problem,
         "exposure": exp,
         "confidence": min(1.0, count / 100),
         "file": call.get("file", ""),
@@ -213,12 +293,13 @@ def _append_transitive_issues(
     directly_affected: set[str],
     calls: list[dict[str, Any]],
     transitive_depth: int,
+    funcs: dict[str, dict[str, Any]] | None = None,
 ) -> None:
     """Append transitive callers to the issue list when enabled."""
     if transitive_depth <= 0 or not directly_affected:
         return
 
-    call_graph = build_call_graph(calls)
+    call_graph = build_call_graph(calls, funcs)
     transitive = find_transitive_callers(
         directly_affected, call_graph, transitive_depth
     )
@@ -245,12 +326,7 @@ def _append_transitive_issues(
 
 def _check_arity_match(call: dict[str, Any], func: dict[str, Any]) -> bool:
     """Return True when the call-site arity is compatible with the function signature."""
-    if call.get("has_starargs") or call.get("has_kwargs"):
-        return True
-    min_args = required_positional(func)
-    max_args = total_positional(func) if not func.get("vararg") else float("inf")
-    argc = call.get("args", 0)
-    return argc >= min_args and argc <= max_args
+    return _arity_problem(call, func) is None
 
 
 def analyze(
@@ -287,24 +363,25 @@ def analyze(
         len(calls),
     )
 
+    dotted = _dotted_keys(funcs)
     for call in calls:
         raw_target = call.get("fqname", call.get("name", ""))
-        target = _resolve_target(raw_target, funcs)
+        target = _resolve_target(raw_target, funcs, dotted)
         if target is None:
             continue
 
         f = funcs[target]
 
-        if _check_arity_match(call, f):
+        problem = _arity_problem(call, f)
+        if problem is None:
             continue
 
-        min_args = required_positional(f)
-        argc = call.get("args", 0)
-
         directly_affected.add(target)
-        issues.append(_build_issue(call, target, f, argc, min_args, runtime, max_count))
+        issues.append(_build_issue(call, target, f, problem, runtime, max_count))
 
-    _append_transitive_issues(issues, directly_affected, calls, transitive_depth)
+    _append_transitive_issues(
+        issues, directly_affected, calls, transitive_depth, funcs
+    )
 
     _log.debug(
         "Impact analysis complete: %d direct issue(s), %d transitive",
@@ -338,11 +415,18 @@ def detect_uncalled_changes(
     Returns:
         Issues for changed functions with no observed call sites.
     """
+    # Resolve every call target to a signature fqname so that calls naming
+    # ``module.func`` / ``func`` match signatures keyed ``module.py:func``.
     called_targets: set[str] = set()
+    dotted = _dotted_keys(funcs)
     for call in calls:
         target = call.get("fqname") or call.get("name", "")
-        if target:
-            called_targets.add(target)
+        if not target:
+            continue
+        called_targets.add(target)
+        resolved = _resolve_target(target, funcs, dotted)
+        if resolved:
+            called_targets.add(resolved)
 
     issues: list[dict[str, Any]] = []
     for bc in breaking_changes:
@@ -352,7 +436,7 @@ def detect_uncalled_changes(
         fqname = parts[1].split()[0]
         if fqname not in funcs:
             continue
-        if _resolve_target(fqname, funcs) and fqname in called_targets:
+        if fqname in called_targets:
             continue
         issues.append(
             {
