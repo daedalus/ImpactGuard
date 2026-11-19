@@ -4,6 +4,47 @@ ImpactGuard is a multi-language API impact analyzer (Python, TypeScript, JS, Jav
 
 ---
 
+## Hard Rules
+
+1. Make surgical changes. Don't touch code unrelated to the feature; minimise changed lines.
+2. **Follow existing conventions.** Find the closest existing example (extractor, subcommand, test) and match its layout, naming, shape and error handling. If a convention is wrong, fix it everywhere, not locally, and say so.
+3. Never bypass pre-commit hooks (`--no-verify`). Fix the warnings, then recommit.
+4. Always fix ImpactGuard's own breaking changes.
+5. Never commit binary files.
+6. Before deleting code, check where it should be wired; if nowhere, remove it. Stay within the removal's scope.
+7. Do not nuke the repo.
+8. Wire new functionality everywhere it's needed (CLI subcommand, registry, pipeline).
+9. Language extractors register only via `register()` in `registry.py`. Never hardcode language or extension lists elsewhere.
+10. Treat visibility changes (private → public) as breaking. Ask before making any.
+11. `try: ... except: pass` is forbidden. Log or re-raise.
+12. Every test cleans up after itself (temp dirs, SQLite DBs, env vars, git repos).
+13. Every new feature gets one falsification test and one adversarial test. Think through edge cases.
+14. TDD: for bug fixes and features, write the test first, see it fail, implement, see it pass.
+15. No retry-until-random-hit loops in tests. Use deterministic inputs and assert exact output.
+16. When a test compares against a reference, also run the reference against itself; that control must pass first.
+17. No magic numbers/strings: extract meaningful or recurring values into named constants or enums.
+18. Reduce indentation: early `return`/`continue`, no arrow anti-pattern.
+19. Function names under 30 characters.
+20. Run `lizard --CCN=15` on every new source file and fix warnings.
+21. Push ifs up, fors down: decide modes once outside loops; pass batches, not items.
+22. Optimisations ship only if never slower at realistic input sizes (min-of-N, interleaved).
+23. Keep memory usage bounded (BFS depth, caches, call-graph loads).
+24. Run only the tests for affected code; the full suite runs in the pre-commit hook.
+25. Doc-only changes (`*.md`, comments, docstrings) run no tests. Commit and push.
+26. Commit and push once tests pass; don't rerun tests after pushing.
+27. Keep docs (README.md, SPEC.md, this file) brief and current.
+28. Update `tools/fuzz.py` with every regression found.
+29. Prose for humans (comments, commit messages, replies): minimum words. No superlatives or praise.
+30. Evidence over assumptions. Verify claims against the source, not names.
+
+### Testing rules
+
+- Every fixed bug ships a regression test: `test_regression_<description>`.
+- No hardcoded counts: use `>=` (languages and subcommands grow).
+- When renaming a method, grep all call sites.
+
+---
+
 ## Key Files
 
 | File | Purpose |
