@@ -11,6 +11,15 @@ from typing import TYPE_CHECKING, Any
 
 from .corpus import REPO, SIGNATURE_MUTATIONS, require_extractor
 from .mutators import INTERESTING_VALUES
+from .templates import (
+    CHAIN_FUNCS,
+    CHAINED_CALL_FUNCS,
+    EXOTIC_SEPARATORS,
+    JS_LIKE,
+    LANG_TEMPLATES,
+    NAME_CHARS,
+    PATH_SPECIALS,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -29,92 +38,9 @@ if TYPE_CHECKING:
 
 RegressionCheck = Callable[[], "str | None"]
 
-# (comment prefix, function template, file header, file footer) per language.
-# Templates use {name}; classes wrap methods for Java/C#.
-LANG_TEMPLATES: dict[str, tuple[str, str, str, str]] = {
-    "python": ("#", "def {name}(x, y=1):\n    return g(x)\n", "", ""),
-    "ruby": ("#", "def {name}(x, y = 1)\n  g(x)\nend\n", "", ""),
-    "c": ("//", "int {name}(int x, int y) {{ return g(x); }}\n", "", ""),
-    "cpp": ("//", "int {name}(int x, int y) {{ return g(x); }}\n", "", ""),
-    "go": (
-        "//",
-        "func {name}(x int, y int) int {{ return g(x) }}\n",
-        "package p\n",
-        "",
-    ),
-    "rust": ("//", "pub fn {name}(x: i32, y: i32) -> i32 {{ g(x) }}\n", "", ""),
-    "javascript": (
-        "//",
-        "export function {name}(x, y = 1) {{ return g(x); }}\n",
-        "",
-        "",
-    ),
-    "typescript": (
-        "//",
-        "export function {name}(x: number, y?: number): number {{ return g(x); }}\n",
-        "",
-        "",
-    ),
-    "java": (
-        "//",
-        "  public int {name}(int x, int y) {{ return g(x); }}\n",
-        "class A {\n",
-        "}\n",
-    ),
-    "csharp": (
-        "//",
-        "  public int {name}(int x, int y) {{ return G(x); }}\n",
-        "class A {\n",
-        "}\n",
-    ),
-    "kotlin": ("//", "fun {name}(x: Int, y: Int = 1): Int {{ return g(x) }}\n", "", ""),
-    "swift": (
-        "//",
-        "func {name}(x: Int, y: Int = 1) -> Int {{ return g(x) }}\n",
-        "",
-        "",
-    ),
-    "zig": ("//", "pub fn {name}(x: i32, y: i32) i32 {{ return g(x); }}\n", "", ""),
-}
-
-# Body statement holding a long ``1 + 1 + ...`` chain, per language.
-CHAIN_FUNCS: dict[str, str] = {
-    "python": "def chainfn(a):\n    s = {expr}\n    return g(a)\n",
-    "ruby": "def chainfn(a)\n  s = {expr}\n  g(a)\nend\n",
-    "c": "int chainfn(int a) {{ int s = {expr}; return g(a); }}\n",
-    "cpp": "int chainfn(int a) {{ int s = {expr}; return g(a); }}\n",
-    "go": "func chainfn(a int) int {{ s := {expr}; _ = s; return g(a) }}\n",
-    "rust": "pub fn chainfn(a: i32) -> i32 {{ let s = {expr}; g(a) }}\n",
-    "javascript": "export function chainfn(a) {{ const s = {expr}; return g(a); }}\n",
-    "typescript": "export function chainfn(a: number): number {{ const s = {expr}; return g(a); }}\n",
-    "java": "  public int chainfn(int a) {{ int s = {expr}; return g(a); }}\n",
-    "csharp": "  public int chainfn(int a) {{ var s = {expr}; return G(a); }}\n",
-    "kotlin": "fun chainfn(a: Int): Int {{ val s = {expr}\n return g(a) }}\n",
-    "swift": "func chainfn(a: Int) -> Int {{ let s = {expr}\n return g(a) }}\n",
-    "zig": "pub fn chainfn(a: i32) i32 {{ const s = {expr}; _ = s; return g(a); }}\n",
-}
-
-# Line separators that str.splitlines() honours but parsers do not.  JS/TS
-# treat U+2028 as a real line terminator, so it is excluded there.
-EXOTIC_SEPARATORS = ["\f", "\v", "\x1c", "\x1d", "\x1e", "\x85", " ", " "]
-JS_LIKE = {"javascript", "typescript"}
-
-CHAINED_CALL_FUNCS: dict[str, str] = {
-    "python": "def outer(a):\n    return g{calls}\n",
-    "javascript": "export function outer(a) {{ return g{calls}; }}\n",
-    "typescript": "export function outer(a: number) {{ return g{calls}; }}\n",
-    "go": "func outer(a int) int {{ return g{calls} }}\n",
-    "rust": "pub fn outer(a: i32) -> i32 {{ g{calls} }}\n",
-    "c": "int outer(int a) {{ return g{calls}; }}\n",
-    "cpp": "int outer(int a) {{ return g{calls}; }}\n",
-}
-
-_NAME_CHARS = "abcdefghijklmnopqrstuvwxyz"
-_PATH_SPECIALS = [" ", "é", "日", '"', "\\", "-", "ü", "\t"]
-
 
 def _rand_ident(rng: random.Random, prefix: str = "f") -> str:
-    return prefix + "".join(rng.choice(_NAME_CHARS) for _ in range(rng.randint(3, 8)))
+    return prefix + "".join(rng.choice(NAME_CHARS) for _ in range(rng.randint(3, 8)))
 
 
 def _build_source(lang: str, names: list[str], ignored: set[str]) -> str:
@@ -380,10 +306,10 @@ def _reg_diff_quoted_path(rng: random.Random, _workdir: Path) -> RegressionCheck
     diff parses to the same content, keyed by the decoded path.
     """
     stem = "".join(
-        rng.choice(_NAME_CHARS + "".join(_PATH_SPECIALS))
+        rng.choice(NAME_CHARS + "".join(PATH_SPECIALS))
         for _ in range(rng.randint(3, 10))
     )
-    path = f"pkg{rng.choice(_PATH_SPECIALS)}dir/m{stem}.py"
+    path = f"pkg{rng.choice(PATH_SPECIALS)}dir/m{stem}.py"
     old, new = _rand_changed_python(rng, rng.randint(1, 3))
     quoted = _make_diff(_git_quote(f"a/{path}"), _git_quote(f"b/{path}"), old, new)
     if rng.random() < 0.5:  # timestamps after the name, as `diff -u` emits
