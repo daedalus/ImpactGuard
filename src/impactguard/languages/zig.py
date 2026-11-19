@@ -29,6 +29,7 @@ from .lib.shared import (
     extract_calls_with_tree_sitter,
     has_ignore_comment,
     has_ignore_comment_fallback,
+    iter_preorder,
     log_regex_extraction,
     make_parser,
     node_text,
@@ -189,18 +190,9 @@ def _extract_with_tree_sitter(
             fq_file = path.name
         funcs: list[dict[str, Any]] = []
 
-        def visit(
-            node: Any,
-            _source: bytes = source,
-            _fq_file: str = fq_file,
-            _funcs: list[dict[str, Any]] = funcs,
-        ) -> None:
+        for node in iter_preorder(tree.root_node):
             if node.type in ("fn_decl", "function_declaration", "function_definition"):
-                _process_function(node, _source, _fq_file, _funcs)
-            for child in node.children:
-                visit(child)
-
-        visit(tree.root_node)
+                _process_function(node, source, fq_file, funcs)
         all_funcs.extend(funcs)
 
     all_funcs.sort(key=lambda x: x["fqname"])

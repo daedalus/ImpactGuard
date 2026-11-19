@@ -18,7 +18,10 @@ def patch_add_default(
         return None, "Unsafe file path rejected"
 
     try:
-        lines = open(file).read().splitlines()
+        with open(file, encoding="utf-8", errors="replace") as fh:
+            # split("\n"), not splitlines(): keep line numbers aligned with
+            # the parser when the file contains form feeds or U+2028.
+            lines = fh.read().split("\n")
         if lineno - 1 >= len(lines):
             return None, "Line number out of range"
 
@@ -56,7 +59,10 @@ def patch_call_site(
         return None, "Unsafe file path rejected"
 
     try:
-        lines = open(file).read().splitlines()
+        with open(file, encoding="utf-8", errors="replace") as fh:
+            # split("\n"), not splitlines(): keep line numbers aligned with
+            # the parser when the file contains form feeds or U+2028.
+            lines = fh.read().split("\n")
         if lineno - 1 >= len(lines):
             return None, "Line number out of range"
 

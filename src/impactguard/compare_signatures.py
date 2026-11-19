@@ -17,10 +17,18 @@ def load(path: str) -> dict[str, dict[str, Any]]:
     from .schema import validate_signatures
 
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8-sig") as f:
             data = json.load(f)
     except json.JSONDecodeError as exc:
         raise ValueError(f"Invalid JSON in signatures file '{path}': {exc}") from exc
+    except RecursionError as exc:
+        raise ValueError(
+            f"Invalid JSON in signatures file '{path}': nesting too deep"
+        ) from exc
+    except UnicodeDecodeError as exc:
+        raise ValueError(
+            f"Signatures file '{path}' is not valid UTF-8: {exc}"
+        ) from exc
 
     if not isinstance(data, list):
         raise ValueError(
@@ -35,17 +43,104 @@ def load(path: str) -> dict[str, dict[str, Any]]:
 
     result: dict[str, dict[str, Any]] = {}
     for entry in data:
-        if not isinstance(entry, dict) or "fqname" not in entry:
+        normalized, problem = _normalize_signature(entry)
+        if normalized is None:
             _log.warning(
-                "Signatures file '%s': skipping malformed entry: %r", path, entry
+                "Signatures file '%s': skipping malformed entry (%s): %.200r",
+                path,
+                problem,
+                entry,
             )
             print(
-                f"Warning: signatures file '{path}': skipping malformed entry: {entry!r}",
+                f"Warning: signatures file '{path}': skipping malformed entry "
+                f"({problem}): {entry!r:.200}",
                 file=sys.stderr,
             )
             continue
-        result[entry["fqname"]] = entry
+        result[normalized["fqname"]] = normalized
     return result
+
+
+def _as_flag(value: object) -> bool:
+    """Coerce a JSON boolean flag; strings such as ``"false"`` count as False."""
+    return bool(value) if isinstance(value, (bool, int)) else False
+
+
+def _normalize_arg(arg: object) -> dict[str, Any] | None:
+    """Return a sanitised copy of a single argument dict, or *None* if unusable."""
+    if not isinstance(arg, dict):
+        return None
+    name = arg.get("name")
+    if not isinstance(name, str) or not name:
+        return None
+    out = dict(arg)
+    # A missing/garbled ``has_default`` is treated as *required*: that errs
+    # on the side of reporting a breaking change rather than hiding one.
+    out["has_default"] = _as_flag(arg.get("has_default"))
+    if not isinstance(out.get("type"), str):
+        out["type"] = None
+    return out
+
+
+def _normalize_arg_list(value: object) -> list[dict[str, Any]] | None:
+    """Normalise a ``positional``/``kwonly`` list; *None* means unusable."""
+    if not isinstance(value, list):
+        return None
+    out: list[dict[str, Any]] = []
+    for arg in value:
+        norm = _normalize_arg(arg)
+        if norm is None:
+            return None
+        out.append(norm)
+    return out
+
+
+def _normalize_signature(
+    entry: object,
+) -> tuple[dict[str, Any] | None, str]:
+    """Validate and sanitise a raw signature entry before comparison.
+
+    Signature JSON can come from older ImpactGuard versions, third-party
+    extractor plugins or hand-edited baselines, so the comparison layer must
+    not trust its shape.  Unrecoverable entries (no usable ``fqname``, or
+    argument lists that are not lists of named dicts) are rejected; minor
+    problems (non-string types, ``null`` decorators, non-bool flags) are
+    coerced.
+
+    Returns:
+        ``(normalized_copy, "")`` on success, or ``(None, reason)`` when the
+        entry must be skipped.  The input is never mutated.
+    """
+    if not isinstance(entry, dict):
+        return None, f"expected an object, got {type(entry).__name__}"
+    fqname = entry.get("fqname")
+    if not isinstance(fqname, str) or not fqname:
+        return None, "missing or non-string 'fqname'"
+
+    out = dict(entry)
+    for key in ("positional", "kwonly"):
+        args = _normalize_arg_list(entry.get(key))
+        if args is None:
+            return None, f"'{key}' must be a list of objects with a string 'name'"
+        out[key] = args
+
+    out["vararg"] = bool(entry.get("vararg", False))
+    out["kwarg"] = bool(entry.get("kwarg", False))
+    if not isinstance(entry.get("return_type"), str):
+        out["return_type"] = None
+    decorators = entry.get("decorators")
+    out["decorators"] = (
+        [d for d in decorators if isinstance(d, str)]
+        if isinstance(decorators, list)
+        else []
+    )
+    if not isinstance(entry.get("name"), str):
+        out["name"] = fqname.split(":")[-1]
+    out["ignored"] = _as_flag(entry.get("ignored", False))
+    exported = entry.get("exported")
+    if exported is not None and not isinstance(exported, bool):
+        out["exported"] = None
+    return out, ""
 
 
 def is_required(arg: dict[str, Any]) -> bool:
@@ -314,10 +409,15 @@ def _load_signatures(arg: str | list[dict[str, Any]]) -> dict[str, dict[str, Any
         raise ValueError(f"Expected a list of signatures, got {type(arg).__name__}")
     result: dict[str, dict[str, Any]] = {}
     for entry in arg:
-        if not isinstance(entry, dict) or "fqname" not in entry:
-            _log.warning("In-memory signatures: skipping malformed entry: %r", entry)
+        normalized, problem = _normalize_signature(entry)
+        if normalized is None:
+            _log.warning(
+                "In-memory signatures: skipping malformed entry (%s): %.200r",
+                problem,
+                entry,
+            )
             continue
-        result[entry["fqname"]] = entry
+        result[normalized["fqname"]] = normalized
     return result
 
 

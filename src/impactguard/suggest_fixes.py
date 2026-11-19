@@ -41,8 +41,10 @@ def get_line(file: str, lineno: int) -> str:
         )
         return ""
     try:
-        with open(file) as f:
-            lines = f.read().splitlines()
+        with open(file, encoding="utf-8", errors="replace") as f:
+            # split("\n") keeps numbering aligned with the parsers even when
+            # the file contains form feeds or other exotic line separators.
+            lines = f.read().split("\n")
         if 0 <= lineno - 1 < len(lines):
             return lines[lineno - 1]
     except OSError:
