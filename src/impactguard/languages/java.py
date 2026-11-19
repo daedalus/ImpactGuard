@@ -261,11 +261,29 @@ def _extract_calls_with_tree_sitter(path: Path) -> list[dict[str, Any]]:
 
 # ── Regex fallback ────────────────────────────────────────────────────────────
 
-# Matches Java method declarations (simplified)
+_MODIFIERS = (
+    "public",
+    "private",
+    "protected",
+    "static",
+    "final",
+    "abstract",
+    "synchronized",
+    "native",
+    "default",
+    "strictfp",
+)
+# Longest generic argument list (``<...>``) a return type may carry.
+_MAX_GENERIC_LEN = 256
+
+# Matches Java method declarations (simplified).  Linear-time by design: a
+# match cannot start mid-identifier, modifiers are capped at one per keyword,
+# and whitespace/commas are allowed only inside a bounded ``<...>``.
 _METHOD_RE = re.compile(
-    r"(?:(?:public|private|protected|static|final|abstract|synchronized|native|"
-    r"default|strictfp)\s+)*"
-    r"(?P<return>\w[\w\.<>\[\],\s]*?)\s+"
+    r"(?<![\w.\[\]])"
+    rf"(?:(?:{'|'.join(_MODIFIERS)})\s+){{0,{len(_MODIFIERS)}}}"
+    r"(?P<return>\w[\w.\[\]]*"
+    rf"(?:<[\w.<>\[\],\s]{{0,{_MAX_GENERIC_LEN}}}>[\w.\[\]]*)?)\s+"
     r"(?P<name>\w+)\s*"
     r"\((?P<params>[^)]*)\)\s*"
     r"(?:throws\s+[\w,\s]+)?\s*[{;]",

@@ -699,6 +699,43 @@ def _reg_cache_roundtrip(rng: random.Random, workdir: Path) -> RegressionCheck:
     return check
 
 
+# Unterminated runs that made the Java regex fallback quadratic, by shape.
+_JAVA_RUNS: dict[str, Callable[[int], str]] = {
+    "params": lambda n: "def f(" + ",".join(f"a{i}" for i in range(n)) + "): pass",
+    "typed": lambda n: "f(" + ", ".join(f"int a{i}" for i in range(n)),
+    "word": lambda n: "x" * n,
+    "dotted": lambda n: "a." * n,
+    "modifiers": lambda n: "public " * n,
+    "generics": lambda n: "x<a, " * n,
+}
+
+
+def _reg_java_regex_run(rng: random.Random, workdir: Path) -> RegressionCheck:
+    """An unterminated run must not stall the Java regex fallback.
+
+    Session bug: ``_METHOD_RE`` scanned to end of input from every word (20k
+    params took ~95s; the campaign's slowness oracle flags it).  Oracle:
+    prepending the run as its own line keeps the same (name, line+1) set.
+    """
+    from impactguard.languages.java import _extract_with_regex
+
+    names = [_rand_ident(rng) + str(i) for i in range(rng.randint(1, 4))]
+    base = _build_source("java", names, set())
+    run = _JAVA_RUNS[rng.choice(sorted(_JAVA_RUNS))](rng.randint(8_000, 20_000))
+
+    def check() -> str | None:
+        a, b = workdir / "base.java", workdir / "base_run.java"
+        a.write_text(base)
+        b.write_text(run + "\n" + base)
+        before = {(s["name"], s["lineno"] + 1) for s in _extract_with_regex([str(a)])}
+        after = {(s["name"], s["lineno"]) for s in _extract_with_regex([str(b)])}
+        if after != before:
+            return f"java regex: run changed signatures: {sorted(before)} -> {sorted(after)}"
+        return None
+
+    return check
+
+
 REGRESSION_MUTATORS: dict[
     str, Callable[[random.Random, Path], RegressionCheck | None]
 ] = {
@@ -711,6 +748,7 @@ REGRESSION_MUTATORS: dict[
     "diff_quoted_path": _reg_diff_quoted_path,
     "diff_repeated_file": _reg_diff_repeated_file,
     "malformed_neighbour": _reg_malformed_neighbour,
+    "java_regex_run": _reg_java_regex_run,
     # pre-existing regression tests / adversarial generator
     "diff_dash_lines": _reg_diff_dash_lines,
     "adversarial_noise": _reg_adversarial_noise,
