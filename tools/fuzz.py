@@ -701,7 +701,7 @@ def _crash_key(exc: BaseException) -> str:
 
 def _save_crash(crash_dir: Path, target: str, ext: str, data: bytes) -> Path:
     crash_dir.mkdir(parents=True, exist_ok=True)
-    digest = hashlib.sha1(data).hexdigest()[:12]  # noqa: S324 - naming only
+    digest = hashlib.sha256(data).hexdigest()[:12]
     path = crash_dir / f"{target}__{digest}{ext}"
     path.write_bytes(data)
     return path
