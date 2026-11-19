@@ -33,6 +33,9 @@ def _decorator_name(node: ast.expr) -> str:
         return "<decorator>"
 
 
+_LINE_BREAK_RE = re.compile(r"\r\n|\r|\n")
+
+
 def _has_ignore_comment(source_lines: list[str], lineno: int) -> bool:
     """Return *True* if a ``# impactguard: ignore`` comment appears on the
     function definition line or on the line immediately preceding it.
@@ -233,7 +236,10 @@ def extract(
                 fq_file = path.name
         else:
             fq_file = path.name
-        source_lines = source_text.splitlines()
+        # Match ``ast`` line numbering: only \r\n, \r and \n end a line.
+        # ``str.splitlines()`` also splits on form feeds, NEL, U+2028 etc.,
+        # which shifts later lines and mis-attributes ignore comments.
+        source_lines = _LINE_BREAK_RE.split(source_text)
 
         # Single walk: collect __all__ names AND extract signatures in one pass
         class ContextVisitor(ast.NodeVisitor):
@@ -242,6 +248,17 @@ def extract(
                 self.functions: list[dict[str, Any]] = []
                 self._all_names: set[str] | None = None
                 self._all_found = False
+
+            def generic_visit(self, node: ast.AST) -> None:
+                # Only statements can hold definitions or ``__all__``
+                # updates, and expressions never contain statements, so do
+                # not descend into expression subtrees.  Besides being
+                # cheaper, this keeps a long ``a + b + ...`` chain inside a
+                # function body from overflowing the stack (statement
+                # nesting itself is capped by CPython at 100 levels).
+                for child in ast.iter_child_nodes(node):
+                    if not isinstance(child, ast.expr):
+                        self.visit(child)
 
             def visit_ClassDef(self, node: ast.ClassDef) -> None:
                 old_class = self.current_class

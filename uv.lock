@@ -308,12 +308,13 @@ wheels = [
 
 [[package]]
 name = "impactguard"
-version = "0.1.21"
+version = "0.1.22"
 source = { editable = "." }
 dependencies = [
     { name = "libcst" },
     { name = "pre-commit" },
     { name = "pyyaml" },
+    { name = "tree-sitter" },
 ]
 
 [package.optional-dependencies]
@@ -412,6 +413,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "ruff", marker = "extra == 'lint'" },
+    { name = "tree-sitter", specifier = ">=0.23,<0.26" },
     { name = "tree-sitter", marker = "extra == 'languages'", specifier = ">=0.23,<0.26" },
     { name = "tree-sitter-c", marker = "extra == 'languages'", specifier = ">=0.23,<0.26" },
     { name = "tree-sitter-c-sharp", marker = "extra == 'languages'", specifier = ">=0.23,<0.26" },

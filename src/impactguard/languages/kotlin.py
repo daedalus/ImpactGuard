@@ -30,6 +30,7 @@ from .lib.shared import (
     extract_calls_with_tree_sitter,
     has_ignore_comment,
     has_ignore_comment_fallback,
+    iter_preorder,
     log_regex_extraction,
     make_parser,
     node_text,
@@ -207,18 +208,9 @@ def _extract_with_tree_sitter(
             fq_file = path.name
         funcs: list[dict[str, Any]] = []
 
-        def visit(
-            node: Any,
-            _source: bytes = source,
-            _fq_file: str = fq_file,
-            _funcs: list[dict[str, Any]] = funcs,
-        ) -> None:
+        for node in iter_preorder(tree.root_node):
             if node.type in ("function_declaration", "anonymous_function"):
-                _process_function(node, _source, _fq_file, _funcs)
-            for child in node.children:
-                visit(child)
-
-        visit(tree.root_node)
+                _process_function(node, source, fq_file, funcs)
         all_funcs.extend(funcs)
 
     all_funcs.sort(key=lambda x: x["fqname"])
@@ -298,13 +290,15 @@ def _extract_with_regex(
                 fq_file = path.name
         else:
             fq_file = path.name
-        lines = source.splitlines()
+        # split("\n") (not splitlines()) so indices match the "\n"-counted
+        # line numbers below even when the file contains form feeds etc.
+        lines = source.split("\n")
 
         for m in _FUNC_RE.finditer(source):
             name = m.group("name")
             params_str = m.group("params") or ""
             return_type: str | None = (m.group("return") or "").strip() or None
-            lineno = source[: m.start()].count("\n") + 1
+            lineno = source.count("\n", 0, m.start()) + 1
             positional, has_vararg = _parse_kotlin_params_regex(params_str)
             match_text = m.group(0)
             fun_idx = match_text.index("fun")
@@ -356,7 +350,7 @@ def _extract_calls_with_regex(path: Path) -> list[dict[str, Any]]:
         arg_count = (
             len([a for a in args_str.split(",") if a.strip()]) if args_str else 0
         )
-        lineno = source[: m.start()].count("\n") + 1
+        lineno = source.count("\n", 0, m.start()) + 1
         calls.append(
             {
                 "name": name,

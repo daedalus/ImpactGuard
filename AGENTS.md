@@ -20,7 +20,7 @@ ImpactGuard is a multi-language API impact analyzer (Python, TypeScript, JS, Jav
 | `src/impactguard/call_graph.py` | SQLite-backed call graph with staleness detection |
 | `src/impactguard/generate_report.py` | Static HTML + markdown report generation |
 | `src/impactguard/__main__.py` | CLI entry point (18+ subcommands) |
-| `extract_signatures.py` | Standalone script (toplevel, not under src/) |
+| `tools/fuzz.py`, `tools/fuzzkit/` | Robustness fuzzer CLI and its suites (fixed payloads, seeded mutation, regression mutators) |
 
 ---
 
@@ -43,6 +43,17 @@ Run `impactguard --help` for details.
 - **Coverage target:** ≥ 80%
 - **Command:** `rtk pytest` (uses rtk wrapper)
 - **All tests pass:** 3189+ tests
+
+- **Fuzzing:** `python tools/fuzz.py` runs all suites (`compare`, `extract`,
+  `diff`, `mutate`). The `mutate` suite is seeded and reproducible:
+  `python tools/fuzz.py mutate --iterations 20000 --seed 1234`. Its
+  `regress` family (`--kinds regress`) regenerates every known past bug with
+  random parameters and checks metamorphic oracles. Crashes are saved to
+  `fuzz-crashes/` and re-run with `python tools/fuzz.py --replay <file>`.
+  When you fix a new bug class, add a regression mutator to
+  `REGRESSION_MUTATORS` in `tools/fuzzkit/regress.py` alongside the unit
+  test. (`tools/fuzz.py` is the CLI; the `tools/fuzzkit/` package holds the
+  suites, mutators and regression mutators.)
 
 ---
 

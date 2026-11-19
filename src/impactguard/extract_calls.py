@@ -54,9 +54,43 @@ def extract(path: Path) -> list[dict[str, Any]]:
     try:
         source_text = cached_read_text(path)
         tree = cached_ast_parse(source_text)
-    except (SyntaxError, OSError, UnicodeDecodeError):
+    except (SyntaxError, OSError, UnicodeDecodeError, RecursionError, ValueError):
         return []
 
-    visitor = CallVisitor(str(path))
-    visitor.visit(tree)
-    return visitor.calls
+    return _collect_calls(tree, str(path))
+
+
+def _collect_calls(tree: ast.AST, file: str) -> list[dict[str, Any]]:
+    """Collect call sites without recursion.
+
+    Equivalent to ``CallVisitor(file).visit(tree)`` (same pre-order, same
+    ``caller`` tracking) but uses an explicit stack, so long expression
+    chains such as ``x = 1 + 1 + ...`` (thousands of terms, common in
+    generated code) cannot exhaust the Python stack.
+    """
+    helper = CallVisitor(file)
+    stack: list[tuple[ast.AST, str | None]] = [(tree, None)]
+    while stack:
+        node, current_func = stack.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            current_func = node.name
+        elif isinstance(node, ast.Call):
+            name = helper.get_name(node.func)
+            if name:
+                helper.calls.append(
+                    {
+                        "name": name,
+                        "lineno": node.lineno,
+                        "args": len(node.args),
+                        "kwargs": [kw.arg for kw in node.keywords if kw.arg],
+                        "has_starargs": any(
+                            isinstance(a, ast.Starred) for a in node.args
+                        ),
+                        "has_kwargs": any(kw.arg is None for kw in node.keywords),
+                        "file": file,
+                        "caller": current_func,
+                    }
+                )
+        children = list(ast.iter_child_nodes(node))
+        stack.extend((child, current_func) for child in reversed(children))
+    return helper.calls

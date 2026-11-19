@@ -4,10 +4,11 @@ This module contains functions that were previously duplicated across all
 language extractor files in the languages/ directory.
 """
 
+import functools
 import logging
 import re
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -38,7 +39,7 @@ def child_of_type(node: Any, *types: str) -> Any | None:
     return None
 
 
-def has_ignore_comment_fallback(lines: list[str], lineno: int) -> bool:
+def has_ignore_comment_fallback(lines: Sequence[str], lineno: int) -> bool:
     """Check for ``impactguard: ignore`` on or before *lineno* (1-based)."""
     for idx in (lineno - 2, lineno - 1):
         if 0 <= idx < len(lines) and _match_ignore_tag(lines[idx]):
@@ -46,9 +47,23 @@ def has_ignore_comment_fallback(lines: list[str], lineno: int) -> bool:
     return False
 
 
+@functools.lru_cache(maxsize=16)
+def _source_lines(source_bytes: bytes) -> tuple[str, ...]:
+    r"""Split *source_bytes* into lines the way tree-sitter numbers rows.
+
+    Tree-sitter counts rows by ``\n`` only, whereas ``str.splitlines()`` also
+    breaks on form feeds, vertical tabs, ``\x1c``-``\x1e``, NEL and
+    U+2028/2029 -- which would shift every subsequent line and make ignore
+    comments match the wrong function.  The result is cached because
+    extractors call :func:`has_ignore_comment` once per function with the same
+    source; re-splitting each time made extraction O(n^2) in file size.
+    """
+    return tuple(source_bytes.decode("utf-8", errors="replace").split("\n"))
+
+
 def has_ignore_comment(source_bytes: bytes, lineno_0based: int) -> bool:
     """Check for ignore comment using tree-sitter node position (0-based line)."""
-    lines = source_bytes.decode("utf-8", errors="replace").splitlines()
+    lines = _source_lines(source_bytes)
     return has_ignore_comment_fallback(lines, lineno_0based + 1)
 
 
@@ -350,6 +365,9 @@ def split_pipe_union_members(type_str: str) -> frozenset[str]:
     return frozenset({s})
 
 
+_MAX_CALL_NAME_DESCENT = 256
+
+
 def _extract_call_name(
     node: Any,
     source: bytes,
@@ -367,20 +385,26 @@ def _extract_call_name(
     """
     member_map = member_map or {}
     target = ident_type or "identifier"
-    if node.type == target:
-        return node_text(node, source)
-    if node.type in member_map:
-        rhs_field = member_map[node.type]
-        if rhs_field is not None:
-            for child in node.named_children:
-                if child.type == rhs_field:
-                    return node_text(child, source)
+    # Iterative descent down the first-named-child chain.  Each call site
+    # walks this chain, so for nested/chained calls (``f(g(h(...)))``,
+    # ``a()()()``) an unbounded walk is O(depth) per call -- O(n^2) overall --
+    # and a recursive one can overflow the stack.  A callee name buried
+    # deeper than _MAX_CALL_NAME_DESCENT levels is not meaningful anyway.
+    for _ in range(_MAX_CALL_NAME_DESCENT):
+        if node.type == target:
+            return node_text(node, source)
+        if node.type in member_map:
+            rhs_field = member_map[node.type]
+            if rhs_field is not None:
+                for child in node.named_children:
+                    if child.type == rhs_field:
+                        return node_text(child, source)
+                return None
+            return ".".join(node_text(c, source) for c in node.named_children)
+        children = node.named_children
+        if not children:
             return None
-        return ".".join(node_text(c, source) for c in node.named_children)
-    if node.named_children:
-        return _extract_call_name(
-            node.named_children[0], source, member_map, ident_type
-        )
+        node = children[0]
     return None
 
 
@@ -448,6 +472,20 @@ def _count_call_args(
     return sum(1 for child in args_node.named_children if child.type != ",")
 
 
+def iter_preorder(root: Any) -> Iterator[Any]:
+    """Yield *root* and all its descendants in document (pre-)order.
+
+    Uses an explicit stack instead of recursion: generated or minified
+    sources (long ``a + b + ...`` chains, deeply nested literals) produce
+    trees thousands of levels deep, which overflow a recursive walk.
+    """
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        yield node
+        stack.extend(reversed(node.children))
+
+
 def extract_calls_with_tree_sitter(
     path: Path,
     language_name: str,
@@ -505,14 +543,18 @@ def extract_calls_with_tree_sitter(
     calls: list[dict[str, Any]] = []
 
     def _first_ident(node: Any) -> str | None:
-        """Return text of the first identifier-like child of *node*."""
+        """Return text of the first identifier-like descendant of *node*.
+
+        Iterative pre-order search (same order as the recursive original) so
+        deeply nested expressions cannot exhaust the Python stack.
+        """
         target = ident_type or "identifier"
-        for child in node.named_children:
+        stack = list(reversed(node.named_children))
+        while stack:
+            child = stack.pop()
             if child.type == target:
                 return node_text(child, source)
-            deeper = _first_ident(child)
-            if deeper is not None:
-                return deeper
+            stack.extend(reversed(child.named_children))
         return None
 
     def visit(node: Any) -> None:
@@ -536,8 +578,8 @@ def extract_calls_with_tree_sitter(
                 lineno = node.start_point[0] + 1
                 calls.append(make_call_dict(name, lineno, arg_count, str(path)))
 
-        for child in node.children:
-            visit(child)
-
-    visit(tree.root_node)
+    # Iterative pre-order traversal: generated or minified sources can nest
+    # tens of thousands of levels deep, which overflows a recursive walk.
+    for node in iter_preorder(tree.root_node):
+        visit(node)
     return calls

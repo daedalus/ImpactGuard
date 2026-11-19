@@ -328,7 +328,7 @@ class TestCompareSignaturesAdversarial:
     # ------------------------------------------------------------------
 
     def test_missing_positional_key_does_not_crash(self):
-        """Signatures missing 'positional' should raise KeyError, not silently mangle."""
+        """Signatures missing 'positional' are skipped with a warning, not mangled."""
         bad_sig = {
             "fqname": "t.py:bad",
             "name": "bad",
@@ -336,8 +336,9 @@ class TestCompareSignaturesAdversarial:
             "vararg": False,
             "kwarg": False,
         }
-        with pytest.raises(Exception):
-            self._compare([bad_sig], [bad_sig])
+        result = self._compare([bad_sig], [bad_sig])
+        assert result["breaking"] == []
+        assert result["nonbreaking"] == []
 
     # ------------------------------------------------------------------
     # 2e. Function name contains colon — adversarial fqname parsing

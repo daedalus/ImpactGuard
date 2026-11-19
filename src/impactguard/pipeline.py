@@ -128,6 +128,61 @@ def _process_extraction_warnings(
             )
 
 
+# Errors a single malformed or pathological source file may raise during
+# extraction.  ``RecursionError`` comes from recursive AST/tree-sitter walks
+# over very deeply nested code (e.g. generated array literals).
+_EXTRACTION_ERRORS: tuple[type[BaseException], ...] = (
+    OSError,
+    SyntaxError,
+    UnicodeDecodeError,
+    ValueError,
+    TypeError,
+    RecursionError,
+)
+
+
+def _record_extraction_failure(
+    extractor: Any,
+    files: list[str],
+    exc: BaseException,
+    stats: dict[str, int] | None,
+    events: list[dict[str, str]] | None,
+) -> None:
+    if stats is not None:
+        stats["parse_failures"] = stats.get("parse_failures", 0) + 1
+    if events is not None:
+        events.append(
+            {
+                "level": "error",
+                "kind": "extract_signatures_failed",
+                "file": _summarize_files(files),
+                "message": str(exc) or type(exc).__name__,
+            }
+        )
+    _log.warning(
+        "Signature extraction failed for language '%s' (%d file(s)): %s",
+        extractor.language,
+        len(files),
+        exc,
+    )
+
+
+def _run_extractor(
+    extractor: Any,
+    files: list[str],
+    kwargs: dict[str, Any],
+    stats: dict[str, int] | None,
+    events: list[dict[str, str]] | None,
+) -> list[dict[str, Any]]:
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        extracted: list[dict[str, Any]] = extractor.extract_signatures(
+            files, **kwargs
+        )
+    _process_extraction_warnings(caught, files, stats, events)
+    return extracted
+
+
 def _extract_group(
     extractor: Any,
     lang_files: list[str],
@@ -145,36 +200,32 @@ def _extract_group(
             )
         except (TypeError, ValueError):
             supports_strict = False
+    kwargs: dict[str, Any] = {"_base_path": base_path}
+    if supports_strict:
+        kwargs["strict"] = True
     try:
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            method = extractor.extract_signatures
-            kwargs: dict[str, Any] = {"_base_path": base_path}
-            if strict_extraction and supports_strict:
-                kwargs["strict"] = True
-            extracted: list[dict[str, Any]] = method(lang_files, **kwargs)
-
-        _process_extraction_warnings(caught, lang_files, stats, events)
-        return extracted
-    except (OSError, SyntaxError, UnicodeDecodeError, ValueError, TypeError) as exc:
-        if stats is not None:
-            stats["parse_failures"] = stats.get("parse_failures", 0) + 1
-        if events is not None:
-            events.append(
-                {
-                    "level": "error",
-                    "kind": "extract_signatures_failed",
-                    "file": _summarize_files(lang_files),
-                    "message": str(exc),
-                }
-            )
-        _log.warning(
-            "Signature extraction failed for language '%s' (%d file(s)): %s",
+        return _run_extractor(extractor, lang_files, kwargs, stats, events)
+    except _EXTRACTION_ERRORS as exc:
+        if len(lang_files) <= 1:
+            _record_extraction_failure(extractor, lang_files, exc, stats, events)
+            return []
+        _log.info(
+            "Batch extraction for '%s' failed (%s); retrying file by file",
             extractor.language,
-            len(lang_files),
             exc,
         )
-        return []
+
+    # Fault isolation: one pathological file must not discard the
+    # signatures of every other file in the same language.
+    results: list[dict[str, Any]] = []
+    for file in lang_files:
+        try:
+            results.extend(
+                _run_extractor(extractor, [file], kwargs, stats, events)
+            )
+        except _EXTRACTION_ERRORS as exc:
+            _record_extraction_failure(extractor, [file], exc, stats, events)
+    return results
 
 
 def _extract_by_language(
@@ -387,7 +438,7 @@ def _extract_python_calls(
         if mod_result and "calls" in mod_result:
             all_calls.extend(mod_result["calls"])
         return
-    except (OSError, SyntaxError, UnicodeDecodeError, ValueError, TypeError) as exc:
+    except _EXTRACTION_ERRORS as exc:
         stats["parse_failures"] += 1
         stats["fallback_used"] += 1
         _append_analysis_event(
@@ -402,7 +453,7 @@ def _extract_python_calls(
 
     try:
         all_calls.extend(_extract_calls(Path(file_path)))
-    except (OSError, SyntaxError, UnicodeDecodeError, ValueError, TypeError) as exc:
+    except _EXTRACTION_ERRORS as exc:
         stats["call_extraction_failures"] += 1
         _append_analysis_event(
             events,
@@ -439,7 +490,7 @@ def _extract_non_python_calls(
                 file=file_path,
                 message=message,
             )
-    except (OSError, SyntaxError, UnicodeDecodeError, ValueError, TypeError) as exc:
+    except _EXTRACTION_ERRORS as exc:
         stats["call_extraction_failures"] += 1
         _append_analysis_event(
             events,
@@ -1716,6 +1767,67 @@ def _classify_diff_line(line: str) -> str:
     return "unknown"
 
 
+_GIT_QUOTE_ESCAPES = {
+    "a": 7, "b": 8, "t": 9, "n": 10, "v": 11, "f": 12, "r": 13, '"': 34, "\\": 92,
+}
+
+
+def _unquote_git_path(name: str) -> str:
+    """Decode a C-style quoted path as emitted by git (``core.quotePath``).
+
+    Git wraps paths containing spaces, quotes, control characters or (by
+    default) non-ASCII bytes in double quotes and escapes them, e.g.
+    ``"a/caf\\303\\251.py"``.  Unquoted names are returned unchanged.
+    """
+    if len(name) < 2 or not (name.startswith('"') and name.endswith('"')):
+        return name
+    body = name[1:-1]
+    out = bytearray()
+    i = 0
+    while i < len(body):
+        ch = body[i]
+        if ch != "\\" or i + 1 >= len(body):
+            out += ch.encode("utf-8")
+            i += 1
+            continue
+        nxt = body[i + 1]
+        octal = body[i + 1 : i + 4]
+        if len(octal) == 3 and all(c in "01234567" for c in octal):
+            out.append(int(octal, 8) & 0xFF)
+            i += 4
+        elif nxt in _GIT_QUOTE_ESCAPES:
+            out.append(_GIT_QUOTE_ESCAPES[nxt])
+            i += 2
+        else:
+            out += ch.encode("utf-8")
+            i += 1
+    return out.decode("utf-8", errors="replace")
+
+
+def _diff_header_path(line: str, prefix: str) -> str | None:
+    """Extract the file path from a ``---``/``+++`` header line."""
+    raw = line[4:]
+    # Quoted paths may legitimately contain a tab escape, so only split on
+    # the timestamp separator outside of a quoted name.
+    if raw.startswith('"'):
+        end = -1
+        i = 1
+        while i < len(raw):
+            if raw[i] == "\\":
+                i += 2
+                continue
+            if raw[i] == '"':
+                end = i
+                break
+            i += 1
+        name = _unquote_git_path(raw[: end + 1]) if end != -1 else raw.strip()
+    else:
+        name = raw.split("\t")[0].strip()
+    if name.startswith(prefix):
+        name = name[len(prefix) :]
+    return None if name == "/dev/null" else name
+
+
 def _parse_unified_diff(diff_text: str) -> dict[str, tuple[str, str]]:
     """Parse a unified diff and return old/new content per supported source file.
 
@@ -1738,28 +1850,30 @@ def _parse_unified_diff(diff_text: str) -> dict[str, tuple[str, str]]:
     def _save_current() -> None:
         # For renamed files, prefer new_name as the canonical key.
         name = new_name if new_name is not None else old_name
-        if name and _get_extractor(name) is not None and is_safe_path(name):
-            files[name] = ("\n".join(old_lines), "\n".join(new_lines))
+        if not (name and _get_extractor(name) is not None and is_safe_path(name)):
+            return
+        old_text = "\n".join(old_lines)
+        new_text = "\n".join(new_lines)
+        if name in files:
+            # The same file can appear more than once (concatenated patches,
+            # ``git log -p`` output).  Merge rather than overwrite, otherwise
+            # changes in the earlier section are silently lost.
+            prev_old, prev_new = files[name]
+            old_text = "\n".join(t for t in (prev_old, old_text) if t)
+            new_text = "\n".join(t for t in (prev_new, new_text) if t)
+        files[name] = (old_text, new_text)
 
     def _handle_old_file(line: str) -> None:
         nonlocal old_name, new_name, old_lines, new_lines
         _save_current()
-        old_name = line[4:].split("\t")[0].strip()
-        if old_name.startswith("a/"):
-            old_name = old_name[2:]
-        if old_name == "/dev/null":
-            old_name = None
+        old_name = _diff_header_path(line, "a/")
         new_name = None
         old_lines = []
         new_lines = []
 
     def _handle_new_file(line: str) -> None:
         nonlocal new_name
-        new_name = line[4:].split("\t")[0].strip()
-        if new_name.startswith("b/"):
-            new_name = new_name[2:]
-        if new_name == "/dev/null":
-            new_name = None
+        new_name = _diff_header_path(line, "b/")
 
     def _handle_binary(line: str) -> None:
         m = re.match(r"Binary files (?:a/)?(.+?) and (?:b/)?(.+?) differ", line)
@@ -1869,12 +1983,12 @@ def run_pipeline_diff_content(
     file_contents = _parse_unified_diff(diff_text)
 
     if not file_contents:
-        raise ValueError("No supported file changes found in diff)")
+        raise ValueError("No supported file changes found in diff")
 
     old_files, new_files, old_dir, new_dir = _extract_diff_files(file_contents)
 
     if not new_files:
-        raise ValueError("Diff contains only deletions – nothing to analyze)")
+        raise ValueError("Diff contains only deletions – nothing to analyze")
 
     effective_output = output_dir or tempfile.mkdtemp(prefix="impactguard_diff_")
 
@@ -1916,16 +2030,22 @@ def _extract_diff_files(
     new_files: list[str] = []
 
     for rel_path, (old_src, new_src) in file_contents.items():
-        if old_src.strip():
-            dest = old_dir / rel_path
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text(old_src)
-            old_files.append(str(dest))
-        if new_src.strip():
-            dest = new_dir / rel_path
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text(new_src)
-            new_files.append(str(dest))
+        for src, root, bucket in ((old_src, old_dir, old_files), (new_src, new_dir, new_files)):
+            if not src.strip():
+                continue
+            dest = root / rel_path
+            try:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_text(src, encoding="utf-8")
+            except OSError as exc:
+                # e.g. a diff touching both ``a.py`` and ``a.py/b.py`` — one
+                # path cannot be materialised.  Skip it rather than abort the
+                # analysis of every other file.
+                _log.warning(
+                    "Cannot materialise '%s' from diff, skipping: %s", rel_path, exc
+                )
+                continue
+            bucket.append(str(dest))
 
     return old_files, new_files, old_dir, new_dir
 
